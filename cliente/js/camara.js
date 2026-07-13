@@ -2,7 +2,12 @@
 // CONFIGURACIÓN INICIAL
 // ============================================
 const video = document.getElementById("video");
-const socket = io("https://ventana-digital.up.railway.app");
+const socket = io("https://ventana-digital.onrender.com", {
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000
+});
 
 // ============================================
 // VARIABLES WEBRTC

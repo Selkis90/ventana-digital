@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: ventana-digital
+    runtime: node
+    repo: https://github.com/tu-usuario/ventana-digital
+    plan: free
+    buildCommand: npm install
+    startCommand: node app.js
+    envVars:
+      - key: NODE_ENV
+        value: production

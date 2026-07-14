@@ -37,7 +37,7 @@ const MAX_INTENTOS_POR_PEER = 3;
 let reconexionActiva = false;
 
 // ============================================
-// 🔥 NUEVA VARIABLE PARA SABER SI HAY VIDEO REMOTO
+// 🔥 VARIABLE PARA SABER SI HAY VIDEO REMOTO
 // ============================================
 let videoRemotoActivo = false;
 
@@ -50,20 +50,19 @@ videoRemoto.autoplay = true;
 videoRemoto.playsinline = true;
 videoRemoto.muted = false;
 videoRemoto.volume = 1.0;
-// 🔥 NUEVO ESTILO: Video remoto a la derecha (más pequeño)
+// 🔥 Video remoto en la esquina inferior derecha (más pequeño)
 videoRemoto.style.cssText = `
     position: fixed;
-    top: 50%;
+    bottom: 20px;
     right: 20px;
-    transform: translateY(-50%);
-    width: 30vw;
-    height: 50vh;
+    width: 280px;
+    height: 210px;
     border-radius: 12px;
     border: 3px solid #00d4ff;
     background: #000;
     z-index: 100;
     object-fit: cover;
-    box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+    box-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
     display: none;
 `;
 document.body.appendChild(videoRemoto);
@@ -82,10 +81,8 @@ console.log("🎧 Elemento de audio separado creado");
 window.audioRemoto = audioRemoto;
 
 // ============================================
-// 🔥 ESTILOS PARA VIDEO LOCAL
+// 🔥 ESTILOS PARA VIDEO LOCAL (fondo completo)
 // ============================================
-// El video local ahora ocupa toda la pantalla pero con opacidad reducida
-// cuando hay video remoto
 video.style.cssText = `
     position: fixed;
     top: 0;
@@ -156,10 +153,11 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 // ============================================
-// 🔥 FUNCIÓN MEJORADA PARA MOSTRAR VIDEO REMOTO (SIN OCULTAR EL LOCAL)
+// 🔥 FUNCIÓN MEJORADA PARA MOSTRAR VIDEO REMOTO
 // ============================================
-function mostrarVideoRemoto(stream) {
-    console.log("📹 ASIGNANDO VIDEO REMOTO");
+function mostrarVideoRemoto(stream, fromId) {
+    console.log(`📹 ASIGNANDO VIDEO REMOTO DE: ${fromId || 'desconocido'}`);
+    
     if (!stream) {
         console.error("❌ Stream vacío");
         return;
@@ -168,32 +166,31 @@ function mostrarVideoRemoto(stream) {
     const audioTracks = stream.getAudioTracks();
     const videoTracks = stream.getVideoTracks();
     
-    console.log("🎤 Tracks de audio en el stream:", audioTracks.length);
-    console.log("📹 Tracks de video en el stream:", videoTracks.length);
+    console.log(`🎤 Tracks de audio en el stream: ${audioTracks.length}`);
+    console.log(`📹 Tracks de video en el stream: ${videoTracks.length}`);
     
     // 🔥 FORZAR HABILITACIÓN DE TODOS LOS TRACKS
     audioTracks.forEach(track => {
         track.enabled = true;
-        console.log("✅ Track de audio habilitado:", track.label);
+        console.log(`✅ Audio track habilitado: ${track.label}`);
     });
     
     videoTracks.forEach(track => {
         track.enabled = true;
-        console.log("✅ Track de video habilitado:", track.label);
+        console.log(`✅ Video track habilitado: ${track.label}`);
     });
 
-    // 🔥 ASIGNAR AL VIDEO REMOTO (sin tocar el local)
+    // 🔥 ASIGNAR AL VIDEO REMOTO
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     videoRemoto.muted = false;
     videoRemoto.volume = 1.0;
 
-    // 🔥 REDUCIR OPACIDAD DEL VIDEO LOCAL PARA VER EL REMOTO
+    // 🔥 Reducir opacidad del video local para ver el remoto
     video.style.opacity = "0.3";
-    video.style.zIndex = "1";
     videoRemoto.style.zIndex = "2";
+    video.style.zIndex = "1";
     
-    // Marcar que hay video remoto activo
     videoRemotoActivo = true;
 
     // Asignar al audio separado
@@ -244,13 +241,12 @@ function mostrarVideoRemoto(stream) {
 
     setTimeout(intentarReproducir, 500);
 
-    console.log("✅ Video y audio remoto asignados correctamente");
+    console.log(`✅ Video remoto de ${fromId || 'desconocido'} asignado correctamente`);
 }
 
 function ocultarVideoRemoto() {
     videoRemoto.style.display = "none";
     video.style.opacity = "1";
-    video.style.zIndex = "1";
     videoRemotoActivo = false;
     
     if (videoRemoto.srcObject) {
@@ -353,38 +349,54 @@ async function crearPeerConnection(targetId) {
         iceTransportPolicy: "all"
     });
 
+    // 🔥 IMPORTANTE: Agregar TODOS los tracks locales (AUDIO Y VIDEO)
     const audioTracks = streamLocal.getAudioTracks();
     const videoTracks = streamLocal.getVideoTracks();
     
-    console.log("📹 Agregando tracks locales:");
-    console.log("  - Audio tracks:", audioTracks.length);
-    console.log("  - Video tracks:", videoTracks.length);
+    console.log(`📹 Agregando tracks locales para ${targetId}:`);
+    console.log(`  - Audio tracks: ${audioTracks.length}`);
+    console.log(`  - Video tracks: ${videoTracks.length}`);
     
+    // 🔥 FORZAR HABILITACIÓN DE AUDIO Y VIDEO LOCAL
     audioTracks.forEach(track => {
         track.enabled = true;
-        console.log("  ✅ Audio track habilitado:", track.label);
+        console.log(`  ✅ Audio track habilitado: ${track.label}`);
+        pc.addTrack(track, streamLocal);
     });
     
-    streamLocal.getTracks().forEach(track => {
+    videoTracks.forEach(track => {
+        track.enabled = true;
+        console.log(`  ✅ Video track habilitado: ${track.label}`);
         pc.addTrack(track, streamLocal);
-        console.log(`📹 Track ${track.kind} agregado`);
     });
 
+    // 🔥 MANEJAR TRACKS REMOTOS
     pc.ontrack = (event) => {
-        console.log("📥 Track remoto recibido de:", targetId);
-        console.log("📥 Track kind:", event.track.kind);
+        console.log(`📥 Track remoto recibido de: ${targetId}`);
+        console.log(`📥 Track kind: ${event.track.kind}`);
         
         if (event.streams && event.streams[0]) {
             const remoteStream = event.streams[0];
             const remoteAudioTracks = remoteStream.getAudioTracks();
-            console.log(`🎯 Stream remoto tiene: ${remoteAudioTracks.length} tracks de audio`);
+            const remoteVideoTracks = remoteStream.getVideoTracks();
             
+            console.log(`🎯 Stream remoto tiene:`);
+            console.log(`  - Audio tracks: ${remoteAudioTracks.length}`);
+            console.log(`  - Video tracks: ${remoteVideoTracks.length}`);
+            
+            // 🔥 FORZAR HABILITACIÓN DE AUDIO Y VIDEO REMOTO
             remoteAudioTracks.forEach(track => {
                 track.enabled = true;
-                console.log("🎤 Audio track remoto habilitado:", track.label);
+                console.log(`🎤 Audio track remoto habilitado: ${track.label}`);
             });
             
-            mostrarVideoRemoto(remoteStream);
+            remoteVideoTracks.forEach(track => {
+                track.enabled = true;
+                console.log(`📹 Video track remoto habilitado: ${track.label}`);
+            });
+            
+            // 🔥 MOSTRAR VIDEO REMOTO
+            mostrarVideoRemoto(remoteStream, targetId);
         }
     };
 
@@ -409,7 +421,7 @@ async function crearPeerConnection(targetId) {
     };
 
     pc.onconnectionstatechange = () => {
-        console.log(`🔗 Estado con ${targetId}:`, pc.connectionState);
+        console.log(`🔗 Estado con ${targetId}: ${pc.connectionState}`);
         if (pc.connectionState === "connected") {
             console.log("✅ CONEXIÓN WEBRTC ESTABLECIDA!");
             actualizarEstado("🟢 Conectado - WebRTC activo", "conectado");
@@ -450,7 +462,7 @@ async function crearPeerConnection(targetId) {
     };
 
     pc.oniceconnectionstatechange = () => {
-        console.log(`🧊 ICE estado con ${targetId}:`, pc.iceConnectionState);
+        console.log(`🧊 ICE estado con ${targetId}: ${pc.iceConnectionState}`);
         if (pc.iceConnectionState === "failed") {
             console.warn("⚠️ ICE failed, reiniciando conexión...");
             pc.restartIce();
@@ -893,11 +905,15 @@ async function iniciarCamara() {
         console.log("🎤 Tracks de audio disponibles:", audioTracks.length);
         audioTracks.forEach((track, i) => {
             track.enabled = true;
-            console.log(`  Track ${i}:`, track.label, "habilitado:", track.enabled);
+            console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
         });
         
         const videoTracks = stream.getVideoTracks();
         console.log("📹 Tracks de video disponibles:", videoTracks.length);
+        videoTracks.forEach((track, i) => {
+            track.enabled = true;
+            console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
+        });
         
         // 🔥 ASIGNAR STREAM AL VIDEO LOCAL
         video.srcObject = stream;

@@ -1,7 +1,7 @@
 module.exports = function(io) {
 
     console.log("############################################");
-    console.log("### SOCKET.JS - SIGNALING SERVER V8 ###");
+    console.log("### SOCKET.JS - VERSIÓN FINAL ###");
     console.log("############################################");
 
     const clientes = {};
@@ -19,15 +19,16 @@ module.exports = function(io) {
             timestamp: new Date().toISOString()
         };
 
-        // ============================================
-        // 1. ENVIAR LISTA DE CLIENTES AL NUEVO CLIENTE
-        // ============================================
         const lista = Object.keys(clientes);
-        socket.emit("clientes-conectados", lista);
-        console.log("📋 Lista enviada al nuevo cliente:", lista);
+        console.log("📋 Clientes conectados:", lista);
 
         // ============================================
-        // 2. NOTIFICAR A TODOS QUE LLEGÓ UN NUEVO CLIENTE
+        // 1. ENVIAR LISTA AL NUEVO CLIENTE
+        // ============================================
+        socket.emit("clientes-conectados", lista);
+
+        // ============================================
+        // 2. NOTIFICAR NUEVO CLIENTE A TODOS
         // ============================================
         socket.broadcast.emit("nuevo-cliente", {
             id: socket.id,
@@ -40,7 +41,6 @@ module.exports = function(io) {
         socket.on("clientes-conectados", (callback) => {
             const listaClientes = Object.keys(clientes);
             console.log("📋 Cliente", socket.id, "solicita lista");
-            console.log("📋 Lista enviada:", listaClientes);
             if (typeof callback === "function") {
                 callback(listaClientes);
             } else {
@@ -49,7 +49,7 @@ module.exports = function(io) {
         });
 
         // ============================================
-        // 4. 🔥 REENVIAR OFERTA WEBRTC
+        // 4. 🔥 REENVIAR OFERTA
         // ============================================
         socket.on("offer", (data) => {
             const targetId = data.target;
@@ -57,11 +57,9 @@ module.exports = function(io) {
             
             if (!clientes[targetId]) {
                 console.log(`❌ Target ${targetId} NO encontrado`);
-                console.log(`📋 Clientes disponibles:`, Object.keys(clientes));
                 return;
             }
 
-            // Reenviar la oferta SOLO al target
             io.to(targetId).emit("offer", {
                 from: socket.id,
                 offer: data.offer
@@ -70,7 +68,7 @@ module.exports = function(io) {
         });
 
         // ============================================
-        // 5. 🔥 REENVIAR RESPUESTA WEBRTC
+        // 5. 🔥 REENVIAR RESPUESTA
         // ============================================
         socket.on("answer", (data) => {
             const targetId = data.target;
@@ -104,21 +102,18 @@ module.exports = function(io) {
                 from: socket.id,
                 candidate: data.candidate
             });
-            console.log(`✅ ICE candidate REENVIADO a ${targetId}`);
+            console.log(`✅ ICE REENVIADO a ${targetId}`);
         });
 
         // ============================================
-        // 7. 🔥 PRUEBA DE PING
+        // 7. PRUEBA DE PING
         // ============================================
         socket.on("ping", (data) => {
-            console.log(`🏓 PING de ${socket.id} para ${data.target}`);
-            if (clientes[data.target]) {
-                io.to(data.target).emit("pong", {
-                    from: socket.id,
-                    message: "pong"
-                });
-                console.log(`✅ PONG reenviado a ${data.target}`);
-            }
+            console.log(`🏓 PING de ${socket.id}`);
+            io.to(data.target).emit("pong", {
+                from: socket.id,
+                message: "pong"
+            });
         });
 
         // ============================================
@@ -131,7 +126,6 @@ module.exports = function(io) {
             console.log("=================================");
             console.log("❌ Cliente desconectado:", socket.id);
             console.log("📊 Clientes conectados:", listaClientes.length);
-            console.log("📋 Lista:", listaClientes);
             console.log("=================================");
 
             io.emit("cliente-desconectado", {
@@ -144,12 +138,11 @@ module.exports = function(io) {
 
         // Mensaje de bienvenida
         socket.emit("mensaje", {
-            texto: "✅ Conectado al servidor de señalización V8",
+            texto: "✅ Conectado al servidor",
             timestamp: new Date().toISOString()
         });
 
     });
 
-    console.log("✅ Servidor de señalización WebRTC V8 listo");
-    console.log("📡 Esperando conexiones...");
+    console.log("✅ Servidor listo");
 };

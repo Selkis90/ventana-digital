@@ -39,7 +39,7 @@ videoRemoto.style.cssText = `
 document.body.appendChild(videoRemoto);
 
 // ============================================
-// ELEMENTO DE AUDIO SEPARADO (más confiable)
+// ELEMENTO DE AUDIO SEPARADO (SIEMPRE CREADO)
 // ============================================
 const audioRemoto = document.createElement("audio");
 audioRemoto.id = "audio-remoto";
@@ -49,6 +49,9 @@ audioRemoto.volume = 1.0;
 audioRemoto.style.display = "none";
 document.body.appendChild(audioRemoto);
 console.log("🎧 Elemento de audio separado creado");
+
+// Hacer accesible globalmente
+window.audioRemoto = audioRemoto;
 
 // ============================================
 // FUNCIONES DE ESTADO Y VIDEO
@@ -61,9 +64,6 @@ function actualizarEstado(mensaje, tipo) {
     }
 }
 
-// ============================================
-// FUNCIÓN MEJORADA PARA MOSTRAR VIDEO REMOTO CON AUDIO
-// ============================================
 function mostrarVideoRemoto(stream) {
     console.log("📹 ASIGNANDO VIDEO REMOTO CON AUDIO");
     if (!stream) {
@@ -81,23 +81,21 @@ function mostrarVideoRemoto(stream) {
     videoRemoto.muted = false;
     videoRemoto.volume = 1.0;
 
-    // 2. Asignar al audio separado (más confiable)
+    // 2. Asignar al audio separado (SIEMPRE)
     audioRemoto.srcObject = stream;
     audioRemoto.muted = false;
     audioRemoto.volume = 1.0;
 
     // 3. Reproducir audio separado
-    setTimeout(() => {
-        audioRemoto.play().then(() => {
-            console.log("🔊 Audio remoto reproduciéndose (separado)");
-        }).catch(err => {
-            console.warn("⚠️ Error en audio separado:", err.message);
-            // Intentar de nuevo
-            setTimeout(() => {
-                audioRemoto.play().catch(e => console.warn("⚠️ Segundo intento falló:", e.message));
-            }, 1000);
-        });
-    }, 200);
+    audioRemoto.play().then(() => {
+        console.log("🔊 Audio remoto reproduciéndose (separado)");
+    }).catch(err => {
+        console.warn("⚠️ Error en audio separado:", err.message);
+        // Intentar de nuevo
+        setTimeout(() => {
+            audioRemoto.play().catch(e => console.warn("⚠️ Segundo intento falló:", e.message));
+        }, 1000);
+    });
 
     // 4. Reproducir video
     setTimeout(() => {
@@ -115,9 +113,6 @@ function mostrarVideoRemoto(stream) {
     console.log("✅ Video y audio remoto asignados");
 }
 
-// ============================================
-// FUNCIÓN PARA OCULTAR VIDEO REMOTO (con limpieza de audio)
-// ============================================
 function ocultarVideoRemoto() {
     videoRemoto.style.display = "none";
     if (videoRemoto.srcObject) {

@@ -1,7 +1,4 @@
-listo ahora revisa el archivo socket.js corrige todos los errores y pasame el archivo completo
-
-
- // ============================================
+// ============================================
 // SERVIDOR SOCKET.IO - VENTANA DIGITAL
 // ============================================
 
@@ -28,22 +25,24 @@ module.exports = function(io) {
             timestamp: new Date().toISOString()
         };
 
-        // Enviar lista de clientes al nuevo cliente
-        socket.emit("clientes-conectados", Object.keys(clientes));
-        console.log(`📋 Clientes totales: ${Object.keys(clientes).length}`);
+        // 🔥 ENVIAR LISTA DE CLIENTES AL NUEVO CLIENTE
+        const listaClientes = Object.keys(clientes);
+        socket.emit("clientes-conectados", listaClientes);
+        console.log(`📋 Clientes totales: ${listaClientes.length}`);
+        console.log(`📋 IDs: ${listaClientes.join(", ")}`);
 
-        // Notificar a TODOS los clientes sobre el nuevo
+        // 🔥 NOTIFICAR A TODOS LOS CLIENTES SOBRE EL NUEVO
         io.emit("nuevo-cliente", {
             id: socket.id,
-            total: Object.keys(clientes).length
+            total: listaClientes.length
         });
 
         // ============================================
-        // MANEJAR SOLICITUD DE CLIENTES CONECTADOS
+        // 📨 MANEJAR SOLICITUD DE CLIENTES CONECTADOS
         // ============================================
         socket.on("clientes-conectados", (callback) => {
             const lista = Object.keys(clientes);
-            console.log(`📋 Clientes conectados: ${lista.length}`);
+            console.log(`📋 Clientes conectados (solicitado): ${lista.length}`);
             if (typeof callback === "function") {
                 callback(lista);
             } else {
@@ -52,7 +51,7 @@ module.exports = function(io) {
         });
 
         // ============================================
-        // 🔥 MANEJAR OFERTA WEBRTC
+        // 🔥 MANEJAR OFERTA WEBRTC (CORREGIDO)
         // ============================================
         socket.on("offer", (data) => {
             const { target, offer } = data;
@@ -64,16 +63,16 @@ module.exports = function(io) {
                 return;
             }
             
-            // Reenviar la oferta al target
+            // 🔥 REENVIAR LA OFERTA AL TARGET
             io.to(target).emit("offer", {
                 from: socket.id,
                 offer: offer
             });
-            console.log(`✅ Oferta reenviada a ${target}`);
+            console.log(`✅ Oferta REENVIADA a ${target}`);
         });
 
         // ============================================
-        // 🔥 MANEJAR RESPUESTA WEBRTC
+        // 🔥 MANEJAR RESPUESTA WEBRTC (CORREGIDO)
         // ============================================
         socket.on("answer", (data) => {
             const { target, answer } = data;
@@ -84,15 +83,16 @@ module.exports = function(io) {
                 return;
             }
             
+            // 🔥 REENVIAR LA RESPUESTA AL TARGET
             io.to(target).emit("answer", {
                 from: socket.id,
                 answer: answer
             });
-            console.log(`✅ Respuesta reenviada a ${target}`);
+            console.log(`✅ Respuesta REENVIADA a ${target}`);
         });
 
         // ============================================
-        // 🔥 MANEJAR ICE CANDIDATE
+        // 🔥 MANEJAR ICE CANDIDATE (CORREGIDO)
         // ============================================
         socket.on("ice-candidate", (data) => {
             const { target, candidate } = data;
@@ -103,11 +103,12 @@ module.exports = function(io) {
                 return;
             }
             
+            // 🔥 REENVIAR EL ICE CANDIDATE AL TARGET
             io.to(target).emit("ice-candidate", {
                 from: socket.id,
                 candidate: candidate
             });
-            console.log(`✅ ICE candidate reenviado a ${target}`);
+            console.log(`✅ ICE REENVIADO a ${target}`);
         });
 
         // ============================================
@@ -132,7 +133,7 @@ module.exports = function(io) {
             // Eliminar cliente
             delete clientes[socket.id];
             
-            // Notificar a todos los clientes
+            // 🔥 NOTIFICAR A TODOS LOS CLIENTES
             io.emit("cliente-desconectado", {
                 id: socket.id,
                 total: Object.keys(clientes).length
@@ -151,11 +152,12 @@ module.exports = function(io) {
     });
 
     // ============================================
-    // ESTADÍSTICAS DEL SERVIDOR
+    // 📊 ESTADÍSTICAS DEL SERVIDOR
     // ============================================
     setInterval(() => {
-        console.log(`📊 Estado: ${Object.keys(clientes).length} clientes conectados`);
-        if (Object.keys(clientes).length > 0) {
+        const total = Object.keys(clientes).length;
+        console.log(`📊 Estado: ${total} clientes conectados`);
+        if (total > 0) {
             console.log(`📋 IDs: ${Object.keys(clientes).join(", ")}`);
         }
     }, 30000);

@@ -2,11 +2,16 @@
 // CONFIGURACIÓN INICIAL
 // ============================================
 const video = document.getElementById("video");
+
+// ============================================
+// 📡 CONEXIÓN AL SERVIDOR EN RENDER.COM
+// ============================================
 const socket = io("https://ventana-digital.onrender.com", {
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 1000
+    reconnectionAttempts: 20,
+    reconnectionDelay: 1000,
+    timeout: 30000
 });
 
 // ============================================
@@ -16,9 +21,11 @@ const peers = {};
 let streamLocal = null;
 let webRTCIniciado = false;
 const conexionesEnProceso = new Set();
-const iceCandidatesQueue = {}; // Cola para ICE candidates
+const iceCandidatesQueue = {};
 
-// Crear elemento para video remoto
+// ============================================
+// 🎬 CREAR ELEMENTOS DE VIDEO REMOTO
+// ============================================
 const videoRemoto = document.createElement("video");
 videoRemoto.id = "video-remoto";
 videoRemoto.autoplay = true;
@@ -27,21 +34,22 @@ videoRemoto.muted = false;
 videoRemoto.volume = 1.0;
 videoRemoto.style.cssText = `
     position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 200px;
-    height: 150px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 95vw;
+    height: 85vh;
     border-radius: 10px;
     border: 2px solid #00d4ff;
     background: #000;
-    z-index: 1000;
+    z-index: 100;
     object-fit: cover;
     display: none;
 `;
 document.body.appendChild(videoRemoto);
 
 // ============================================
-// ELEMENTO DE AUDIO SEPARADO
+// 🎧 ELEMENTO DE AUDIO SEPARADO
 // ============================================
 const audioRemoto = document.createElement("audio");
 audioRemoto.id = "audio-remoto";
@@ -54,7 +62,7 @@ console.log("🎧 Elemento de audio separado creado");
 window.audioRemoto = audioRemoto;
 
 // ============================================
-// FUNCIONES DE ESTADO Y VIDEO
+// 🎯 FUNCIONES DE ESTADO Y VIDEO
 // ============================================
 function actualizarEstado(mensaje, tipo) {
     const estado = document.getElementById("estado");
@@ -65,7 +73,7 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 function mostrarVideoRemoto(stream) {
-    console.log("📹 ASIGNANDO VIDEO REMOTO CON AUDIO");
+    console.log("📹 ASIGNANDO VIDEO REMOTO");
     if (!stream) {
         console.error("❌ Stream vacío");
         return;
@@ -83,15 +91,21 @@ function mostrarVideoRemoto(stream) {
         });
     }
 
+    // Asignar al video remoto
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     videoRemoto.muted = false;
     videoRemoto.volume = 1.0;
 
+    // Ocultar video local para ver solo el remoto
+    video.style.display = "none";
+
+    // Asignar al audio separado
     audioRemoto.srcObject = stream;
     audioRemoto.muted = false;
     audioRemoto.volume = 1.0;
 
+    // 🔥 REPRODUCIR CON MANEJO DE ERRORES
     let audioActivado = false;
     
     function reproducirAudio() {
@@ -118,7 +132,7 @@ function mostrarVideoRemoto(stream) {
         });
     }
 
-    reproducirAudio();
+    setTimeout(reproducirAudio, 500);
 
     audioTracks.forEach(track => {
         track.enabled = true;
@@ -130,6 +144,7 @@ function mostrarVideoRemoto(stream) {
 
 function ocultarVideoRemoto() {
     videoRemoto.style.display = "none";
+    video.style.display = "block";
     if (videoRemoto.srcObject) {
         videoRemoto.srcObject.getTracks().forEach(track => track.stop());
         videoRemoto.srcObject = null;
@@ -141,7 +156,7 @@ function ocultarVideoRemoto() {
 }
 
 // ============================================
-// FUNCIÓN PARA PROBAR AUDIO LOCAL
+// 🎤 PROBAR AUDIO LOCAL
 // ============================================
 function probarAudioLocal(stream) {
     try {
@@ -183,17 +198,16 @@ function probarAudioLocal(stream) {
 }
 
 // ============================================
-// FUNCIÓN PARA CREAR PEER CONNECTION (MEJORADA)
+// 🔗 CREAR PEER CONNECTION CON TURN PÚBLICOS
 // ============================================
 async function crearPeerConnection(targetId) {
-    // Verificar si ya existe una conexión activa
+    // Verificar conexión existente
     if (peers[targetId]) {
         const pc = peers[targetId];
         if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
             console.log(`⚠️ Ya existe conexión activa con ${targetId}`);
             return pc;
         } else {
-            // Limpiar conexión muerta
             console.log(`🧹 Limpiando conexión muerta con ${targetId}`);
             pc.close();
             delete peers[targetId];
@@ -216,20 +230,44 @@ async function crearPeerConnection(targetId) {
         return null;
     }
 
-    // CONFIGURACIÓN CON MÚLTIPLES STUN
+    // ============================================
+    // 🔥 CONFIGURACIÓN CON STUN + TURN PÚBLICOS
+    // ============================================
     const pc = new RTCPeerConnection({
         iceServers: [
+            // STUN - Para conexiones directas
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
             { urls: "stun:stun2.l.google.com:19302" },
             { urls: "stun:stun3.l.google.com:19302" },
             { urls: "stun:stun4.l.google.com:19302" },
-            { urls: "stun:stun.voipstunt.com:3478" },
-            { urls: "stun:stun.ekiga.net:3478" }
+            
+            // 🔥 TURN PÚBLICOS - Para cuando STUN falla (Bogotá - Medellín)
+            { 
+                urls: "turn:turn.anyfirewall.com:443?transport=tcp",
+                username: "webrtc",
+                credential: "webrtc"
+            },
+            {
+                urls: "turn:turn.doublerainbow.net:3478",
+                username: "guest",
+                credential: "guest"
+            },
+            {
+                urls: "turn:turn.xten.com:3478",
+                username: "guest",
+                credential: "guest"
+            },
+            {
+                urls: "turn:turn.voipstunt.com:3478",
+                username: "guest",
+                credential: "guest"
+            }
         ],
         iceCandidatePoolSize: 10,
         bundlePolicy: "max-bundle",
-        rtcpMuxPolicy: "require"
+        rtcpMuxPolicy: "require",
+        iceTransportPolicy: "all"  // Usa TURN si es necesario
     });
 
     // Agregar tracks locales
@@ -269,12 +307,11 @@ async function crearPeerConnection(targetId) {
         }
     };
 
-    // Manejar ICE candidates - GUARDAR EN COLA si no hay remoteDescription
+    // Manejar ICE candidates
     pc.onicecandidate = (event) => {
         if (event.candidate) {
             console.log(`🧊 ICE candidate generado para ${targetId}`);
             
-            // Si ya tenemos remoteDescription, enviar inmediatamente
             if (pc.remoteDescription) {
                 socket.emit("ice-candidate", {
                     target: targetId,
@@ -282,12 +319,11 @@ async function crearPeerConnection(targetId) {
                 });
                 console.log(`📤 ICE candidate enviado a ${targetId}`);
             } else {
-                // Guardar en cola para enviar después
                 if (!iceCandidatesQueue[targetId]) {
                     iceCandidatesQueue[targetId] = [];
                 }
                 iceCandidatesQueue[targetId].push(event.candidate);
-                console.log(`📦 ICE candidate guardado en cola para ${targetId} (${iceCandidatesQueue[targetId].length} pendientes)`);
+                console.log(`📦 ICE candidate guardado en cola (${iceCandidatesQueue[targetId].length} pendientes)`);
             }
         }
     };
@@ -309,7 +345,6 @@ async function crearPeerConnection(targetId) {
             webRTCIniciado = false;
             ocultarVideoRemoto();
             
-            // RECONEXIÓN AUTOMÁTICA
             console.log("🔄 Intentando reconectar con:", targetId);
             setTimeout(() => {
                 if (!peers[targetId] && !conexionesEnProceso.has(targetId)) {
@@ -332,7 +367,7 @@ async function crearPeerConnection(targetId) {
 }
 
 // ============================================
-// FUNCIÓN PARA ENVIAR ICE CANDIDATES PENDIENTES
+// 📤 ENVIAR ICE CANDIDATES PENDIENTES
 // ============================================
 function enviarIceCandidatesPendientes(targetId) {
     const pc = peers[targetId];
@@ -352,10 +387,10 @@ function enviarIceCandidatesPendientes(targetId) {
 }
 
 // ============================================
-// FUNCIONES WEBRTC - OFERTA Y RESPUESTA
+// 📨 WEBRTC - OFERTA Y RESPUESTA
 // ============================================
 async function iniciarOferta(targetId) {
-    // Verificar si ya existe conexión activa
+    // Verificar conexión existente
     if (peers[targetId]) {
         const pc = peers[targetId];
         if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
@@ -386,7 +421,6 @@ async function iniciarOferta(targetId) {
         });
         console.log("✅ Oferta enviada a:", targetId);
         
-        // Después de establecer localDescription, enviar ICE candidates pendientes
         setTimeout(() => {
             enviarIceCandidatesPendientes(targetId);
         }, 500);
@@ -429,7 +463,6 @@ async function manejarOferta(data) {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         console.log("✅ Descripción remota establecida (oferta)");
         
-        // Enviar ICE candidates pendientes después de establecer remoteDescription
         enviarIceCandidatesPendientes(from);
 
         const answer = await pc.createAnswer({
@@ -444,7 +477,6 @@ async function manejarOferta(data) {
         });
         console.log("✅ Respuesta enviada a:", from);
         
-        // Enviar ICE candidates pendientes después de localDescription
         setTimeout(() => {
             enviarIceCandidatesPendientes(from);
         }, 500);
@@ -470,8 +502,6 @@ async function manejarRespuesta(data) {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
         console.log("✅ Descripción remota establecida (respuesta)");
         conexionesEnProceso.delete(from);
-        
-        // Enviar ICE candidates pendientes después de remoteDescription
         enviarIceCandidatesPendientes(from);
         
     } catch (error) {
@@ -488,23 +518,19 @@ async function manejarIceCandidate(data) {
 
     if (!pc) {
         console.warn(`⚠️ No hay conexión para ICE candidate de: ${from}`);
-        // Guardar en cola por si la conexión se establece después
         if (!iceCandidatesQueue[from]) {
             iceCandidatesQueue[from] = [];
         }
         iceCandidatesQueue[from].push(candidate);
-        console.log(`📦 ICE candidate guardado en cola para ${from} (${iceCandidatesQueue[from].length} pendientes)`);
         return;
     }
 
     try {
-        // Si no hay remoteDescription, guardar en cola
         if (!pc.remoteDescription) {
             if (!iceCandidatesQueue[from]) {
                 iceCandidatesQueue[from] = [];
             }
             iceCandidatesQueue[from].push(candidate);
-            console.log(`📦 ICE candidate guardado en cola para ${from} (${iceCandidatesQueue[from].length} pendientes)`);
             return;
         }
         
@@ -512,7 +538,6 @@ async function manejarIceCandidate(data) {
         console.log("✅ ICE Candidate agregado de:", from);
     } catch (error) {
         console.warn(`⚠️ Error al agregar ICE candidate de ${from}:`, error.message);
-        // Si falla, guardar en cola para reintentar
         if (!iceCandidatesQueue[from]) {
             iceCandidatesQueue[from] = [];
         }
@@ -521,7 +546,7 @@ async function manejarIceCandidate(data) {
 }
 
 // ============================================
-// CONECTAR CON TODOS LOS CLIENTES (MEJORADO)
+// 🔄 CONECTAR CON TODOS LOS CLIENTES
 // ============================================
 function conectarConTodos(clientes) {
     console.log("🔄 CONECTANDO CON TODOS...");
@@ -551,7 +576,6 @@ function conectarConTodos(clientes) {
     });
 
     otros.forEach(targetId => {
-        // Verificar si ya hay conexión activa
         if (peers[targetId]) {
             const pc = peers[targetId];
             if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
@@ -568,14 +592,12 @@ function conectarConTodos(clientes) {
         if (!conexionesEnProceso.has(targetId)) {
             console.log(`🔗 Iniciando conexión con ${targetId}`);
             setTimeout(() => iniciarOferta(targetId), 1000);
-        } else {
-            console.log(`⚠️ Ya en proceso de conexión con ${targetId}`);
         }
     });
 }
 
 // ============================================
-// MANEJADORES DE SOCKET.IO
+// 📡 MANEJADORES DE SOCKET.IO
 // ============================================
 socket.on("offer", manejarOferta);
 socket.on("answer", manejarRespuesta);
@@ -638,7 +660,7 @@ socket.on("cliente-desconectado", (data) => {
 });
 
 // ============================================
-// INICIAR CÁMARA
+// 🎥 INICIAR CÁMARA
 // ============================================
 async function iniciarCamara() {
     try {
@@ -693,6 +715,7 @@ async function iniciarCamara() {
     } catch (error) {
         console.error("❌ Error al acceder a cámara/micrófono:", error);
         
+        // Intentar con configuración básica
         try {
             console.log("🔄 Intentando con configuración básica...");
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -724,7 +747,7 @@ async function iniciarCamara() {
 }
 
 // ============================================
-// FUNCIÓN DE RECONEXIÓN MANUAL
+// 🔄 FUNCIÓN DE RECONEXIÓN MANUAL
 // ============================================
 window.forzarReconexion = () => {
     console.log("🔄 Forzando reconexión...");
@@ -746,7 +769,7 @@ window.forzarReconexion = () => {
 console.log("💡 Para forzar reconexión: forzarReconexion()");
 
 // ============================================
-// INICIO
+// 🚀 INICIO
 // ============================================
 window.addEventListener("load", () => {
     console.log("🚀 Iniciando Ventana Digital...");
@@ -770,7 +793,7 @@ window.addEventListener("beforeunload", () => {
 });
 
 // ============================================
-// PRUEBA DE PING
+// 🏓 PRUEBA DE PING
 // ============================================
 socket.on("connect", () => {
     setTimeout(() => {
@@ -784,7 +807,7 @@ socket.on("pong", (data) => {
 });
 
 // ============================================
-// RECONEXIÓN AUTOMÁTICA PERIÓDICA
+// ⏰ RECONEXIÓN AUTOMÁTICA PERIÓDICA
 // ============================================
 setInterval(() => {
     const conexionesActivas = Object.keys(peers).filter(id => {

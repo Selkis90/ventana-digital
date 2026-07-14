@@ -42,7 +42,7 @@ let reconexionActiva = false;
 let videoRemotoActivo = false;
 
 // ============================================
-// 🎬 RE-CONFIGURAR VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA INFERIOR DERECHA)
+// 🎬 CONFIGURAR VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA INFERIOR DERECHA)
 // ============================================
 // 🔥 PRIMERO: Configurar video local como pequeño (esquina)
 video.style.cssText = `
@@ -54,7 +54,7 @@ video.style.cssText = `
     border-radius: 12px;
     border: 3px solid #00d4ff;
     background: #000;
-    z-index: 100;
+    z-index: 100 !important;
     object-fit: cover;
     box-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
     cursor: pointer;
@@ -89,7 +89,7 @@ videoRemoto.style.cssText = `
     width: 100vw;
     height: 100vh;
     object-fit: cover;
-    z-index: 1;
+    z-index: 1 !important;
     background: #000;
     display: none;
 `;

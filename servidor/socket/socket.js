@@ -1,5 +1,9 @@
 module.exports = function(io){
 
+    console.log("############################################");
+    console.log("### SOCKET.JS VERSION 2 - CARGADO ###");
+    console.log("############################################");
+
     // Lista de clientes conectados
     const clientes = [];
 
@@ -27,9 +31,11 @@ module.exports = function(io){
                 clientes.splice(indice,1);
             }
 
-            console.log("Cliente desconectado:",socket.id);
+            console.log("=================================");
+            console.log("Cliente desconectado:", socket.id);
             console.log("Clientes conectados:", clientes.length);
             console.log("Lista:", clientes);
+            console.log("=================================");
 
         });
 

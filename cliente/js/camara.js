@@ -73,33 +73,57 @@ function mostrarVideoRemoto(stream) {
     const audioTracks = stream.getAudioTracks();
     console.log("🎤 Tracks de audio en el stream:", audioTracks.length);
 
+    // 1. Asignar al video
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     videoRemoto.muted = false;
     videoRemoto.volume = 1.0;
 
+    // 2. Asignar al audio separado
     audioRemoto.srcObject = stream;
     audioRemoto.muted = false;
     audioRemoto.volume = 1.0;
 
-    audioRemoto.play().then(() => {
-        console.log("🔊 Audio remoto reproduciéndose (separado)");
-    }).catch(err => {
-        console.warn("⚠️ Error en audio separado:", err.message);
-    });
+    // 3. 🔥 ESPERAR CLIC DEL USUARIO
+    let audioActivado = false;
+    
+    function reproducirAudio() {
+        if (audioActivado) return;
+        audioActivado = true;
+        
+        audioRemoto.play().then(() => {
+            console.log("🔊 Audio remoto reproduciéndose");
+        }).catch(err => {
+            console.warn("⚠️ Error en audio separado:", err.message);
+            // Si falla, esperar clic
+            const clickHandler = function() {
+                audioRemoto.play().catch(() => {});
+                document.removeEventListener('click', clickHandler);
+                console.log("✅ Audio activado por clic");
+            };
+            document.addEventListener('click', clickHandler);
+            console.log("💡 Haz clic en la página para activar el audio");
+        });
+    }
 
+    // Intentar reproducir después de 500ms
+    setTimeout(reproducirAudio, 500);
+
+    // 4. Reproducir video
     setTimeout(() => {
         videoRemoto.play().catch(err => {
             console.warn("⚠️ Error al reproducir video:", err.message);
         });
     }, 100);
 
+    // 5. Asegurar que los tracks de audio están habilitados
     audioTracks.forEach(track => {
         track.enabled = true;
         console.log("✅ Track de audio habilitado:", track.label);
     });
 
     console.log("✅ Video y audio remoto asignados");
+    console.log("💡 Si no se escucha, haz clic en la página");
 }
 
 function ocultarVideoRemoto() {

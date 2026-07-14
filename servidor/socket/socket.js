@@ -1,4 +1,7 @@
-// ============================================
+listo ahora revisa el archivo socket.js corrige todos los errores y pasame el archivo completo
+
+
+ // ============================================
 // SERVIDOR SOCKET.IO - VENTANA DIGITAL
 // ============================================
 

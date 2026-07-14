@@ -1,12 +1,12 @@
-module.exports = function(io){
+module.exports = function(io) {
 
     console.log("############################################");
-    console.log("### SOCKET.JS VERSION 3 - EMPAREJAMIENTO ###");
+    console.log("### SOCKET.JS VERSION 4 - SIGNALING ###");
     console.log("############################################");
 
     const clientes = [];
 
-    io.on("connection", (socket)=>{
+    io.on("connection", (socket) => {
 
         clientes.push(socket.id);
 
@@ -17,33 +17,71 @@ module.exports = function(io){
         console.log("Lista:", clientes);
         console.log("=================================");
 
-        socket.emit("mensaje",{
-            texto:"Conectado correctamente al servidor"
+        socket.emit("mensaje", {
+            texto: "Conectado correctamente al servidor"
         });
 
-        // Si hay exactamente 2 clientes, avisarles
-        if(clientes.length === 2){
+        // Avisar a todos que llegó un nuevo cliente
+        io.emit("nuevo-cliente", {
+            id: socket.id,
+            total: clientes.length
+        });
 
-            console.log("***************");
-            console.log("EQUIPO ENCONTRADO");
-            console.log("***************");
+        // Enviar la lista de clientes cuando la pidan
+        socket.on("clientes-conectados", (callback) => {
+            if (typeof callback === "function") {
+                callback(clientes);
+            }
+        });
 
-            io.emit("equipo-encontrado");
-        }
+        // Reenviar OFFER
+        socket.on("offer", (data) => {
 
-        socket.on("disconnect",()=>{
+            io.to(data.target).emit("offer", {
+                from: socket.id,
+                offer: data.offer
+            });
+
+        });
+
+        // Reenviar ANSWER
+        socket.on("answer", (data) => {
+
+            io.to(data.target).emit("answer", {
+                from: socket.id,
+                answer: data.answer
+            });
+
+        });
+
+        // Reenviar ICE
+        socket.on("ice-candidate", (data) => {
+
+            io.to(data.target).emit("ice-candidate", {
+                from: socket.id,
+                candidate: data.candidate
+            });
+
+        });
+
+        socket.on("disconnect", () => {
 
             const indice = clientes.indexOf(socket.id);
 
-            if(indice !== -1){
-                clientes.splice(indice,1);
+            if (indice !== -1) {
+                clientes.splice(indice, 1);
             }
 
             console.log("=================================");
-            console.log("Cliente desconectado:",socket.id);
-            console.log("Clientes conectados:",clientes.length);
-            console.log("Lista:",clientes);
+            console.log("Cliente desconectado:", socket.id);
+            console.log("Clientes conectados:", clientes.length);
+            console.log("Lista:", clientes);
             console.log("=================================");
+
+            io.emit("cliente-desconectado", {
+                id: socket.id,
+                total: clientes.length
+            });
 
         });
 

@@ -1,10 +1,9 @@
 module.exports = function(io) {
 
     console.log("############################################");
-    console.log("### SOCKET.JS VERSION 5 - SIGNALING COMPLETA ###");
+    console.log("### SOCKET.JS - SIGNALING SERVER ###");
     console.log("############################################");
 
-    // Usar objeto para mejor control
     const clientes = {};
 
     io.on("connection", (socket) => {
@@ -19,20 +18,31 @@ module.exports = function(io) {
         const listaClientes = Object.keys(clientes);
 
         console.log("=================================");
-        console.log("🔗 Nuevo cliente conectado");
-        console.log("📌 ID:", socket.id);
+        console.log("🔗 Nuevo cliente conectado:", socket.id);
         console.log("📊 Clientes conectados:", listaClientes.length);
         console.log("📋 Lista:", listaClientes);
         console.log("=================================");
 
         // ============================================
-        // 1. MANEJAR SOLICITUD DE LISTA DE CLIENTES
+        // 1. ENVIAR LISTA DE CLIENTES AL NUEVO CLIENTE
+        // ============================================
+        socket.emit("clientes-conectados", listaClientes);
+
+        // ============================================
+        // 2. NOTIFICAR A LOS DEMÁS QUE LLEGÓ UN NUEVO CLIENTE
+        // ============================================
+        socket.broadcast.emit("nuevo-cliente", {
+            id: socket.id,
+            total: listaClientes.length
+        });
+
+        // ============================================
+        // 3. MANEJAR SOLICITUD DE LISTA
         // ============================================
         socket.on("clientes-conectados", (callback) => {
             const lista = Object.keys(clientes);
-            console.log("📋 Cliente", socket.id, "solicita lista de clientes");
+            console.log("📋 Cliente", socket.id, "solicita lista");
             console.log("📋 Lista enviada:", lista);
-            
             if (typeof callback === "function") {
                 callback(lista);
             } else {
@@ -41,83 +51,70 @@ module.exports = function(io) {
         });
 
         // ============================================
-        // 2. NOTIFICAR A TODOS QUE LLEGÓ UN NUEVO CLIENTE
-        // ============================================
-        socket.broadcast.emit("nuevo-cliente", {
-            id: socket.id,
-            total: Object.keys(clientes).length
-        });
-
-        // También enviar lista actualizada a TODOS
-        io.emit("clientes-conectados", Object.keys(clientes));
-
-        // ============================================
-        // 3. MENSAJE DE BIENVENIDA
-        // ============================================
-        socket.emit("mensaje", {
-            texto: "✅ Conectado correctamente al servidor",
-            timestamp: new Date().toISOString()
-        });
-
-        // ============================================
-        // 4. REENVIAR OFERTA WEBRTC
+        // 4. 🔥 REENVIAR OFERTA WEBRTC
         // ============================================
         socket.on("offer", (data) => {
-            console.log("📩 Oferta de", socket.id, "para", data.target);
+            const targetId = data.target;
+            console.log(`📩 OFERTA de ${socket.id} para ${targetId}`);
             
-            // Verificar que el target existe
-            if (clientes[data.target]) {
-                io.to(data.target).emit("offer", {
-                    from: socket.id,
-                    offer: data.offer
-                });
-                console.log("✅ Oferta reenviada a:", data.target);
-            } else {
-                console.log("❌ Target no encontrado:", data.target);
+            if (!clientes[targetId]) {
+                console.log(`❌ Target ${targetId} no encontrado`);
+                return;
             }
+
+            // Reenviar la oferta SOLO al target
+            io.to(targetId).emit("offer", {
+                from: socket.id,
+                offer: data.offer
+            });
+            console.log(`✅ Oferta reenviada a ${targetId}`);
         });
 
         // ============================================
-        // 5. REENVIAR RESPUESTA WEBRTC
+        // 5. 🔥 REENVIAR RESPUESTA WEBRTC
         // ============================================
         socket.on("answer", (data) => {
-            console.log("📩 Respuesta de", socket.id, "para", data.target);
+            const targetId = data.target;
+            console.log(`📩 RESPUESTA de ${socket.id} para ${targetId}`);
             
-            if (clientes[data.target]) {
-                io.to(data.target).emit("answer", {
-                    from: socket.id,
-                    answer: data.answer
-                });
-                console.log("✅ Respuesta reenviada a:", data.target);
-            } else {
-                console.log("❌ Target no encontrado:", data.target);
+            if (!clientes[targetId]) {
+                console.log(`❌ Target ${targetId} no encontrado`);
+                return;
             }
+
+            // Reenviar la respuesta SOLO al target
+            io.to(targetId).emit("answer", {
+                from: socket.id,
+                answer: data.answer
+            });
+            console.log(`✅ Respuesta reenviada a ${targetId}`);
         });
 
         // ============================================
-        // 6. REENVIAR ICE CANDIDATES
+        // 6. 🔥 REENVIAR ICE CANDIDATES
         // ============================================
         socket.on("ice-candidate", (data) => {
-            console.log("🧊 ICE candidate de", socket.id, "para", data.target);
+            const targetId = data.target;
+            console.log(`🧊 ICE CANDIDATE de ${socket.id} para ${targetId}`);
             
-            if (clientes[data.target]) {
-                io.to(data.target).emit("ice-candidate", {
-                    from: socket.id,
-                    candidate: data.candidate
-                });
-                console.log("✅ ICE candidate reenviado a:", data.target);
-            } else {
-                console.log("❌ Target no encontrado:", data.target);
+            if (!clientes[targetId]) {
+                console.log(`❌ Target ${targetId} no encontrado`);
+                return;
             }
+
+            // Reenviar el ICE candidate SOLO al target
+            io.to(targetId).emit("ice-candidate", {
+                from: socket.id,
+                candidate: data.candidate
+            });
+            console.log(`✅ ICE candidate reenviado a ${targetId}`);
         });
 
         // ============================================
         // 7. MANEJAR DESCONEXIÓN
         // ============================================
         socket.on("disconnect", () => {
-            // Eliminar cliente
             delete clientes[socket.id];
-
             const listaClientes = Object.keys(clientes);
 
             console.log("=================================");
@@ -136,11 +133,14 @@ module.exports = function(io) {
             io.emit("clientes-conectados", listaClientes);
         });
 
+        // Mensaje de bienvenida
+        socket.emit("mensaje", {
+            texto: "✅ Conectado al servidor de señalización",
+            timestamp: new Date().toISOString()
+        });
+
     });
 
-    // ============================================
-    // 8. LOG DE INICIO DEL SERVIDOR
-    // ============================================
-    console.log("✅ Servidor de señalización WebRTC iniciado");
-    console.log("📡 Esperando conexiones de clientes...");
+    console.log("✅ Servidor de señalización WebRTC listo");
+    console.log("📡 Esperando conexiones...");
 };

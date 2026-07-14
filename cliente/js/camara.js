@@ -14,7 +14,9 @@ const socket = io("https://ventana-digital.onrender.com", {
 // ============================================
 const peers = {};
 let streamLocal = null;
-let webRTCIniciado = false; // 🔥 NUEVO: Evita múltiples inicios
+let webRTCIniciado = false;
+let reintentos = 0;
+const MAX_REINTENTOS = 3;
 
 // Crear elemento para video remoto
 const videoRemoto = document.createElement("video");
@@ -56,10 +58,7 @@ function mostrarVideoRemoto(stream) {
         return;
     }
 
-    // 🔥 ASIGNAR DIRECTAMENTE
     videoRemoto.srcObject = stream;
-    
-    // 🔥 FORZAR VISIBLE CON ESTILOS EXPLÍCITOS
     videoRemoto.style.display = "block !important";
     videoRemoto.style.visibility = "visible";
     videoRemoto.style.opacity = "1";
@@ -74,7 +73,6 @@ function mostrarVideoRemoto(stream) {
     videoRemoto.style.objectFit = "cover";
     videoRemoto.style.background = "#111";
 
-    // 🔥 FORZAR REPRODUCCIÓN
     videoRemoto.play().then(() => {
         console.log("✅ Video remoto reproduciéndose");
     }).catch(err => {
@@ -82,8 +80,6 @@ function mostrarVideoRemoto(stream) {
     });
 
     console.log("✅ Video remoto asignado");
-    console.log("📹 srcObject ahora:", videoRemoto.srcObject);
-    console.log("📹 display ahora:", videoRemoto.style.display);
 }
 
 function ocultarVideoRemoto() {
@@ -113,35 +109,20 @@ async function crearConexion(targetId, esOferente = true) {
             ]
         });
 
-        // Agregar tracks locales
         streamLocal.getTracks().forEach(track => {
             pc.addTrack(track, streamLocal);
         });
 
-        // Manejar tracks remotos
-       pc.ontrack = (event) => {
-    console.log("📥 Track remoto recibido");
-    console.log("📥 Streams:", event.streams);
-    console.log("📥 Track:", event.track);
-    console.log("📥 Track kind:", event.track.kind);
-    
-    // 🔥 FORZAR ASIGNACIÓN INMEDIATA
-    if (event.streams && event.streams[0]) {
-        const stream = event.streams[0];
-        console.log("📥 Stream recibido, asignando...");
-        mostrarVideoRemoto(stream);
-    } else {
-        console.warn("⚠️ No hay streams en el evento");
-        // 🔥 INTENTAR CON EL TRACK DIRECTO
-        if (event.track) {
-            const newStream = new MediaStream([event.track]);
-            console.log("📥 Creando stream desde track:", newStream);
-            mostrarVideoRemoto(newStream);
-        }
-    }
-};
+        pc.ontrack = (event) => {
+            console.log("📥 Track remoto recibido");
+            if (event.streams && event.streams[0]) {
+                mostrarVideoRemoto(event.streams[0]);
+            } else if (event.track) {
+                const newStream = new MediaStream([event.track]);
+                mostrarVideoRemoto(newStream);
+            }
+        };
 
-        // Manejar ICE candidates
         pc.onicecandidate = (event) => {
             if (event.candidate) {
                 socket.emit("ice-candidate", {
@@ -151,33 +132,42 @@ async function crearConexion(targetId, esOferente = true) {
             }
         };
 
-        // Manejar estado de la conexión
         pc.onconnectionstatechange = () => {
             console.log("🔗 Estado de conexión:", pc.connectionState);
             if (pc.connectionState === "connected") {
                 console.log("✅ Conexión WebRTC establecida con:", targetId);
                 actualizarEstado("🟢 Conectado - WebRTC activo", "conectado");
                 webRTCIniciado = true;
+                reintentos = 0;
             } else if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
                 console.log("❌ Conexión WebRTC perdida con:", targetId);
                 ocultarVideoRemoto();
                 webRTCIniciado = false;
+                // Intentar reconectar
+                if (reintentos < MAX_REINTENTOS) {
+                    reintentos++;
+                    console.log(`🔄 Reintento ${reintentos} de ${MAX_REINTENTOS}...`);
+                    setTimeout(() => {
+                        if (!webRTCIniciado) {
+                            socket.emit("clientes-conectados", (clientes) => {
+                                const targetId = clientes.find(id => id !== socket.id);
+                                if (targetId) iniciarWebRTC(targetId);
+                            });
+                        }
+                    }, 3000);
+                }
             }
         };
 
-        // Almacenar la conexión
         peers[targetId] = pc;
 
-        // 🔥 SOLO EL OFERENTE CREA LA OFERTA
         if (esOferente) {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
-
             socket.emit("offer", {
                 target: targetId,
                 offer: pc.localDescription
             });
-
             console.log("✅ Oferta enviada a:", targetId);
         }
 
@@ -189,7 +179,6 @@ async function crearConexion(targetId, esOferente = true) {
     }
 }
 
-// 🔥 NUEVA VERSIÓN: Solo inicia si no está ya iniciado
 async function iniciarWebRTC(targetId) {
     if (webRTCIniciado) {
         console.log("⚠️ WebRTC ya iniciado, ignorando...");
@@ -212,7 +201,6 @@ async function iniciarWebRTC(targetId) {
 socket.on("offer", async (data) => {
     console.log("📩 Oferta recibida de:", data.from);
 
-    // 🔥 Si ya hay conexión, ignorar
     if (peers[data.from]) {
         console.log("⚠️ Conexión ya existe con:", data.from);
         return;
@@ -224,12 +212,10 @@ socket.on("offer", async (data) => {
             return;
         }
 
-        // 🔥 EL RECEPTOR NO CREA OFERTA, SOLO RESPONDE
         const pc = await crearConexion(data.from, false);
         if (!pc) return;
 
         await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
@@ -254,10 +240,8 @@ socket.on("answer", async (data) => {
             console.error("❌ No hay conexión para:", data.from);
             return;
         }
-
         await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
         console.log("✅ Respuesta procesada de:", data.from);
-
     } catch (error) {
         console.error("❌ Error al procesar respuesta:", error);
     }
@@ -272,10 +256,8 @@ socket.on("ice-candidate", async (data) => {
             console.error("❌ No hay conexión para agregar ICE candidate:", data.from);
             return;
         }
-
         await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
         console.log("✅ ICE Candidate agregado de:", data.from);
-
     } catch (error) {
         console.error("❌ Error al agregar ICE candidate:", error);
     }
@@ -287,6 +269,7 @@ socket.on("ice-candidate", async (data) => {
 socket.on("connect", () => {
     console.log("✅ Conectado al servidor:", socket.id);
     actualizarEstado("🟢 Conectado - Esperando otro equipo", "conectado");
+    reintentos = 0;
 });
 
 socket.on("disconnect", () => {
@@ -305,22 +288,37 @@ socket.on("mensaje", (data) => {
 });
 
 // ============================================
-// MANEJADOR DE CLIENTES (SIN GLARE)
+// MANEJADOR DE CLIENTES (SIN GLARE Y CON RECONEXIÓN)
 // ============================================
 socket.on("nuevo-cliente", (data) => {
     console.log("🆕 Nuevo cliente conectado. Total:", data.total);
 
-    // 🔥 SOLO EL SEGUNDO CLIENTE INICIA WEBRTC
     if (data.total === 2 && !webRTCIniciado) {
         console.log("🎯 Segundo cliente. Iniciando WebRTC...");
-        setTimeout(() => {
+        
+        // Esperar a que el stream esté listo
+        const esperarStream = async () => {
+            let intentos = 0;
+            while (!streamLocal && intentos < 10) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                intentos++;
+            }
+            
+            if (!streamLocal) {
+                console.error("❌ No hay stream local después de esperar");
+                return;
+            }
+
             socket.emit("clientes-conectados", (clientes) => {
                 const targetId = clientes.find(id => id !== socket.id);
                 if (targetId && !webRTCIniciado) {
+                    console.log("🎯 Iniciando WebRTC con:", targetId);
                     iniciarWebRTC(targetId);
                 }
             });
-        }, 1500);
+        };
+        
+        esperarStream();
     }
 });
 
@@ -335,6 +333,7 @@ socket.on("cliente-desconectado", (data) => {
     ocultarVideoRemoto();
     webRTCIniciado = false;
     actualizarEstado("🟢 Conectado - Esperando otro equipo", "conectado");
+    reintentos = 0;
 
     if (data.total <= 1) {
         console.log("⏳ Esperando otro cliente...");
@@ -372,14 +371,52 @@ async function iniciarCamara() {
         console.log("📹 Cámara iniciada correctamente");
         console.log("📐 Resolución:", video.videoWidth, "x", video.videoHeight);
 
-        // 🔥 ELIMINADO: Ya no se inicia WebRTC aquí
-        // Solo se inicia cuando llega "nuevo-cliente"
+        // Verificar si ya hay otro equipo conectado
+        socket.emit("clientes-conectados", (clientes) => {
+            if (clientes.length === 2) {
+                const targetId = clientes.find(id => id !== socket.id);
+                if (targetId && !webRTCIniciado) {
+                    console.log("🎯 Equipo ya conectado. Iniciando WebRTC...");
+                    iniciarWebRTC(targetId);
+                }
+            }
+        });
 
     } catch (error) {
         console.error("❌ Error al acceder a la cámara:", error);
         alert("No se pudo acceder a la cámara.\nVerifica que esté conectada.");
     }
 }
+
+// ============================================
+// FUNCIÓN DE RECONEXIÓN MANUAL (DESDE CONSOLA)
+// ============================================
+function forzarReconexion() {
+    console.log("🔄 Forzando reconexión...");
+    ocultarVideoRemoto();
+    webRTCIniciado = false;
+    Object.keys(peers).forEach(key => {
+        peers[key].close();
+        delete peers[key];
+    });
+    
+    setTimeout(() => {
+        socket.emit("clientes-conectados", (clientes) => {
+            const targetId = clientes.find(id => id !== socket.id);
+            if (targetId) {
+                console.log("🎯 Reconectando con:", targetId);
+                iniciarWebRTC(targetId);
+            } else {
+                console.log("⏳ Esperando otro equipo...");
+                actualizarEstado("🟢 Conectado - Esperando otro equipo", "conectado");
+            }
+        });
+    }, 1000);
+}
+
+// Exponer función para usar desde consola
+window.forzarReconexion = forzarReconexion;
+console.log("💡 Para forzar reconexión, escribe: forzarReconexion()");
 
 // ============================================
 // INICIO DE LA APLICACIÓN

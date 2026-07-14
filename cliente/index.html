@@ -2,47 +2,35 @@
 <html lang="es">
 
 <head>
-
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>TADINO</title>
-
-<link rel="stylesheet" href="css/estilos.css">
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ventana Digital</title>
+    <link rel="stylesheet" href="css/estilos.css">
 </head>
 
 <body>
 
-<header>
+    <header>
+        🪟 Ventana Digital
+    </header>
 
-Ventana Digital
+    <main>
+        <video id="video" autoplay playsinline></video>
+    </main>
 
-</header>
+    <footer>
+        <span>📡 Estado:</span>
+        <span id="estado" class="inicializando">⏳ Inicializando...</span>
+        <span style="margin-left: 20px; font-size: 12px; opacity: 0.5;">
+            v1.5 | WebRTC
+        </span>
+    </footer>
 
-<main>
+    <!-- Socket.IO desde el servidor -->
+    <script src="/socket.io/socket.io.js"></script>
 
-<video
-id="video"
-autoplay
-playsinline
-muted>
-</video>
-
-</main>
-
-<footer>
-
-Estado:
-<span id="estado">
-
-Inicializando...
-
-</span>
-
-</footer>
-<script src="/socket.io/socket.io.js"></script>
-<script src="js/camara.js"></script>
+    <!-- Nuestros scripts -->
+    <script src="js/camara.js"></script>
 
 </body>
 

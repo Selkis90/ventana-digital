@@ -15,6 +15,7 @@ const socket = io("https://ventana-digital.onrender.com", {
 const peers = {};
 let streamLocal = null;
 let webRTCIniciado = false;
+const conexionesEnProceso = new Set(); // Controlar conexiones activas
 
 // Crear elemento para video remoto
 const videoRemoto = document.createElement("video");
@@ -39,7 +40,7 @@ videoRemoto.style.cssText = `
 document.body.appendChild(videoRemoto);
 
 // ============================================
-// ELEMENTO DE AUDIO SEPARADO (SIEMPRE CREADO)
+// ELEMENTO DE AUDIO SEPARADO
 // ============================================
 const audioRemoto = document.createElement("audio");
 audioRemoto.id = "audio-remoto";
@@ -49,8 +50,6 @@ audioRemoto.volume = 1.0;
 audioRemoto.style.display = "none";
 document.body.appendChild(audioRemoto);
 console.log("🎧 Elemento de audio separado creado");
-
-// Hacer accesible globalmente
 window.audioRemoto = audioRemoto;
 
 // ============================================
@@ -71,40 +70,30 @@ function mostrarVideoRemoto(stream) {
         return;
     }
 
-    // Verificar tracks de audio
     const audioTracks = stream.getAudioTracks();
     console.log("🎤 Tracks de audio en el stream:", audioTracks.length);
 
-    // 1. Asignar al video
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     videoRemoto.muted = false;
     videoRemoto.volume = 1.0;
 
-    // 2. Asignar al audio separado (SIEMPRE)
     audioRemoto.srcObject = stream;
     audioRemoto.muted = false;
     audioRemoto.volume = 1.0;
 
-    // 3. Reproducir audio separado
     audioRemoto.play().then(() => {
         console.log("🔊 Audio remoto reproduciéndose (separado)");
     }).catch(err => {
         console.warn("⚠️ Error en audio separado:", err.message);
-        // Intentar de nuevo
-        setTimeout(() => {
-            audioRemoto.play().catch(e => console.warn("⚠️ Segundo intento falló:", e.message));
-        }, 1000);
     });
 
-    // 4. Reproducir video
     setTimeout(() => {
         videoRemoto.play().catch(err => {
             console.warn("⚠️ Error al reproducir video:", err.message);
         });
     }, 100);
 
-    // 5. Asegurar que los tracks de audio están habilitados
     audioTracks.forEach(track => {
         track.enabled = true;
         console.log("✅ Track de audio habilitado:", track.label);
@@ -119,7 +108,6 @@ function ocultarVideoRemoto() {
         videoRemoto.srcObject.getTracks().forEach(track => track.stop());
         videoRemoto.srcObject = null;
     }
-    // Limpiar audio separado
     if (audioRemoto) {
         audioRemoto.pause();
         audioRemoto.srcObject = null;
@@ -127,9 +115,191 @@ function ocultarVideoRemoto() {
 }
 
 // ============================================
-// FUNCIONES WEBRTC
+// FUNCIÓN PARA CREAR PEER CONNECTION
 // ============================================
-async function conectarConTodos(clientes) {
+async function crearPeerConnection(targetId) {
+    // Evitar conexiones duplicadas
+    if (peers[targetId] || conexionesEnProceso.has(targetId)) {
+        console.log(`⚠️ Conexión con ${targetId} ya existe o está en proceso`);
+        return null;
+    }
+
+    console.log(`🔗 Creando conexión con: ${targetId}`);
+    conexionesEnProceso.add(targetId);
+
+    if (!streamLocal) {
+        console.error("❌ No hay stream local");
+        conexionesEnProceso.delete(targetId);
+        return null;
+    }
+
+    const pc = new RTCPeerConnection({
+        iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" }
+        ]
+    });
+
+    // Agregar tracks locales
+    streamLocal.getTracks().forEach(track => {
+        pc.addTrack(track, streamLocal);
+        console.log(`📹 Track ${track.kind} agregado`);
+    });
+
+    // Manejar tracks remotos
+    pc.ontrack = (event) => {
+        console.log("📥 Track remoto recibido de:", targetId);
+        console.log("📥 Track kind:", event.track.kind);
+        if (event.streams && event.streams[0]) {
+            mostrarVideoRemoto(event.streams[0]);
+        }
+    };
+
+    // Manejar ICE candidates - GUARDAR en cola si no hay remoteDescription
+    let candidatesPendientes = [];
+
+    pc.onicecandidate = (event) => {
+        if (event.candidate) {
+            if (pc.remoteDescription) {
+                // Si ya hay descripción remota, enviar inmediatamente
+                socket.emit("ice-candidate", {
+                    target: targetId,
+                    candidate: event.candidate
+                });
+                console.log("🧊 ICE candidate enviado");
+            } else {
+                // Si no, guardar en cola
+                candidatesPendientes.push(event.candidate);
+                console.log("📦 ICE candidate guardado en cola");
+            }
+        }
+    };
+
+    // Manejar estado de la conexión
+    pc.onconnectionstatechange = () => {
+        console.log(`🔗 Estado con ${targetId}:`, pc.connectionState);
+        if (pc.connectionState === "connected") {
+            console.log("✅ CONEXIÓN WEBRTC ESTABLECIDA!");
+            actualizarEstado("🟢 Conectado - WebRTC activo", "conectado");
+            webRTCIniciado = true;
+            conexionesEnProceso.delete(targetId);
+        } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+            console.log(`❌ Conexión perdida con ${targetId}`);
+            delete peers[targetId];
+            conexionesEnProceso.delete(targetId);
+            webRTCIniciado = false;
+            ocultarVideoRemoto();
+        }
+    };
+
+    peers[targetId] = pc;
+    return pc;
+}
+
+// ============================================
+// FUNCIONES WEBRTC - OFERTA Y RESPUESTA
+// ============================================
+async function iniciarOferta(targetId) {
+    const pc = await crearPeerConnection(targetId);
+    if (!pc) return;
+
+    console.log("📤 Creando oferta...");
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Enviar oferta
+    socket.emit("offer", {
+        target: targetId,
+        offer: pc.localDescription
+    });
+    console.log("✅ Oferta enviada a:", targetId);
+}
+
+async function manejarOferta(data) {
+    const { from, offer } = data;
+
+    // Evitar duplicados
+    if (peers[from] || conexionesEnProceso.has(from)) {
+        console.log(`⚠️ Conexión con ${from} ya existe o está en proceso`);
+        return;
+    }
+
+    console.log("📩 Oferta recibida de:", from);
+    const pc = await crearPeerConnection(from);
+    if (!pc) return;
+
+    try {
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        console.log("✅ Descripción remota establecida");
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socket.emit("answer", {
+            target: from,
+            answer: pc.localDescription
+        });
+        console.log("✅ Respuesta enviada a:", from);
+    } catch (error) {
+        console.error("❌ Error al manejar oferta:", error);
+        delete peers[from];
+        conexionesEnProceso.delete(from);
+    }
+}
+
+async function manejarRespuesta(data) {
+    const { from, answer } = data;
+    const pc = peers[from];
+
+    if (!pc) {
+        console.warn("⚠️ No hay conexión para:", from);
+        return;
+    }
+
+    try {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        console.log("✅ Descripción remota establecida (respuesta)");
+        conexionesEnProceso.delete(from);
+    } catch (error) {
+        console.error("❌ Error al procesar respuesta:", error);
+        delete peers[from];
+        conexionesEnProceso.delete(from);
+    }
+}
+
+async function manejarIceCandidate(data) {
+    const { from, candidate } = data;
+    const pc = peers[from];
+
+    if (!pc) {
+        console.warn("⚠️ No hay conexión para ICE candidate de:", from);
+        return;
+    }
+
+    try {
+        // Esperar a que remoteDescription esté listo
+        let intentos = 0;
+        while (!pc.remoteDescription && intentos < 10) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            intentos++;
+        }
+
+        if (pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            console.log("✅ ICE Candidate agregado de:", from);
+        } else {
+            console.warn("⚠️ No remoteDescription, guardando candidate para:", from);
+            // Guardar para después (opcional)
+        }
+    } catch (error) {
+        console.warn("⚠️ Error al agregar ICE candidate:", error.message);
+    }
+}
+
+// ============================================
+// CONECTAR CON TODOS LOS CLIENTES
+// ============================================
+function conectarConTodos(clientes) {
     console.log("🔄 CONECTANDO CON TODOS...");
     console.log("📋 Clientes totales:", clientes);
     console.log("📋 Mi ID:", socket.id);
@@ -143,173 +313,23 @@ async function conectarConTodos(clientes) {
         return;
     }
 
-    for (const targetId of otros) {
-        if (peers[targetId]) {
-            console.log(`⚠️ Ya conectado con ${targetId}`);
-            continue;
+    // Conectar con cada cliente (solo si no existe conexión)
+    otros.forEach(targetId => {
+        if (!peers[targetId] && !conexionesEnProceso.has(targetId)) {
+            setTimeout(() => iniciarOferta(targetId), 1000);
+        } else {
+            console.log(`⚠️ Ya conectado o en proceso con ${targetId}`);
         }
-
-        console.log(`🔗 Creando conexión con: ${targetId}`);
-
-        if (!streamLocal) {
-            console.error("❌ No hay stream local");
-            return;
-        }
-
-        const pc = new RTCPeerConnection({
-            iceServers: [
-                { urls: "stun:stun.l.google.com:19302" },
-                { urls: "stun:stun1.l.google.com:19302" }
-            ]
-        });
-
-        // Agregar tracks locales (video y audio)
-        streamLocal.getTracks().forEach(track => {
-            pc.addTrack(track, streamLocal);
-            console.log(`📹 Track ${track.kind} agregado`);
-        });
-
-        // Manejar tracks remotos
-        pc.ontrack = (event) => {
-            console.log("📥 Track remoto recibido de:", targetId);
-            console.log("📥 Track kind:", event.track.kind);
-            if (event.streams && event.streams[0]) {
-                mostrarVideoRemoto(event.streams[0]);
-            }
-        };
-
-        // Manejar ICE candidates
-        pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                socket.emit("ice-candidate", {
-                    target: targetId,
-                    candidate: event.candidate
-                });
-            }
-        };
-
-        // Manejar estado de la conexión
-        pc.onconnectionstatechange = () => {
-            console.log(`🔗 Estado con ${targetId}:`, pc.connectionState);
-            if (pc.connectionState === "connected") {
-                console.log("✅ CONEXIÓN WEBRTC ESTABLECIDA!");
-                actualizarEstado("🟢 Conectado - WebRTC activo", "conectado");
-                webRTCIniciado = true;
-            } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-                console.log(`❌ Conexión perdida con ${targetId}`);
-                delete peers[targetId];
-                webRTCIniciado = false;
-            }
-        };
-
-        peers[targetId] = pc;
-
-        console.log("📤 Creando oferta...");
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        socket.emit("offer", {
-            target: targetId,
-            offer: pc.localDescription
-        });
-
-        console.log("✅ Oferta enviada a:", targetId);
-    }
+    });
 }
 
 // ============================================
-// MANEJADORES DE SOCKET.IO (WEBRTC)
+// MANEJADORES DE SOCKET.IO
 // ============================================
-socket.on("offer", async (data) => {
-    console.log("📩 Oferta recibida de:", data.from);
+socket.on("offer", manejarOferta);
+socket.on("answer", manejarRespuesta);
+socket.on("ice-candidate", manejarIceCandidate);
 
-    if (peers[data.from]) {
-        console.log("⚠️ Conexión ya existe con:", data.from);
-        return;
-    }
-
-    if (!streamLocal) {
-        console.error("❌ No hay stream local");
-        return;
-    }
-
-    const pc = new RTCPeerConnection({
-        iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" }
-        ]
-    });
-
-    // Agregar tracks locales
-    streamLocal.getTracks().forEach(track => {
-        pc.addTrack(track, streamLocal);
-    });
-
-    // Manejar tracks remotos
-    pc.ontrack = (event) => {
-        console.log("📥 Track remoto recibido de:", data.from);
-        console.log("📥 Track kind:", event.track.kind);
-        if (event.streams && event.streams[0]) {
-            mostrarVideoRemoto(event.streams[0]);
-        }
-    };
-
-    // Manejar ICE candidates
-    pc.onicecandidate = (event) => {
-        if (event.candidate) {
-            socket.emit("ice-candidate", {
-                target: data.from,
-                candidate: event.candidate
-            });
-        }
-    };
-
-    // Manejar estado de la conexión
-    pc.onconnectionstatechange = () => {
-        console.log(`🔗 Estado con ${data.from}:`, pc.connectionState);
-        if (pc.connectionState === "connected") {
-            console.log("✅ CONEXIÓN WEBRTC ESTABLECIDA!");
-            actualizarEstado("🟢 Conectado - WebRTC activo", "conectado");
-            webRTCIniciado = true;
-        } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-            console.log(`❌ Conexión perdida con ${data.from}`);
-            delete peers[data.from];
-            webRTCIniciado = false;
-        }
-    };
-
-    peers[data.from] = pc;
-
-    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    socket.emit("answer", {
-        target: data.from,
-        answer: pc.localDescription
-    });
-
-    console.log("✅ Respuesta enviada a:", data.from);
-});
-
-socket.on("answer", async (data) => {
-    console.log("📩 Respuesta recibida de:", data.from);
-    const pc = peers[data.from];
-    if (!pc) return;
-    await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-    console.log("✅ Respuesta procesada de:", data.from);
-});
-
-socket.on("ice-candidate", async (data) => {
-    console.log("🧊 ICE Candidate de:", data.from);
-    const pc = peers[data.from];
-    if (!pc) return;
-    await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-});
-
-// ============================================
-// MANEJADORES DE SOCKET.IO (CONEXIÓN)
-// ============================================
 socket.on("connect", () => {
     console.log("✅ Conectado al servidor:", socket.id);
     actualizarEstado("🟢 Conectado - Esperando otro equipo", "conectado");
@@ -327,6 +347,7 @@ socket.on("disconnect", () => {
         peers[key].close();
         delete peers[key];
     });
+    conexionesEnProceso.clear();
 });
 
 socket.on("nuevo-cliente", (data) => {
@@ -342,6 +363,7 @@ socket.on("cliente-desconectado", (data) => {
         peers[data.id].close();
         delete peers[data.id];
     }
+    conexionesEnProceso.delete(data.id);
     ocultarVideoRemoto();
     webRTCIniciado = false;
     setTimeout(() => {
@@ -368,7 +390,6 @@ async function iniciarCamara() {
         });
         console.log("📹 Cámara iniciada");
 
-        // Esperar y conectar con clientes existentes
         setTimeout(() => {
             socket.emit("clientes-conectados", conectarConTodos);
         }, 3000);
@@ -386,6 +407,7 @@ window.forzarReconexion = () => {
     console.log("🔄 Forzando reconexión...");
     ocultarVideoRemoto();
     webRTCIniciado = false;
+    conexionesEnProceso.clear();
     Object.keys(peers).forEach(key => {
         peers[key].close();
         delete peers[key];

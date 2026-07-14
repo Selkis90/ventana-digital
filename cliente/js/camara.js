@@ -48,9 +48,42 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 function mostrarVideoRemoto(stream) {
+    console.log("📹 ASIGNANDO VIDEO REMOTO");
+    console.log("📹 Stream:", stream);
+    
+    if (!stream) {
+        console.error("❌ Stream vacío");
+        return;
+    }
+
+    // 🔥 ASIGNAR DIRECTAMENTE
     videoRemoto.srcObject = stream;
-    videoRemoto.style.display = "block";
-    console.log("📹 Video remoto mostrado");
+    
+    // 🔥 FORZAR VISIBLE CON ESTILOS EXPLÍCITOS
+    videoRemoto.style.display = "block !important";
+    videoRemoto.style.visibility = "visible";
+    videoRemoto.style.opacity = "1";
+    videoRemoto.style.width = "320px";
+    videoRemoto.style.height = "240px";
+    videoRemoto.style.border = "3px solid #00ff88";
+    videoRemoto.style.borderRadius = "12px";
+    videoRemoto.style.position = "fixed";
+    videoRemoto.style.bottom = "20px";
+    videoRemoto.style.right = "20px";
+    videoRemoto.style.zIndex = "9999";
+    videoRemoto.style.objectFit = "cover";
+    videoRemoto.style.background = "#111";
+
+    // 🔥 FORZAR REPRODUCCIÓN
+    videoRemoto.play().then(() => {
+        console.log("✅ Video remoto reproduciéndose");
+    }).catch(err => {
+        console.warn("⚠️ Error al reproducir:", err);
+    });
+
+    console.log("✅ Video remoto asignado");
+    console.log("📹 srcObject ahora:", videoRemoto.srcObject);
+    console.log("📹 display ahora:", videoRemoto.style.display);
 }
 
 function ocultarVideoRemoto() {
@@ -86,12 +119,27 @@ async function crearConexion(targetId, esOferente = true) {
         });
 
         // Manejar tracks remotos
-        pc.ontrack = (event) => {
-            console.log("📥 Track remoto recibido");
-            if (event.streams && event.streams[0]) {
-                mostrarVideoRemoto(event.streams[0]);
-            }
-        };
+       pc.ontrack = (event) => {
+    console.log("📥 Track remoto recibido");
+    console.log("📥 Streams:", event.streams);
+    console.log("📥 Track:", event.track);
+    console.log("📥 Track kind:", event.track.kind);
+    
+    // 🔥 FORZAR ASIGNACIÓN INMEDIATA
+    if (event.streams && event.streams[0]) {
+        const stream = event.streams[0];
+        console.log("📥 Stream recibido, asignando...");
+        mostrarVideoRemoto(stream);
+    } else {
+        console.warn("⚠️ No hay streams en el evento");
+        // 🔥 INTENTAR CON EL TRACK DIRECTO
+        if (event.track) {
+            const newStream = new MediaStream([event.track]);
+            console.log("📥 Creando stream desde track:", newStream);
+            mostrarVideoRemoto(newStream);
+        }
+    }
+};
 
         // Manejar ICE candidates
         pc.onicecandidate = (event) => {

@@ -1,17 +1,14 @@
 {
-  "name": "servidor",
+  "name": "ventana-digital",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Ventana Digital con WebRTC",
+  "main": "servidor/turn-server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node servidor/turn-server.js",
+    "dev": "nodemon servidor/turn-server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "express": "^5.2.1",
-    "socket.io": "^4.8.3"
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
   }
 }

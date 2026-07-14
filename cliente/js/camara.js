@@ -15,7 +15,7 @@ const socket = io("https://ventana-digital.onrender.com", {
 const peers = {};
 let streamLocal = null;
 let webRTCIniciado = false;
-const conexionesEnProceso = new Set(); // Controlar conexiones activas
+const conexionesEnProceso = new Set();
 
 // Crear elemento para video remoto
 const videoRemoto = document.createElement("video");
@@ -118,7 +118,6 @@ function ocultarVideoRemoto() {
 // FUNCIÓN PARA CREAR PEER CONNECTION
 // ============================================
 async function crearPeerConnection(targetId) {
-    // Evitar conexiones duplicadas
     if (peers[targetId] || conexionesEnProceso.has(targetId)) {
         console.log(`⚠️ Conexión con ${targetId} ya existe o está en proceso`);
         return null;
@@ -155,23 +154,14 @@ async function crearPeerConnection(targetId) {
         }
     };
 
-    // Manejar ICE candidates - GUARDAR en cola si no hay remoteDescription
-    let candidatesPendientes = [];
-
+    // 🔥 Manejar ICE candidates - ENVIAR INMEDIATAMENTE
     pc.onicecandidate = (event) => {
         if (event.candidate) {
-            if (pc.remoteDescription) {
-                // Si ya hay descripción remota, enviar inmediatamente
-                socket.emit("ice-candidate", {
-                    target: targetId,
-                    candidate: event.candidate
-                });
-                console.log("🧊 ICE candidate enviado");
-            } else {
-                // Si no, guardar en cola
-                candidatesPendientes.push(event.candidate);
-                console.log("📦 ICE candidate guardado en cola");
-            }
+            console.log(`🧊 ICE candidate enviado a ${targetId}`);
+            socket.emit("ice-candidate", {
+                target: targetId,
+                candidate: event.candidate
+            });
         }
     };
 
@@ -207,7 +197,6 @@ async function iniciarOferta(targetId) {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    // Enviar oferta
     socket.emit("offer", {
         target: targetId,
         offer: pc.localDescription
@@ -218,7 +207,6 @@ async function iniciarOferta(targetId) {
 async function manejarOferta(data) {
     const { from, offer } = data;
 
-    // Evitar duplicados
     if (peers[from] || conexionesEnProceso.has(from)) {
         console.log(`⚠️ Conexión con ${from} ya existe o está en proceso`);
         return;
@@ -230,7 +218,7 @@ async function manejarOferta(data) {
 
     try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        console.log("✅ Descripción remota establecida");
+        console.log("✅ Descripción remota establecida (oferta)");
 
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -277,20 +265,8 @@ async function manejarIceCandidate(data) {
     }
 
     try {
-        // Esperar a que remoteDescription esté listo
-        let intentos = 0;
-        while (!pc.remoteDescription && intentos < 10) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-            intentos++;
-        }
-
-        if (pc.remoteDescription) {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            console.log("✅ ICE Candidate agregado de:", from);
-        } else {
-            console.warn("⚠️ No remoteDescription, guardando candidate para:", from);
-            // Guardar para después (opcional)
-        }
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        console.log("✅ ICE Candidate agregado de:", from);
     } catch (error) {
         console.warn("⚠️ Error al agregar ICE candidate:", error.message);
     }
@@ -313,7 +289,6 @@ function conectarConTodos(clientes) {
         return;
     }
 
-    // Conectar con cada cliente (solo si no existe conexión)
     otros.forEach(targetId => {
         if (!peers[targetId] && !conexionesEnProceso.has(targetId)) {
             setTimeout(() => iniciarOferta(targetId), 1000);

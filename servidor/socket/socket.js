@@ -1,7 +1,7 @@
 module.exports = function(io) {
 
     console.log("############################################");
-    console.log("### SOCKET.JS - SIGNALING SERVER V7 ###");
+    console.log("### SOCKET.JS - SIGNALING SERVER V8 ###");
     console.log("############################################");
 
     const clientes = {};
@@ -10,7 +10,6 @@ module.exports = function(io) {
 
         console.log("=================================");
         console.log("🔗 Nuevo cliente conectado:", socket.id);
-        console.log("📊 Clientes conectados:", Object.keys(clientes).length);
         console.log("=================================");
 
         // Registrar cliente
@@ -55,7 +54,6 @@ module.exports = function(io) {
         socket.on("offer", (data) => {
             const targetId = data.target;
             console.log(`📩 OFERTA de ${socket.id} para ${targetId}`);
-            console.log(`📩 Datos de oferta:`, data.offer ? "✅ Tiene oferta" : "❌ Sin oferta");
             
             if (!clientes[targetId]) {
                 console.log(`❌ Target ${targetId} NO encontrado`);
@@ -80,7 +78,6 @@ module.exports = function(io) {
             
             if (!clientes[targetId]) {
                 console.log(`❌ Target ${targetId} NO encontrado`);
-                console.log(`📋 Clientes disponibles:`, Object.keys(clientes));
                 return;
             }
 
@@ -111,14 +108,17 @@ module.exports = function(io) {
         });
 
         // ============================================
-        // 7. 🔥 ENVIAR RESPUESTA DE PRUEBA (PING)
+        // 7. 🔥 PRUEBA DE PING
         // ============================================
         socket.on("ping", (data) => {
             console.log(`🏓 PING de ${socket.id} para ${data.target}`);
-            io.to(data.target).emit("pong", {
-                from: socket.id,
-                message: "pong"
-            });
+            if (clientes[data.target]) {
+                io.to(data.target).emit("pong", {
+                    from: socket.id,
+                    message: "pong"
+                });
+                console.log(`✅ PONG reenviado a ${data.target}`);
+            }
         });
 
         // ============================================
@@ -144,12 +144,12 @@ module.exports = function(io) {
 
         // Mensaje de bienvenida
         socket.emit("mensaje", {
-            texto: "✅ Conectado al servidor de señalización V7",
+            texto: "✅ Conectado al servidor de señalización V8",
             timestamp: new Date().toISOString()
         });
 
     });
 
-    console.log("✅ Servidor de señalización WebRTC V7 listo");
+    console.log("✅ Servidor de señalización WebRTC V8 listo");
     console.log("📡 Esperando conexiones...");
 };

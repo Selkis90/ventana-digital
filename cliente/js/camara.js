@@ -72,6 +72,16 @@ function mostrarVideoRemoto(stream) {
 
     const audioTracks = stream.getAudioTracks();
     console.log("🎤 Tracks de audio en el stream:", audioTracks.length);
+    
+    // Verificar si hay tracks de audio
+    if (audioTracks.length === 0) {
+        console.warn("⚠️ El stream remoto NO tiene tracks de audio");
+    } else {
+        audioTracks.forEach(track => {
+            track.enabled = true;
+            console.log("✅ Track de audio habilitado:", track.label);
+        });
+    }
 
     // 1. Asignar al video
     videoRemoto.srcObject = stream;
@@ -84,20 +94,27 @@ function mostrarVideoRemoto(stream) {
     audioRemoto.muted = false;
     audioRemoto.volume = 1.0;
 
-    // 3. 🔥 ESPERAR CLIC DEL USUARIO
+    // 3. 🔥 ESPERAR CLIC DEL USUARIO Y FORZAR REPRODUCCIÓN
     let audioActivado = false;
     
     function reproducirAudio() {
         if (audioActivado) return;
         audioActivado = true;
         
-        audioRemoto.play().then(() => {
-            console.log("🔊 Audio remoto reproduciéndose");
-        }).catch(err => {
-            console.warn("⚠️ Error en audio separado:", err.message);
+        // Intentar reproducir en ambos elementos
+        const promesas = [
+            audioRemoto.play().catch(() => {}),
+            videoRemoto.play().catch(() => {})
+        ];
+        
+        Promise.all(promesas).then(() => {
+            console.log("🔊 Audio y video remoto reproduciéndose");
+        }).catch(() => {
+            console.warn("⚠️ Error en reproducción automática, esperando clic");
             // Si falla, esperar clic
             const clickHandler = function() {
                 audioRemoto.play().catch(() => {});
+                videoRemoto.play().catch(() => {});
                 document.removeEventListener('click', clickHandler);
                 console.log("✅ Audio activado por clic");
             };
@@ -106,17 +123,10 @@ function mostrarVideoRemoto(stream) {
         });
     }
 
-    // Intentar reproducir después de 500ms
-    setTimeout(reproducirAudio, 500);
+    // Intentar reproducir inmediatamente
+    reproducirAudio();
 
-    // 4. Reproducir video
-    setTimeout(() => {
-        videoRemoto.play().catch(err => {
-            console.warn("⚠️ Error al reproducir video:", err.message);
-        });
-    }, 100);
-
-    // 5. Asegurar que los tracks de audio están habilitados
+    // 4. Asegurar que los tracks de audio están habilitados
     audioTracks.forEach(track => {
         track.enabled = true;
         console.log("✅ Track de audio habilitado:", track.label);
@@ -139,7 +149,50 @@ function ocultarVideoRemoto() {
 }
 
 // ============================================
-// FUNCIÓN PARA CREAR PEER CONNECTION
+// FUNCIÓN PARA PROBAR AUDIO LOCAL
+// ============================================
+function probarAudioLocal(stream) {
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        source.connect(analyser);
+        
+        const dataArray = new Uint8Array(analyser.fftSize);
+        let audioDetectado = false;
+        
+        function checkAudio() {
+            analyser.getByteTimeDomainData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                const value = (dataArray[i] - 128) / 128;
+                sum += value * value;
+            }
+            const rms = Math.sqrt(sum / dataArray.length);
+            if (rms > 0.01 && !audioDetectado) {
+                audioDetectado = true;
+                console.log("🎤 ¡AUDIO DETECTADO! Nivel:", rms.toFixed(4));
+                console.log("✅ El micrófono está funcionando correctamente");
+            }
+            requestAnimationFrame(checkAudio);
+        }
+        checkAudio();
+        
+        // Si después de 3 segundos no hay audio, mostrar advertencia
+        setTimeout(() => {
+            if (!audioDetectado) {
+                console.warn("⚠️ No se detecta audio del micrófono");
+                console.warn("⚠️ Verifica que el micrófono esté conectado y permitido");
+            }
+        }, 3000);
+        
+    } catch (e) {
+        console.log("ℹ️ No se pudo probar audio localmente:", e.message);
+    }
+}
+
+// ============================================
+// FUNCIÓN PARA CREAR PEER CONNECTION (MEJORADA)
 // ============================================
 async function crearPeerConnection(targetId) {
     if (peers[targetId] || conexionesEnProceso.has(targetId)) {
@@ -156,25 +209,60 @@ async function crearPeerConnection(targetId) {
         return null;
     }
 
+    // CONFIGURACIÓN MEJORADA CON MÚLTIPLES STUN
     const pc = new RTCPeerConnection({
         iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" }
-        ]
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" },
+            { urls: "stun:stun3.l.google.com:19302" },
+            { urls: "stun:stun4.l.google.com:19302" },
+            { urls: "stun:stun.voipstunt.com:3478" },
+            { urls: "stun:stun.ekiga.net:3478" }
+        ],
+        iceCandidatePoolSize: 10,
+        bundlePolicy: "max-bundle",
+        rtcpMuxPolicy: "require"
     });
 
-    // Agregar tracks locales
+    // Agregar tracks locales con verificación de audio
+    const audioTracks = streamLocal.getAudioTracks();
+    const videoTracks = streamLocal.getVideoTracks();
+    
+    console.log("📹 Agregando tracks locales:");
+    console.log("  - Audio tracks:", audioTracks.length);
+    console.log("  - Video tracks:", videoTracks.length);
+    
+    // Asegurar que los tracks de audio estén habilitados
+    audioTracks.forEach(track => {
+        track.enabled = true;
+        console.log("  ✅ Audio track habilitado:", track.label);
+    });
+    
+    // Agregar todos los tracks
     streamLocal.getTracks().forEach(track => {
         pc.addTrack(track, streamLocal);
         console.log(`📹 Track ${track.kind} agregado`);
     });
 
-    // Manejar tracks remotos
+    // Manejar tracks remotos - MEJORADO
     pc.ontrack = (event) => {
         console.log("📥 Track remoto recibido de:", targetId);
         console.log("📥 Track kind:", event.track.kind);
+        console.log("📥 Streams:", event.streams.length);
+        
         if (event.streams && event.streams[0]) {
-            mostrarVideoRemoto(event.streams[0]);
+            const remoteStream = event.streams[0];
+            const remoteAudioTracks = remoteStream.getAudioTracks();
+            console.log(`🎯 Stream remoto tiene: ${remoteAudioTracks.length} tracks de audio`);
+            
+            // Habilitar tracks de audio remotos
+            remoteAudioTracks.forEach(track => {
+                track.enabled = true;
+                console.log("🎤 Audio track remoto habilitado:", track.label);
+            });
+            
+            mostrarVideoRemoto(remoteStream);
         }
     };
 
@@ -189,7 +277,7 @@ async function crearPeerConnection(targetId) {
         }
     };
 
-    // Manejar estado de la conexión
+    // Manejar estado de la conexión - CON RECONEXIÓN AUTOMÁTICA
     pc.onconnectionstatechange = () => {
         console.log(`🔗 Estado con ${targetId}:`, pc.connectionState);
         if (pc.connectionState === "connected") {
@@ -203,6 +291,24 @@ async function crearPeerConnection(targetId) {
             conexionesEnProceso.delete(targetId);
             webRTCIniciado = false;
             ocultarVideoRemoto();
+            
+            // RECONEXIÓN AUTOMÁTICA
+            console.log("🔄 Intentando reconectar con:", targetId);
+            setTimeout(() => {
+                if (!peers[targetId] && !conexionesEnProceso.has(targetId)) {
+                    iniciarOferta(targetId);
+                }
+            }, 3000);
+        }
+    };
+
+    // Manejar errores de ICE
+    pc.oniceconnectionstatechange = () => {
+        console.log(`🧊 ICE estado con ${targetId}:`, pc.iceConnectionState);
+        if (pc.iceConnectionState === "failed") {
+            console.warn("⚠️ ICE failed, reiniciando conexión...");
+            // Reiniciar ICE
+            pc.restartIce();
         }
     };
 
@@ -214,25 +320,61 @@ async function crearPeerConnection(targetId) {
 // FUNCIONES WEBRTC - OFERTA Y RESPUESTA
 // ============================================
 async function iniciarOferta(targetId) {
+    // Verificar si ya existe conexión
+    if (peers[targetId]) {
+        const pc = peers[targetId];
+        if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
+            console.log(`⚠️ Ya existe conexión activa con ${targetId}`);
+            return;
+        } else {
+            // Limpiar conexión muerta
+            pc.close();
+            delete peers[targetId];
+            conexionesEnProceso.delete(targetId);
+        }
+    }
+    
     const pc = await crearPeerConnection(targetId);
     if (!pc) return;
 
-    console.log("📤 Creando oferta...");
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+    try {
+        console.log("📤 Creando oferta...");
+        const offer = await pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true
+        });
+        await pc.setLocalDescription(offer);
 
-    socket.emit("offer", {
-        target: targetId,
-        offer: pc.localDescription
-    });
-    console.log("✅ Oferta enviada a:", targetId);
+        socket.emit("offer", {
+            target: targetId,
+            offer: pc.localDescription
+        });
+        console.log("✅ Oferta enviada a:", targetId);
+    } catch (error) {
+        console.error("❌ Error al crear oferta:", error);
+        delete peers[targetId];
+        conexionesEnProceso.delete(targetId);
+    }
 }
 
 async function manejarOferta(data) {
     const { from, offer } = data;
 
-    if (peers[from] || conexionesEnProceso.has(from)) {
-        console.log(`⚠️ Conexión con ${from} ya existe o está en proceso`);
+    // Limpiar conexión existente si está muerta
+    if (peers[from]) {
+        const pc = peers[from];
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+            pc.close();
+            delete peers[from];
+            conexionesEnProceso.delete(from);
+        } else {
+            console.log(`⚠️ Conexión con ${from} ya existe`);
+            return;
+        }
+    }
+
+    if (conexionesEnProceso.has(from)) {
+        console.log(`⚠️ Conexión con ${from} está en proceso`);
         return;
     }
 
@@ -244,7 +386,10 @@ async function manejarOferta(data) {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         console.log("✅ Descripción remota establecida (oferta)");
 
-        const answer = await pc.createAnswer();
+        const answer = await pc.createAnswer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true
+        });
         await pc.setLocalDescription(answer);
 
         socket.emit("answer", {
@@ -314,10 +459,24 @@ function conectarConTodos(clientes) {
     }
 
     otros.forEach(targetId => {
-        if (!peers[targetId] && !conexionesEnProceso.has(targetId)) {
+        // Verificar si ya hay conexión activa
+        if (peers[targetId]) {
+            const pc = peers[targetId];
+            if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
+                console.log(`ℹ️ Ya conectado con ${targetId}`);
+                return;
+            } else {
+                // Limpiar conexión muerta
+                pc.close();
+                delete peers[targetId];
+                conexionesEnProceso.delete(targetId);
+            }
+        }
+        
+        if (!conexionesEnProceso.has(targetId)) {
             setTimeout(() => iniciarOferta(targetId), 1000);
         } else {
-            console.log(`⚠️ Ya conectado o en proceso con ${targetId}`);
+            console.log(`⚠️ Ya en proceso de conexión con ${targetId}`);
         }
     });
 }
@@ -371,15 +530,47 @@ socket.on("cliente-desconectado", (data) => {
 });
 
 // ============================================
-// INICIAR CÁMARA
+// INICIAR CÁMARA (MEJORADA)
 // ============================================
 async function iniciarCamara() {
     try {
+        console.log("📷 Solicitando cámara y micrófono...");
+        
+        // CONFIGURACIÓN MÁS EXPLÍCITA PARA AUDIO
         const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 640 }, height: { ideal: 480 } },
-            audio: true
+            video: { 
+                width: { ideal: 640 }, 
+                height: { ideal: 480 },
+                facingMode: "user"
+            },
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: 48000,
+                sampleSize: 16,
+                channelCount: 1
+            }
         });
+        
         streamLocal = stream;
+        
+        // Verificar tracks de audio
+        const audioTracks = stream.getAudioTracks();
+        console.log("🎤 Tracks de audio disponibles:", audioTracks.length);
+        audioTracks.forEach((track, i) => {
+            track.enabled = true;
+            console.log(`  Track ${i}:`, track.label, "habilitado:", track.enabled);
+        });
+        
+        // Verificar tracks de video
+        const videoTracks = stream.getVideoTracks();
+        console.log("📹 Tracks de video disponibles:", videoTracks.length);
+        videoTracks.forEach((track, i) => {
+            console.log(`  Track ${i}:`, track.label);
+        });
+        
+        // Asignar al video local
         video.srcObject = stream;
         await new Promise(resolve => {
             video.onloadedmetadata = () => {
@@ -387,15 +578,51 @@ async function iniciarCamara() {
                 resolve();
             };
         });
-        console.log("📹 Cámara iniciada");
+        
+        console.log("📹 Cámara iniciada correctamente");
+        console.log("📐 Resolución:", video.videoWidth, "x", video.videoHeight);
+        console.log("🎤 Audio capturado correctamente");
+        
+        // Probar audio local
+        probarAudioLocal(stream);
 
         setTimeout(() => {
             socket.emit("clientes-conectados", conectarConTodos);
         }, 3000);
 
     } catch (error) {
-        console.error("❌ Error cámara:", error);
-        alert("No se pudo acceder a la cámara.");
+        console.error("❌ Error al acceder a cámara/micrófono:", error);
+        
+        // Intentar con configuración básica pero FORZANDO audio
+        try {
+            console.log("🔄 Intentando con configuración básica...");
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+            streamLocal = stream;
+            video.srcObject = stream;
+            await new Promise(resolve => {
+                video.onloadedmetadata = () => {
+                    video.play();
+                    resolve();
+                };
+            });
+            console.log("📹 Cámara iniciada en modo básico");
+            
+            // Probar audio local
+            probarAudioLocal(stream);
+            
+            setTimeout(() => {
+                socket.emit("clientes-conectados", conectarConTodos);
+            }, 3000);
+            
+        } catch (fallbackError) {
+            console.error("❌ Error en modo básico:", fallbackError);
+            alert("⚠️ No se pudo acceder a la cámara o micrófono.\n" +
+                  "Verifica que estén conectados y permitidos.");
+            actualizarEstado("🔴 Error de cámara", "desconectado");
+        }
     }
 }
 
@@ -453,3 +680,19 @@ socket.on("connect", () => {
 socket.on("pong", (data) => {
     console.log("🏓 PONG recibido del servidor:", data);
 });
+
+// ============================================
+// RECONEXIÓN AUTOMÁTICA PERIÓDICA
+// ============================================
+setInterval(() => {
+    // Verificar si estamos solos o sin conexiones activas
+    const conexionesActivas = Object.keys(peers).filter(id => {
+        const pc = peers[id];
+        return pc && (pc.connectionState === "connected" || pc.connectionState === "connecting");
+    });
+    
+    if (conexionesActivas.length === 0 && socket.connected) {
+        console.log("🔄 Sin conexiones activas, verificando clientes...");
+        socket.emit("clientes-conectados", conectarConTodos);
+    }
+}, 10000);

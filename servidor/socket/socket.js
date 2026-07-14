@@ -1,15 +1,13 @@
 module.exports = function(io){
 
     console.log("############################################");
-    console.log("### SOCKET.JS VERSION 2 - CARGADO ###");
+    console.log("### SOCKET.JS VERSION 3 - EMPAREJAMIENTO ###");
     console.log("############################################");
 
-    // Lista de clientes conectados
     const clientes = [];
 
     io.on("connection", (socket)=>{
 
-        // Guardar el nuevo cliente
         clientes.push(socket.id);
 
         console.log("=================================");
@@ -23,6 +21,16 @@ module.exports = function(io){
             texto:"Conectado correctamente al servidor"
         });
 
+        // Si hay exactamente 2 clientes, avisarles
+        if(clientes.length === 2){
+
+            console.log("***************");
+            console.log("EQUIPO ENCONTRADO");
+            console.log("***************");
+
+            io.emit("equipo-encontrado");
+        }
+
         socket.on("disconnect",()=>{
 
             const indice = clientes.indexOf(socket.id);
@@ -32,9 +40,9 @@ module.exports = function(io){
             }
 
             console.log("=================================");
-            console.log("Cliente desconectado:", socket.id);
-            console.log("Clientes conectados:", clientes.length);
-            console.log("Lista:", clientes);
+            console.log("Cliente desconectado:",socket.id);
+            console.log("Clientes conectados:",clientes.length);
+            console.log("Lista:",clientes);
             console.log("=================================");
 
         });

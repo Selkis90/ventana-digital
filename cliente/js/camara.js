@@ -334,6 +334,18 @@ socket.on("mensaje", (data) => {
     console.log("📨 Servidor:", data.texto);
 });
 
+socket.on("equipo-encontrado", () => {
+
+    console.log("🎉 Equipo encontrado");
+
+    const estado = document.getElementById("estado");
+
+    if (estado) {
+        estado.textContent = "🟢 Equipo encontrado";
+    }
+
+});
+
 // ============================================
 // FUNCIÓN PRINCIPAL: INICIAR CÁMARA
 // ============================================

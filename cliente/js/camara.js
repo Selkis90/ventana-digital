@@ -154,7 +154,7 @@ async function crearPeerConnection(targetId) {
         }
     };
 
-    // 🔥 Manejar ICE candidates - ENVIAR INMEDIATAMENTE
+    // Manejar ICE candidates - ENVIAR INMEDIATAMENTE
     pc.onicecandidate = (event) => {
         if (event.candidate) {
             console.log(`🧊 ICE candidate enviado a ${targetId}`);
@@ -414,4 +414,18 @@ window.addEventListener("beforeunload", () => {
         audioRemoto.pause();
         audioRemoto.srcObject = null;
     }
+});
+
+// ============================================
+// PRUEBA DE PING (para verificar servidor)
+// ============================================
+socket.on("connect", () => {
+    setTimeout(() => {
+        console.log("🏓 Enviando ping de prueba...");
+        socket.emit("ping", { target: socket.id });
+    }, 3000);
+});
+
+socket.on("pong", (data) => {
+    console.log("🏓 PONG recibido del servidor:", data);
 });

@@ -526,7 +526,7 @@ function enviarIceCandidatesPendientes(targetId) {
 }
 
 // ============================================
-// 📨 WEBRTC - OFERTA Y RESPUESTA
+// 📨 WEBRTC - OFERTA Y RESPUESTA (CORREGIDO)
 // ============================================
 async function iniciarOferta(targetId) {
     if (ofertasEnviadas.has(targetId)) {
@@ -534,11 +534,31 @@ async function iniciarOferta(targetId) {
         return;
     }
     
+    // Verificar si ya estamos conectados
     if (peers[targetId]) {
         const pc = peers[targetId];
-        if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
-            console.log(`ℹ️ Ya conectado con ${targetId}`);
+        if (pc.connectionState === "connected") {
+            console.log(`✅ Ya conectado con ${targetId}`);
             return;
+        } else if (pc.connectionState === "connecting") {
+            console.log(`⏳ Conectando con ${targetId}, esperando...`);
+            // Esperar a que se conecte o falle
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            if (peers[targetId] && peers[targetId].connectionState === "connected") {
+                console.log(`✅ Conexión establecida con ${targetId}`);
+                return;
+            }
+            // Si sigue en connecting o falló, limpiar
+            if (peers[targetId]) {
+                if (pc._timeoutId) {
+                    clearTimeout(pc._timeoutId);
+                }
+                pc.close();
+                delete peers[targetId];
+                conexionesEnProceso.delete(targetId);
+                delete iceCandidatesQueue[targetId];
+                ofertasEnviadas.delete(targetId);
+            }
         } else {
             if (pc._timeoutId) {
                 clearTimeout(pc._timeoutId);
@@ -548,6 +568,16 @@ async function iniciarOferta(targetId) {
             conexionesEnProceso.delete(targetId);
             delete iceCandidatesQueue[targetId];
             ofertasEnviadas.delete(targetId);
+        }
+    }
+    
+    // Verificar si el otro lado ya inició conexión
+    if (conexionesEnProceso.has(targetId)) {
+        console.log(`⏳ Conexión con ${targetId} en proceso, esperando...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        if (peers[targetId] && peers[targetId].connectionState === "connected") {
+            console.log(`✅ Conexión establecida con ${targetId}`);
+            return;
         }
     }
     
@@ -587,15 +617,22 @@ async function manejarOferta(data) {
     const { from, offer } = data;
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
 
+    // Si ya estamos conectados o en proceso, ignorar
+    if (peers[from] && (peers[from].connectionState === "connected" || peers[from].connectionState === "connecting")) {
+        console.log(`✅ Ya conectado con ${from}, ignorando oferta duplicada`);
+        return;
+    }
+
     if (ofertasRecibidas.has(from)) {
         console.log(`⚠️ Oferta duplicada de ${from}, ignorando...`);
         return;
     }
-    ofertasRecibidas.add(from);
-
+    
+    // Limpiar conexiones muertas antes de procesar
     if (peers[from]) {
         const pc = peers[from];
-        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+            console.log(`🧹 Limpiando conexión muerta con ${from} antes de procesar oferta`);
             if (pc._timeoutId) {
                 clearTimeout(pc._timeoutId);
             }
@@ -604,25 +641,40 @@ async function manejarOferta(data) {
             conexionesEnProceso.delete(from);
             delete iceCandidatesQueue[from];
             ofertasEnviadas.delete(from);
+            ofertasRecibidas.delete(from);
         } else {
-            console.log(`⚠️ Conexión con ${from} ya existe`);
+            console.log(`⚠️ Conexión con ${from} ya existe en estado ${pc.connectionState}`);
             return;
         }
     }
 
     if (conexionesEnProceso.has(from)) {
-        console.log(`⚠️ Conexión con ${from} está en proceso`);
-        return;
+        console.log(`⏳ Conexión con ${from} está en proceso, esperando...`);
+        // Esperar un poco y reintentar
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        if (peers[from] && peers[from].connectionState === "connected") {
+            console.log(`✅ Conexión establecida con ${from} después de esperar`);
+            return;
+        }
+        // Si sigue en proceso, continuar
     }
 
+    ofertasRecibidas.add(from);
+
     const pc = await crearPeerConnection(from);
-    if (!pc) return;
+    if (!pc) {
+        ofertasRecibidas.delete(from);
+        return;
+    }
 
     try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         console.log(`✅ Descripción remota establecida (oferta) de ${from}`);
         
-        enviarIceCandidatesPendientes(from);
+        // Enviar ICE candidates pendientes
+        setTimeout(() => {
+            enviarIceCandidatesPendientes(from);
+        }, 500);
 
         const answer = await pc.createAnswer({
             offerToReceiveAudio: true,
@@ -638,7 +690,7 @@ async function manejarOferta(data) {
         
         setTimeout(() => {
             enviarIceCandidatesPendientes(from);
-        }, 1000);
+        }, 500);
         
     } catch (error) {
         console.error(`❌ Error al manejar oferta de ${from}:`, error);
@@ -713,7 +765,7 @@ async function manejarIceCandidate(data) {
 }
 
 // ============================================
-// 🔄 CONECTAR CON TODOS LOS CLIENTES
+// 🔄 CONECTAR CON TODOS LOS CLIENTES (CORREGIDO)
 // ============================================
 function conectarConTodos(clientes) {
     if (reconexionActiva) {
@@ -745,6 +797,7 @@ function conectarConTodos(clientes) {
             return;
         }
 
+        // Limpiar clientes desaparecidos
         Object.keys(peers).forEach(id => {
             if (!clientes.includes(id)) {
                 console.log(`🧹 Limpiando conexión a cliente desaparecido: ${id}`);
@@ -763,11 +816,16 @@ function conectarConTodos(clientes) {
             }
         });
 
+        // Conectar solo si no hay conexión activa
         otros.forEach(targetId => {
+            // Verificar si ya hay una conexión activa
             if (peers[targetId]) {
                 const pc = peers[targetId];
-                if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
-                    console.log(`ℹ️ Ya conectado con ${targetId}`);
+                if (pc.connectionState === "connected") {
+                    console.log(`✅ Ya conectado con ${targetId}`);
+                    return;
+                } else if (pc.connectionState === "connecting") {
+                    console.log(`⏳ Conectando con ${targetId}, esperando...`);
                     return;
                 } else {
                     if (pc._timeoutId) {
@@ -793,7 +851,9 @@ function conectarConTodos(clientes) {
             
             if (!conexionesEnProceso.has(targetId)) {
                 console.log(`🔗 Iniciando conexión con ${targetId}`);
-                setTimeout(() => iniciarOferta(targetId), 2000);
+                // Añadir un pequeño retraso aleatorio para evitar que ambos inicien al mismo tiempo
+                const delay = Math.random() * 2000 + 1000;
+                setTimeout(() => iniciarOferta(targetId), delay);
             }
         });
         
@@ -807,11 +867,19 @@ function conectarConTodos(clientes) {
 }
 
 // ============================================
-// 📡 MANEJADORES DE SOCKET.IO
+// 📡 MANEJADORES DE SOCKET.IO (CORREGIDO)
 // ============================================
 socket.on("offer", manejarOferta);
 socket.on("answer", manejarRespuesta);
 socket.on("ice-candidate", manejarIceCandidate);
+
+// 🔥 CORREGIDO: Manejar la lista de clientes correctamente
+socket.on("clientes-conectados", (listaClientes) => {
+    console.log("📋 Lista de clientes recibida:", listaClientes);
+    if (typeof conectarConTodos === 'function') {
+        conectarConTodos(listaClientes);
+    }
+});
 
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
@@ -836,7 +904,7 @@ socket.on("connect", async () => {
     reconexionActiva = false;
     
     setTimeout(() => {
-        socket.emit("clientes-conectados", conectarConTodos);
+        socket.emit("clientes-conectados");
     }, 3000);
 });
 
@@ -866,7 +934,7 @@ socket.on("nuevo-cliente", (data) => {
     if (data.id !== socket.id) {
         intentosReconexion[data.id] = 0;
         setTimeout(() => {
-            socket.emit("clientes-conectados", conectarConTodos);
+            socket.emit("clientes-conectados");
         }, 3000);
     }
 });
@@ -888,7 +956,7 @@ socket.on("cliente-desconectado", (data) => {
     ocultarVideoRemoto();
     webRTCIniciado = false;
     setTimeout(() => {
-        socket.emit("clientes-conectados", conectarConTodos);
+        socket.emit("clientes-conectados");
     }, 2000);
 });
 
@@ -949,7 +1017,7 @@ async function iniciarCamara() {
         await obtenerTurnServers();
 
         setTimeout(() => {
-            socket.emit("clientes-conectados", conectarConTodos);
+            socket.emit("clientes-conectados");
         }, 3000);
 
     } catch (error) {
@@ -975,7 +1043,7 @@ async function iniciarCamara() {
             await obtenerTurnServers();
             
             setTimeout(() => {
-                socket.emit("clientes-conectados", conectarConTodos);
+                socket.emit("clientes-conectados");
             }, 3000);
             
         } catch (fallbackError) {
@@ -1013,7 +1081,7 @@ window.forzarReconexion = () => {
     });
     ultimoIntentoReconexion = 0;
     setTimeout(() => {
-        socket.emit("clientes-conectados", conectarConTodos);
+        socket.emit("clientes-conectados");
     }, 1000);
 };
 
@@ -1137,6 +1205,6 @@ setInterval(() => {
     
     if (conexionesActivas.length === 0 && socket.connected) {
         console.log("🔄 Sin conexiones activas, verificando clientes...");
-        socket.emit("clientes-conectados", conectarConTodos);
+        socket.emit("clientes-conectados");
     }
 }, 15000);

@@ -28,7 +28,6 @@ html, body {
     height: 100vh !important;
     object-fit: cover !important;
     background: #000 !important;
-    z-index: 1 !important;
     display: block !important;
     border-radius: 0 !important;
 }

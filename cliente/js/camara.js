@@ -824,26 +824,29 @@ function conectarConTodos(clientes) {
 }
 
 // ============================================
-// 📡 MANEJADORES DE SOCKET.IO (CORREGIDO)
+// 🔥 FUNCIONES DE DIAGNÓSTICO ADICIONALES
 // ============================================
-socket.on("offer", manejarOferta);
-socket.on("answer", manejarRespuesta);
-socket.on("ice-candidate", manejarIceCandidate);
 
-// 🔥 CORREGIDO: Manejar la lista de clientes correctamente
-socket.on("clientes-conectados", (listaClientes) => {
-    console.log("📋 Lista de clientes recibida:", listaClientes);
-    if (typeof conectarConTodos === 'function') {
-        conectarConTodos(listaClientes);
+// Verificar si el otro cliente está respondiendo
+function verificarEstadoOtroCliente() {
+    console.log("🔍 VERIFICANDO ESTADO DEL OTRO CLIENTE");
+    console.log("📊 Peers activos:", Object.keys(peers));
+    console.log("📊 Ofertas enviadas:", Array.from(ofertasEnviadas));
+    console.log("📊 Ofertas recibidas:", Array.from(ofertasRecibidas));
+    console.log("📊 Conexiones en proceso:", Array.from(conexionesEnProceso));
+    
+    if (Object.keys(peers).length === 0) {
+        console.log("⚠️ No hay peers activos. El otro cliente podría no estar conectado o no responder.");
     }
-});
+}
 
-socket.on("connect", async () => {
-    console.log("✅ Conectado al servidor:", socket.id);
-    actualizarEstado("🟢 Conectado - Esperando otro equipo", "conectado");
+// ============================================
+// 🔥 FUNCIÓN PARA REINICIAR LA CONEXIÓN COMPLETAMENTE
+// ============================================
+window.reiniciarConexion = () => {
+    console.log("🔄 REINICIANDO CONEXIÓN COMPLETA...");
     
-    await obtenerTurnServers();
-    
+    // Limpiar todo
     Object.keys(peers).forEach(key => {
         if (peers[key]) {
             if (peers[key]._timeoutId) {
@@ -859,10 +862,112 @@ socket.on("connect", async () => {
     ofertasRecibidas.clear();
     intentosReconexion = {};
     reconexionActiva = false;
+    ultimoIntentoReconexion = 0;
+    ocultarVideoRemoto();
+    webRTCIniciado = false;
     
+    // Esperar y reconectar
     setTimeout(() => {
+        console.log("🔄 Intentando reconectar...");
         socket.emit("clientes-conectados");
+    }, 2000);
+};
+
+console.log("💡 Para reiniciar conexión: reiniciarConexion()");
+console.log("💡 Para ver estado: estadoConexiones()");
+console.log("💡 Para verificar otro cliente: verificarEstadoOtroCliente()");
+
+// ============================================
+// 📡 MANEJADORES DE SOCKET.IO (CORREGIDO)
+// ============================================
+socket.on("offer", manejarOferta);
+socket.on("answer", manejarRespuesta);
+socket.on("ice-candidate", manejarIceCandidate);
+
+// Agregar manejador de errores para ofertas
+socket.on("error", (data) => {
+    console.error("❌ ERROR DEL SERVIDOR:", data);
+    if (data.message && data.message.includes("no existe")) {
+        console.log("💡 El otro cliente se desconectó o no está disponible");
+        actualizarEstado("🔴 Cliente no disponible", "desconectado");
+        // Limpiar ofertas para ese cliente
+        const targetId = data.message.match(/Target (.+) no existe/);
+        if (targetId && targetId[1]) {
+            const id = targetId[1];
+            ofertasEnviadas.delete(id);
+            ofertasRecibidas.delete(id);
+            delete peers[id];
+            conexionesEnProceso.delete(id);
+        }
+    }
+});
+
+// 🔥 CORREGIDO: Manejar la lista de clientes correctamente
+socket.on("clientes-conectados", (listaClientes) => {
+    console.log("📋 Lista de clientes recibida:", listaClientes);
+    if (typeof conectarConTodos === 'function') {
+        conectarConTodos(listaClientes);
+    }
+});
+
+socket.on("connect", async () => {
+    console.log("✅ Conectado al servidor:", socket.id);
+    actualizarEstado("🟢 Conectado - Esperando otro equipo", "conectado");
+    
+    await obtenerTurnServers();
+    
+    // Limpiar conexiones viejas
+    Object.keys(peers).forEach(key => {
+        if (peers[key]) {
+            if (peers[key]._timeoutId) {
+                clearTimeout(peers[key]._timeoutId);
+            }
+            peers[key].close();
+            delete peers[key];
+        }
+    });
+    conexionesEnProceso.clear();
+    Object.keys(iceCandidatesQueue).forEach(key => delete iceCandidatesQueue[key]);
+    ofertasEnviadas.clear();
+    ofertasRecibidas.clear();
+    intentosReconexion = {};
+    reconexionActiva = false;
+    ultimoIntentoReconexion = 0;
+    
+    // 🔥 INTENTAR CONECTAR INMEDIATAMENTE Y CADA 2 SEGUNDOS
+    const intentarConectar = () => {
+        if (socket.connected) {
+            console.log("🔄 Solicitando lista de clientes...");
+            socket.emit("clientes-conectados");
+        }
+    };
+    
+    // Intentar inmediatamente
+    setTimeout(intentarConectar, 1000);
+    
+    // Intentar cada 3 segundos hasta que haya conexión
+    const intervalId = setInterval(() => {
+        if (Object.keys(peers).length > 0) {
+            console.log("✅ Conexión establecida, deteniendo intentos automáticos");
+            clearInterval(intervalId);
+            return;
+        }
+        
+        if (socket.connected) {
+            console.log("🔄 Reintentando conexión (automático)...");
+            socket.emit("clientes-conectados");
+        }
     }, 3000);
+    
+    // Limpiar el intervalo después de 30 segundos si no hay conexión
+    setTimeout(() => {
+        clearInterval(intervalId);
+        if (Object.keys(peers).length === 0) {
+            console.log("⏰ No se pudo establecer conexión en 30 segundos");
+            console.log("💡 Ejecuta 'reiniciarConexion()' en la consola para reintentar");
+            actualizarEstado("🟡 Esperando conexión - Reintenta manualmente", "inicializando");
+        }
+    }, 30000);
 });
 
 socket.on("disconnect", () => {

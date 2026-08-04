@@ -42,13 +42,14 @@ let reconexionActiva = false;
 let videoRemotoActivo = false;
 
 // ============================================
-// 🎬 CONFIGURAR VIDEO LOCAL (PANTALLA GRANDE - FONDO)
+// 🎬 CONFIGURAR VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
 // ============================================
 // Los estilos se aplican desde CSS
-video.style.display = "block";
+// El video local se muestra en la esquina inferior derecha
+video.style.display = "none"; // Inicialmente oculto hasta que se inicie la cámara
 
 // ============================================
-// 🎬 CREAR ELEMENTO DE VIDEO REMOTO (PANTALLA PEQUEÑA - ESQUINA INFERIOR DERECHA)
+// 🎬 CREAR ELEMENTO DE VIDEO REMOTO (PANTALLA GRANDE - FONDO)
 // ============================================
 const videoRemoto = document.createElement("video");
 videoRemoto.id = "video-remoto";
@@ -57,6 +58,7 @@ videoRemoto.playsinline = true;
 videoRemoto.muted = false;
 videoRemoto.volume = 1.0;
 // Los estilos se aplican desde CSS
+// El video remoto ocupa toda la pantalla (fondo)
 document.body.appendChild(videoRemoto);
 
 // ============================================
@@ -131,10 +133,10 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 // ============================================
-// 🔥 FUNCIÓN PARA MOSTRAR VIDEO REMOTO (PANTALLA PEQUEÑA)
+// 🔥 FUNCIÓN PARA MOSTRAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
 // ============================================
 function mostrarVideoRemoto(stream, fromId) {
-    console.log(`📹 ASIGNANDO VIDEO REMOTO (PANTALLA PEQUEÑA) DE: ${fromId || 'desconocido'}`);
+    console.log(`📹 ASIGNANDO VIDEO REMOTO (PANTALLA GRANDE - FONDO) DE: ${fromId || 'desconocido'}`);
     
     if (!stream) {
         console.error("❌ Stream vacío");
@@ -158,11 +160,15 @@ function mostrarVideoRemoto(stream, fromId) {
         console.log(`✅ Video track habilitado: ${track.label}`);
     });
 
-    // 🔥 ASIGNAR AL VIDEO REMOTO (pantalla pequeña - esquina)
+    // 🔥 ASIGNAR AL VIDEO REMOTO (pantalla grande - fondo)
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     videoRemoto.muted = false;
     videoRemoto.volume = 1.0;
+    
+    // 🔥 VIDEO LOCAL (pantalla pequeña - esquina) siempre visible encima
+    video.style.display = "block";
+    video.style.zIndex = "100";
     
     videoRemotoActivo = true;
 
@@ -368,7 +374,7 @@ async function crearPeerConnection(targetId) {
                 console.log(`📹 Video track remoto habilitado: ${track.label}`);
             });
             
-            // 🔥 MOSTRAR VIDEO REMOTO (PANTALLA PEQUEÑA)
+            // 🔥 MOSTRAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
             mostrarVideoRemoto(remoteStream, targetId);
         }
     };
@@ -1061,8 +1067,9 @@ async function iniciarCamara() {
             console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
         });
         
-        // 🔥 ASIGNAR STREAM AL VIDEO LOCAL (PANTALLA GRANDE - FONDO)
+        // 🔥 ASIGNAR STREAM AL VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
         video.srcObject = stream;
+        video.style.display = "block";
         await new Promise(resolve => {
             video.onloadedmetadata = () => {
                 video.play();
@@ -1093,6 +1100,7 @@ async function iniciarCamara() {
             });
             streamLocal = stream;
             video.srcObject = stream;
+            video.style.display = "block";
             await new Promise(resolve => {
                 video.onloadedmetadata = () => {
                     video.play();

@@ -1,7 +1,11 @@
 // ============================================
 // CONFIGURACIÓN INICIAL
 // ============================================
-const video = document.getElementById("video-remoto");
+// 🔥 VIDEO LOCAL (pantalla pequeña - esquina)
+const video = document.getElementById("video");
+
+// 🔥 VIDEO REMOTO (pantalla grande - fondo)
+const videoRemoto = document.getElementById("video-remoto");
 
 // ============================================
 // 📡 CONEXIÓN AL SERVIDOR EN RENDER.COM
@@ -44,22 +48,12 @@ let videoRemotoActivo = false;
 // ============================================
 // 🎬 CONFIGURAR VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
 // ============================================
-// Los estilos se aplican desde CSS
-// El video local se muestra en la esquina inferior derecha
 video.style.display = "none"; // Inicialmente oculto hasta que se inicie la cámara
 
 // ============================================
-// 🎬 CREAR ELEMENTO DE VIDEO REMOTO (PANTALLA GRANDE - FONDO)
+// 🎬 CONFIGURAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
 // ============================================
-const videoRemoto = document.createElement("video");
-videoRemoto.id = "video";
-videoRemoto.autoplay = true;
-videoRemoto.playsinline = true;
-videoRemoto.muted = false;
-videoRemoto.volume = 1.0;
-// Los estilos se aplican desde CSS
-// El video remoto ocupa toda la pantalla (fondo)
-document.body.appendChild(videoRemoto);
+videoRemoto.style.display = "none"; // Inicialmente oculto
 
 // ============================================
 // 🎧 ELEMENTO DE AUDIO SEPARADO
@@ -168,7 +162,6 @@ function mostrarVideoRemoto(stream, fromId) {
     
     // 🔥 VIDEO LOCAL (pantalla pequeña - esquina) siempre visible encima
     video.style.display = "block";
-    video.style.zIndex = "100";
     
     videoRemotoActivo = true;
 
@@ -489,7 +482,7 @@ function enviarIceCandidatesPendientes(targetId) {
 }
 
 // ============================================
-// 📨 WEBRTC - OFERTA Y RESPUESTA (CORREGIDO)
+// 📨 WEBRTC - OFERTA Y RESPUESTA
 // ============================================
 async function iniciarOferta(targetId) {
     if (ofertasEnviadas.has(targetId)) {
@@ -497,31 +490,11 @@ async function iniciarOferta(targetId) {
         return;
     }
     
-    // Verificar si ya estamos conectados
     if (peers[targetId]) {
         const pc = peers[targetId];
-        if (pc.connectionState === "connected") {
-            console.log(`✅ Ya conectado con ${targetId}`);
+        if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
+            console.log(`ℹ️ Ya conectado con ${targetId}`);
             return;
-        } else if (pc.connectionState === "connecting") {
-            console.log(`⏳ Conectando con ${targetId}, esperando...`);
-            // Esperar a que se conecte o falle
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            if (peers[targetId] && peers[targetId].connectionState === "connected") {
-                console.log(`✅ Conexión establecida con ${targetId}`);
-                return;
-            }
-            // Si sigue en connecting o falló, limpiar
-            if (peers[targetId]) {
-                if (pc._timeoutId) {
-                    clearTimeout(pc._timeoutId);
-                }
-                pc.close();
-                delete peers[targetId];
-                conexionesEnProceso.delete(targetId);
-                delete iceCandidatesQueue[targetId];
-                ofertasEnviadas.delete(targetId);
-            }
         } else {
             if (pc._timeoutId) {
                 clearTimeout(pc._timeoutId);
@@ -531,16 +504,6 @@ async function iniciarOferta(targetId) {
             conexionesEnProceso.delete(targetId);
             delete iceCandidatesQueue[targetId];
             ofertasEnviadas.delete(targetId);
-        }
-    }
-    
-    // Verificar si el otro lado ya inició conexión
-    if (conexionesEnProceso.has(targetId)) {
-        console.log(`⏳ Conexión con ${targetId} en proceso, esperando...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        if (peers[targetId] && peers[targetId].connectionState === "connected") {
-            console.log(`✅ Conexión establecida con ${targetId}`);
-            return;
         }
     }
     
@@ -580,22 +543,15 @@ async function manejarOferta(data) {
     const { from, offer } = data;
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
 
-    // Si ya estamos conectados o en proceso, ignorar
-    if (peers[from] && (peers[from].connectionState === "connected" || peers[from].connectionState === "connecting")) {
-        console.log(`✅ Ya conectado con ${from}, ignorando oferta duplicada`);
-        return;
-    }
-
     if (ofertasRecibidas.has(from)) {
         console.log(`⚠️ Oferta duplicada de ${from}, ignorando...`);
         return;
     }
-    
-    // Limpiar conexiones muertas antes de procesar
+    ofertasRecibidas.add(from);
+
     if (peers[from]) {
         const pc = peers[from];
-        if (pc.connectionState === "failed" || pc.connectionState === "disconnected" || pc.connectionState === "closed") {
-            console.log(`🧹 Limpiando conexión muerta con ${from} antes de procesar oferta`);
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
             if (pc._timeoutId) {
                 clearTimeout(pc._timeoutId);
             }
@@ -604,40 +560,25 @@ async function manejarOferta(data) {
             conexionesEnProceso.delete(from);
             delete iceCandidatesQueue[from];
             ofertasEnviadas.delete(from);
-            ofertasRecibidas.delete(from);
         } else {
-            console.log(`⚠️ Conexión con ${from} ya existe en estado ${pc.connectionState}`);
+            console.log(`⚠️ Conexión con ${from} ya existe`);
             return;
         }
     }
 
     if (conexionesEnProceso.has(from)) {
-        console.log(`⏳ Conexión con ${from} está en proceso, esperando...`);
-        // Esperar un poco y reintentar
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        if (peers[from] && peers[from].connectionState === "connected") {
-            console.log(`✅ Conexión establecida con ${from} después de esperar`);
-            return;
-        }
-        // Si sigue en proceso, continuar
-    }
-
-    ofertasRecibidas.add(from);
-
-    const pc = await crearPeerConnection(from);
-    if (!pc) {
-        ofertasRecibidas.delete(from);
+        console.log(`⚠️ Conexión con ${from} está en proceso`);
         return;
     }
+
+    const pc = await crearPeerConnection(from);
+    if (!pc) return;
 
     try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         console.log(`✅ Descripción remota establecida (oferta) de ${from}`);
         
-        // Enviar ICE candidates pendientes
-        setTimeout(() => {
-            enviarIceCandidatesPendientes(from);
-        }, 500);
+        enviarIceCandidatesPendientes(from);
 
         const answer = await pc.createAnswer({
             offerToReceiveAudio: true,
@@ -653,7 +594,7 @@ async function manejarOferta(data) {
         
         setTimeout(() => {
             enviarIceCandidatesPendientes(from);
-        }, 500);
+        }, 1000);
         
     } catch (error) {
         console.error(`❌ Error al manejar oferta de ${from}:`, error);
@@ -728,7 +669,7 @@ async function manejarIceCandidate(data) {
 }
 
 // ============================================
-// 🔄 CONECTAR CON TODOS LOS CLIENTES (CORREGIDO)
+// 🔄 CONECTAR CON TODOS LOS CLIENTES
 // ============================================
 function conectarConTodos(clientes) {
     if (reconexionActiva) {
@@ -760,7 +701,6 @@ function conectarConTodos(clientes) {
             return;
         }
 
-        // Limpiar clientes desaparecidos
         Object.keys(peers).forEach(id => {
             if (!clientes.includes(id)) {
                 console.log(`🧹 Limpiando conexión a cliente desaparecido: ${id}`);
@@ -779,16 +719,11 @@ function conectarConTodos(clientes) {
             }
         });
 
-        // Conectar solo si no hay conexión activa
         otros.forEach(targetId => {
-            // Verificar si ya hay una conexión activa
             if (peers[targetId]) {
                 const pc = peers[targetId];
-                if (pc.connectionState === "connected") {
-                    console.log(`✅ Ya conectado con ${targetId}`);
-                    return;
-                } else if (pc.connectionState === "connecting") {
-                    console.log(`⏳ Conectando con ${targetId}, esperando...`);
+                if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
+                    console.log(`ℹ️ Ya conectado con ${targetId}`);
                     return;
                 } else {
                     if (pc._timeoutId) {
@@ -814,7 +749,6 @@ function conectarConTodos(clientes) {
             
             if (!conexionesEnProceso.has(targetId)) {
                 console.log(`🔗 Iniciando conexión con ${targetId}`);
-                // Añadir un pequeño retraso aleatorio para evitar que ambos inicien al mismo tiempo
                 const delay = Math.random() * 2000 + 1000;
                 setTimeout(() => iniciarOferta(targetId), delay);
             }
@@ -830,85 +764,12 @@ function conectarConTodos(clientes) {
 }
 
 // ============================================
-// 🔥 FUNCIONES DE DIAGNÓSTICO ADICIONALES
-// ============================================
-
-// Verificar si el otro cliente está respondiendo
-function verificarEstadoOtroCliente() {
-    console.log("🔍 VERIFICANDO ESTADO DEL OTRO CLIENTE");
-    console.log("📊 Peers activos:", Object.keys(peers));
-    console.log("📊 Ofertas enviadas:", Array.from(ofertasEnviadas));
-    console.log("📊 Ofertas recibidas:", Array.from(ofertasRecibidas));
-    console.log("📊 Conexiones en proceso:", Array.from(conexionesEnProceso));
-    
-    if (Object.keys(peers).length === 0) {
-        console.log("⚠️ No hay peers activos. El otro cliente podría no estar conectado o no responder.");
-    }
-}
-
-// ============================================
-// 🔥 FUNCIÓN PARA REINICIAR LA CONEXIÓN COMPLETAMENTE
-// ============================================
-window.reiniciarConexion = () => {
-    console.log("🔄 REINICIANDO CONEXIÓN COMPLETA...");
-    
-    // Limpiar todo
-    Object.keys(peers).forEach(key => {
-        if (peers[key]) {
-            if (peers[key]._timeoutId) {
-                clearTimeout(peers[key]._timeoutId);
-            }
-            peers[key].close();
-            delete peers[key];
-        }
-    });
-    conexionesEnProceso.clear();
-    Object.keys(iceCandidatesQueue).forEach(key => delete iceCandidatesQueue[key]);
-    ofertasEnviadas.clear();
-    ofertasRecibidas.clear();
-    intentosReconexion = {};
-    reconexionActiva = false;
-    ultimoIntentoReconexion = 0;
-    ocultarVideoRemoto();
-    webRTCIniciado = false;
-    
-    // Esperar y reconectar
-    setTimeout(() => {
-        console.log("🔄 Intentando reconectar...");
-        socket.emit("clientes-conectados");
-    }, 2000);
-};
-
-console.log("💡 Para reiniciar conexión: reiniciarConexion()");
-console.log("💡 Para ver estado: estadoConexiones()");
-console.log("💡 Para verificar otro cliente: verificarEstadoOtroCliente()");
-
-// ============================================
-// 📡 MANEJADORES DE SOCKET.IO (CORREGIDO)
+// 📡 MANEJADORES DE SOCKET.IO
 // ============================================
 socket.on("offer", manejarOferta);
 socket.on("answer", manejarRespuesta);
 socket.on("ice-candidate", manejarIceCandidate);
 
-// Agregar manejador de errores para ofertas
-socket.on("error", (data) => {
-    console.error("❌ ERROR DEL SERVIDOR:", data);
-    if (data.message && data.message.includes("no existe")) {
-        console.log("💡 El otro cliente se desconectó o no está disponible");
-        actualizarEstado("🔴 Cliente no disponible", "desconectado");
-        // Limpiar ofertas para ese cliente
-        const targetId = data.message.match(/Target (.+) no existe/);
-        if (targetId && targetId[1]) {
-            const id = targetId[1];
-            ofertasEnviadas.delete(id);
-            ofertasRecibidas.delete(id);
-            delete peers[id];
-            conexionesEnProceso.delete(id);
-        }
-    }
-});
-
-// 🔥 CORREGIDO: Manejar la lista de clientes correctamente
 socket.on("clientes-conectados", (listaClientes) => {
     console.log("📋 Lista de clientes recibida:", listaClientes);
     if (typeof conectarConTodos === 'function') {
@@ -922,7 +783,6 @@ socket.on("connect", async () => {
     
     await obtenerTurnServers();
     
-    // Limpiar conexiones viejas
     Object.keys(peers).forEach(key => {
         if (peers[key]) {
             if (peers[key]._timeoutId) {
@@ -940,40 +800,9 @@ socket.on("connect", async () => {
     reconexionActiva = false;
     ultimoIntentoReconexion = 0;
     
-    // 🔥 INTENTAR CONECTAR INMEDIATAMENTE Y CADA 2 SEGUNDOS
-    const intentarConectar = () => {
-        if (socket.connected) {
-            console.log("🔄 Solicitando lista de clientes...");
-            socket.emit("clientes-conectados");
-        }
-    };
-    
-    // Intentar inmediatamente
-    setTimeout(intentarConectar, 1000);
-    
-    // Intentar cada 3 segundos hasta que haya conexión
-    const intervalId = setInterval(() => {
-        if (Object.keys(peers).length > 0) {
-            console.log("✅ Conexión establecida, deteniendo intentos automáticos");
-            clearInterval(intervalId);
-            return;
-        }
-        
-        if (socket.connected) {
-            console.log("🔄 Reintentando conexión (automático)...");
-            socket.emit("clientes-conectados");
-        }
-    }, 3000);
-    
-    // Limpiar el intervalo después de 30 segundos si no hay conexión
     setTimeout(() => {
-        clearInterval(intervalId);
-        if (Object.keys(peers).length === 0) {
-            console.log("⏰ No se pudo establecer conexión en 30 segundos");
-            console.log("💡 Ejecuta 'reiniciarConexion()' en la consola para reintentar");
-            actualizarEstado("🟡 Esperando conexión - Reintenta manualmente", "inicializando");
-        }
-    }, 30000);
+        socket.emit("clientes-conectados");
+    }, 3000);
 });
 
 socket.on("disconnect", () => {

@@ -18,7 +18,7 @@ html, body {
 }
 
 /* ============================================
-   🎬 VIDEO LOCAL (PANTALLA GRANDE - FONDO)
+   🎬 VIDEO REMOTO (PANTALLA GRANDE - FONDO)
    ============================================ */
 #video-remoto {
     position: fixed !important;
@@ -30,10 +30,11 @@ html, body {
     background: #000 !important;
     display: block !important;
     border-radius: 0 !important;
+    z-index: 1 !important;
 }
 
 /* ============================================
-   🎬 VIDEO REMOTO (PANTALLA PEQUEÑA - ESQUINA)
+   🎬 VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA INFERIOR DERECHA)
    ============================================ */
 #video {
     position: fixed !important;
@@ -52,8 +53,8 @@ html, body {
     display: none !important;
 }
 
-/* 🔥 HOVER - AGRANDAR EL VIDEO REMOTO */
-#video-remoto:hover {
+/* 🔥 HOVER - AGRANDAR EL VIDEO LOCAL (PANTALLA PEQUEÑA) */
+#video:hover {
     width: 320px !important;
     height: 240px !important;
 }
@@ -130,15 +131,15 @@ footer {
    📱 RESPONSIVE - MÓVILES
    ============================================ */
 @media (max-width: 768px) {
-    /* Video remoto más pequeño en móviles */
-    #video-remoto {
+    /* Video local más pequeño en móviles */
+    #video {
         width: 180px !important;
         height: 135px !important;
         bottom: 60px !important;
         right: 10px !important;
     }
     
-    #video-remoto:hover {
+    #video:hover {
         width: 200px !important;
         height: 150px !important;
     }
@@ -157,8 +158,8 @@ footer {
 }
 
 @media (max-width: 480px) {
-    /* Video remoto aún más pequeño en móviles muy pequeños */
-    #video-remoto {
+    /* Video local aún más pequeño en móviles muy pequeños */
+    #video {
         width: 140px !important;
         height: 105px !important;
         bottom: 55px !important;
@@ -167,7 +168,7 @@ footer {
         border-radius: 8px !important;
     }
     
-    #video-remoto:hover {
+    #video:hover {
         width: 160px !important;
         height: 120px !important;
     }

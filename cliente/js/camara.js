@@ -1,7 +1,7 @@
 // ============================================
 // CONFIGURACIÓN INICIAL
 // ============================================
-const video = document.getElementById("video");
+const video = document.getElementById("video-remoto");
 
 // ============================================
 // 📡 CONEXIÓN AL SERVIDOR EN RENDER.COM

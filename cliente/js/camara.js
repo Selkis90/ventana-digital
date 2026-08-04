@@ -43,23 +43,12 @@ let videoRemotoActivo = false;
 
 // ============================================
 // 🎬 CONFIGURAR VIDEO LOCAL (PANTALLA GRANDE - FONDO)
-// 🔥 CAMBIO: Video local ahora es la pantalla grande
 // ============================================
-video.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    object-fit: cover;
-    z-index: 1 !important;
-    background: #000;
-    display: block;
-`;
+// Los estilos se aplican desde CSS
+video.style.display = "block";
 
 // ============================================
 // 🎬 CREAR ELEMENTO DE VIDEO REMOTO (PANTALLA PEQUEÑA - ESQUINA INFERIOR DERECHA)
-// 🔥 CAMBIO: Video remoto ahora es la pantalla pequeña
 // ============================================
 const videoRemoto = document.createElement("video");
 videoRemoto.id = "video-remoto";
@@ -67,34 +56,8 @@ videoRemoto.autoplay = true;
 videoRemoto.playsinline = true;
 videoRemoto.muted = false;
 videoRemoto.volume = 1.0;
-// 🔥 VIDEO REMOTO = PANTALLA PEQUEÑA (esquina inferior derecha)
-videoRemoto.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 280px;
-    height: 210px;
-    border-radius: 12px;
-    border: 3px solid #00d4ff;
-    background: #000;
-    z-index: 100 !important;
-    object-fit: cover;
-    box-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
-    cursor: pointer;
-    transition: all 0.3s ease;
-    display: none;
-`;
+// Los estilos se aplican desde CSS
 document.body.appendChild(videoRemoto);
-
-// 🔥 HOVER: agrandar un poco al pasar el mouse (en el video remoto)
-videoRemoto.addEventListener('mouseenter', () => {
-    videoRemoto.style.width = '320px';
-    videoRemoto.style.height = '240px';
-});
-videoRemoto.addEventListener('mouseleave', () => {
-    videoRemoto.style.width = '280px';
-    videoRemoto.style.height = '210px';
-});
 
 // ============================================
 // 🎧 ELEMENTO DE AUDIO SEPARADO
@@ -169,7 +132,6 @@ function actualizarEstado(mensaje, tipo) {
 
 // ============================================
 // 🔥 FUNCIÓN PARA MOSTRAR VIDEO REMOTO (PANTALLA PEQUEÑA)
-// 🔥 CAMBIO: Video remoto ahora se muestra en la esquina
 // ============================================
 function mostrarVideoRemoto(stream, fromId) {
     console.log(`📹 ASIGNANDO VIDEO REMOTO (PANTALLA PEQUEÑA) DE: ${fromId || 'desconocido'}`);
@@ -201,11 +163,6 @@ function mostrarVideoRemoto(stream, fromId) {
     videoRemoto.style.display = "block";
     videoRemoto.muted = false;
     videoRemoto.volume = 1.0;
-    videoRemoto.style.zIndex = "100";
-    
-    // 🔥 VIDEO LOCAL (pantalla grande) siempre visible atrás
-    video.style.zIndex = "1";
-    video.style.display = "block";
     
     videoRemotoActivo = true;
 

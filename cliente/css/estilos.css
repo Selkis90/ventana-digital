@@ -20,7 +20,7 @@ html, body {
 /* ============================================
    🎬 VIDEO LOCAL (PANTALLA GRANDE - FONDO)
    ============================================ */
-#video {
+#video-remoto {
     position: fixed !important;
     top: 0 !important;
     left: 0 !important;
@@ -35,7 +35,7 @@ html, body {
 /* ============================================
    🎬 VIDEO REMOTO (PANTALLA PEQUEÑA - ESQUINA)
    ============================================ */
-#video-remoto {
+#video {
     position: fixed !important;
     bottom: 20px !important;
     right: 20px !important;

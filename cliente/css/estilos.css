@@ -1,46 +1,175 @@
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
+/* ============================================
+   ESTILOS GLOBALES - VENTANA DIGITAL
+   ============================================ */
+
+/* 🔥 RESET Y CONFIGURACIÓN BASE */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
 
-body{
-    background:#101010;
-    color:white;
-    font-family:Arial,Helvetica,sans-serif;
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: Arial, Helvetica, sans-serif;
 }
 
-header{
-    height:60px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    background:#202020;
-    font-size:24px;
-    font-weight:bold;
+/* ============================================
+   🎬 VIDEO LOCAL (PANTALLA GRANDE - FONDO)
+   ============================================ */
+#video {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    object-fit: cover !important;
+    background: #000 !important;
+    z-index: 1 !important;
+    display: block !important;
+    border-radius: 0 !important;
 }
 
-main{
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    height:calc(100vh - 60px);
+/* ============================================
+   🎬 VIDEO REMOTO (PANTALLA PEQUEÑA - ESQUINA)
+   ============================================ */
+#video-remoto {
+    position: fixed !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    width: 280px !important;
+    height: 210px !important;
+    border-radius: 12px !important;
+    border: 3px solid #00d4ff !important;
+    background: #000 !important;
+    z-index: 100 !important;
+    object-fit: cover !important;
+    box-shadow: 0 0 30px rgba(0, 212, 255, 0.5) !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    display: none !important;
 }
 
-video{
-    width:95%;
-    max-width:1400px;
-    border-radius:15px;
-    background:black;
+/* 🔥 HOVER - AGRANDAR EL VIDEO REMOTO */
+#video-remoto:hover {
+    width: 320px !important;
+    height: 240px !important;
 }
 
-footer{
-    position:fixed;
-    bottom:0;
-    width:100%;
-    height:40px;
-    background:#202020;
-    display:flex;
-    align-items:center;
-    justify-content:center;
+/* ============================================
+   📍 HEADER (BARRA SUPERIOR)
+   ============================================ */
+header {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 60px !important;
+    background: rgba(0, 0, 0, 0.85) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    color: white !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 24px !important;
+    font-weight: bold !important;
+    z-index: 200 !important;
+    pointer-events: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    user-select: none !important;
+}
+
+/* ============================================
+   📍 FOOTER (BARRA INFERIOR)
+   ============================================ */
+footer {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 40px !important;
+    background: rgba(0, 0, 0, 0.85) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    color: white !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 10px !important;
+    font-size: 14px !important;
+    z-index: 200 !important;
+    pointer-events: none !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+    user-select: none !important;
+}
+
+/* ============================================
+   🟢 ESTADO DE CONEXIÓN
+   ============================================ */
+#estado {
+    font-weight: bold !important;
+    transition: all 0.3s ease !important;
+}
+
+#estado.inicializando {
+    color: #ffa500 !important;
+}
+
+#estado.conectado {
+    color: #00ff00 !important;
+}
+
+#estado.desconectado {
+    color: #ff0000 !important;
+}
+
+/* ============================================
+   📱 RESPONSIVE - MÓVILES
+   ============================================ */
+@media (max-width: 768px) {
+    /* Video remoto más pequeño en móviles */
+    #video-remoto {
+        width: 180px !important;
+        height: 135px !important;
+        bottom: 60px !important;
+        right: 10px !important;
+    }
+    
+    #video-remoto:hover {
+        width: 200px !important;
+        height: 150px !important;
+    }
+    
+    header {
+        height: 50px !important;
+        font-size: 18px !important;
+    }
+    
+    footer {
+        height: 50px !important;
+        font-size: 12px !important;
+        flex-wrap: wrap !important;
+        padding: 5px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Video remoto aún más pequeño en móviles muy pequeños */
+    #video-remoto {
+        width: 140px !important;
+        height: 105px !important;
+        bottom: 55px !important;
+        right: 5px !important;
+        border-width: 2px !important;
+        border-radius: 8px !important;
+    }
+    
+    #video-remoto:hover {
+        width: 160px !important;
+        height: 120px !important;
+    }
 }

@@ -15,34 +15,25 @@
     </header>
 
     <main>
-
-        <!-- VIDEO REMOTO (PANTALLA GRANDE) -->
-        <video
-            id="video-remoto"
-            autoplay
-            playsinline>
-        </video>
-
-        <!-- VIDEO LOCAL (PANTALLA PEQUEÑA) -->
-        <video
-            id="video"
-            autoplay
-            playsinline
-            muted>
-        </video>
-
+        <!-- VIDEO REMOTO (PANTALLA GRANDE - FONDO) -->
+        <video id="video-remoto" autoplay playsinline></video>
+        
+        <!-- VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA) -->
+        <video id="video" autoplay playsinline muted></video>
     </main>
 
     <footer>
         <span>📡 Estado:</span>
         <span id="estado" class="inicializando">⏳ Inicializando...</span>
-
-        <span style="margin-left:20px;font-size:12px;opacity:.5;">
+        <span style="margin-left: 20px; font-size: 12px; opacity: 0.5;">
             v1.5 | WebRTC
         </span>
     </footer>
 
+    <!-- Socket.IO desde el servidor -->
     <script src="/socket.io/socket.io.js"></script>
+
+    <!-- Nuestros scripts -->
     <script src="js/camara.js"></script>
 
 </body>

@@ -52,7 +52,7 @@ video.style.display = "none"; // Inicialmente oculto hasta que se inicie la cám
 // 🎬 CREAR ELEMENTO DE VIDEO REMOTO (PANTALLA GRANDE - FONDO)
 // ============================================
 const videoRemoto = document.createElement("video");
-videoRemoto.id = "video-remoto";
+videoRemoto.id = "video";
 videoRemoto.autoplay = true;
 videoRemoto.playsinline = true;
 videoRemoto.muted = false;

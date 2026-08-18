@@ -48,22 +48,25 @@ let videoRemotoActivo = false;
 // ============================================
 // 🎬 CONFIGURAR VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
 // ============================================
-video.style.display = "none"; // Inicialmente oculto hasta que se inicie la cámara
+video.style.display = "none";
 
 // ============================================
 // 🎬 CONFIGURAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
 // ============================================
-videoRemoto.style.display = "none"; // Inicialmente oculto
+videoRemoto.style.display = "none";
 
 // ============================================
-// 🔊 CONFIGURACIÓN DE VOLUMEN PARA EVITAR ECO
+// 🎧 CREAR ELEMENTO DE AUDIO SEPARADO (SOLO AUDIO)
 // ============================================
-const VOLUMEN_MAXIMO = 0.6; // 60% máximo para evitar eco
-
-// ============================================
-// 🎧 ELIMINAR ELEMENTO DE AUDIO SEPARADO - USAR SOLO videoRemoto
-// ============================================
-// Ya no creamos audioRemoto separado para evitar duplicación
+const audioRemoto = document.createElement("audio");
+audioRemoto.id = "audio-remoto";
+audioRemoto.autoplay = true;
+audioRemoto.muted = false;
+audioRemoto.volume = 0.5; // 🔥 50% para evitar eco
+audioRemoto.style.display = "none";
+document.body.appendChild(audioRemoto);
+console.log("🎧 Elemento de audio separado creado");
+window.audioRemoto = audioRemoto;
 
 // ============================================
 // 🔥 OBTENER CREDENCIALES TURN DEL SERVIDOR
@@ -124,30 +127,10 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 // ============================================
-// 🔊 CONTROL DE VOLUMEN PARA EVITAR ECO
-// ============================================
-function configurarVolumenRemoto() {
-    if (!videoRemoto) return;
-    
-    // Limitar volumen al máximo configurado
-    videoRemoto.volume = Math.min(videoRemoto.volume || 0.5, VOLUMEN_MAXIMO);
-    
-    // Monitorear cambios de volumen y limitarlos
-    videoRemoto.addEventListener('volumechange', function handler() {
-        if (this.volume > VOLUMEN_MAXIMO) {
-            this.volume = VOLUMEN_MAXIMO;
-            console.log(`🔊 Volumen limitado a ${VOLUMEN_MAXIMO * 100}% para evitar eco`);
-        }
-    });
-    
-    console.log(`🔊 Volumen configurado al ${VOLUMEN_MAXIMO * 100}% máximo`);
-}
-
-// ============================================
-// 🔥 FUNCIÓN PARA MOSTRAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
+// 🔥 FUNCIÓN PARA MOSTRAR VIDEO REMOTO (CORREGIDA - SIN DUPLICACIÓN)
 // ============================================
 function mostrarVideoRemoto(stream, fromId) {
-    console.log(`📹 ASIGNANDO VIDEO REMOTO (PANTALLA GRANDE - FONDO) DE: ${fromId || 'desconocido'}`);
+    console.log(`📹 ASIGNANDO VIDEO REMOTO DE: ${fromId || 'desconocido'}`);
     
     if (!stream) {
         console.error("❌ Stream vacío");
@@ -157,64 +140,64 @@ function mostrarVideoRemoto(stream, fromId) {
     const audioTracks = stream.getAudioTracks();
     const videoTracks = stream.getVideoTracks();
     
-    console.log(`🎤 Tracks de audio en el stream: ${audioTracks.length}`);
-    console.log(`📹 Tracks de video en el stream: ${videoTracks.length}`);
+    console.log(`🎤 Audio tracks: ${audioTracks.length}`);
+    console.log(`📹 Video tracks: ${videoTracks.length}`);
     
-    // 🔥 FORZAR HABILITACIÓN DE TODOS LOS TRACKS
+    // Habilitar todos los tracks
     audioTracks.forEach(track => {
         track.enabled = true;
-        console.log(`✅ Audio track habilitado: ${track.label}`);
+        console.log(`✅ Audio habilitado: ${track.label}`);
     });
-    
     videoTracks.forEach(track => {
         track.enabled = true;
-        console.log(`✅ Video track habilitado: ${track.label}`);
+        console.log(`✅ Video habilitado: ${track.label}`);
     });
 
-    // 🔥 ASIGNAR AL VIDEO REMOTO (pantalla grande - fondo) - ÚNICO ELEMENTO PARA AUDIO Y VIDEO
+    // 🔥 VIDEO: Asignar al video-remoto pero SILENCIADO
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
-    videoRemoto.muted = false;
-    
-    // 🔥 CONFIGURAR VOLUMEN PARA EVITAR ECO
-    configurarVolumenRemoto();
-    
-    // 🔥 VIDEO LOCAL (pantalla pequeña - esquina) siempre visible encima
+    videoRemoto.muted = true;  // 🔇 SILENCIADO para evitar duplicación
+    videoRemoto.volume = 0;     // Volumen a 0
     video.style.display = "block";
-    
     videoRemotoActivo = true;
 
-    // 🔥 REPRODUCIR CON MÚLTIPLES INTENTOS
+    // 🔥 AUDIO: Asignar SOLO al audio-remoto
+    audioRemoto.srcObject = stream;
+    audioRemoto.muted = false;
+    audioRemoto.volume = 0.5;   // 50% para evitar eco
+
+    // 🔥 REPRODUCIR
     let intentos = 0;
     const maxIntentos = 5;
     
     function intentarReproducir() {
         intentos++;
-        console.log(`🔄 Intento de reproducción ${intentos}/${maxIntentos}`);
+        console.log(`🔄 Intento reproducción ${intentos}/${maxIntentos}`);
         
-        videoRemoto.play()
-            .then(() => {
-                console.log(`🔊 Audio y video remoto reproduciéndose al ${VOLUMEN_MAXIMO * 100}%`);
-                actualizarEstado("🟢 Conectado - Video en vivo", "conectado");
-            })
-            .catch(e => {
-                console.warn(`⚠️ Error video remoto (${intentos}):`, e.message);
-                if (intentos < maxIntentos) {
-                    setTimeout(intentarReproducir, 1000);
-                } else {
-                    console.log("💡 Haz clic en la página para activar el audio");
-                    document.addEventListener('click', function clickHandler() {
-                        videoRemoto.play().catch(() => {});
-                        document.removeEventListener('click', clickHandler);
-                        console.log("✅ Audio activado por clic");
-                    }, { once: true });
-                }
-            });
+        Promise.all([
+            videoRemoto.play().catch(() => {}),
+            audioRemoto.play().catch(() => {})
+        ]).then(() => {
+            console.log("🔊 Audio (50%) y Video reproduciéndose correctamente");
+            actualizarEstado("🟢 Conectado - Audio y Video en vivo", "conectado");
+        }).catch(e => {
+            console.warn(`⚠️ Error reproducción (${intentos}):`, e.message);
+            if (intentos < maxIntentos) {
+                setTimeout(intentarReproducir, 1000);
+            } else {
+                console.log("💡 Haz clic en la página para activar el audio");
+                document.addEventListener('click', function clickHandler() {
+                    audioRemoto.play().catch(() => {});
+                    videoRemoto.play().catch(() => {});
+                    document.removeEventListener('click', clickHandler);
+                    console.log("✅ Audio activado por clic");
+                }, { once: true });
+            }
+        });
     }
 
     setTimeout(intentarReproducir, 500);
-
-    console.log(`✅ Video remoto de ${fromId || 'desconocido'} asignado correctamente`);
+    console.log(`✅ Video remoto de ${fromId || 'desconocido'} asignado`);
 }
 
 function ocultarVideoRemoto() {
@@ -225,6 +208,10 @@ function ocultarVideoRemoto() {
     if (videoRemoto.srcObject) {
         videoRemoto.srcObject.getTracks().forEach(track => track.stop());
         videoRemoto.srcObject = null;
+    }
+    if (audioRemoto) {
+        audioRemoto.pause();
+        audioRemoto.srcObject = null;
     }
 }
 

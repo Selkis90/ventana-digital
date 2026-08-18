@@ -1,1109 +1,211 @@
 // ============================================
-// CONFIGURACIÓN INICIAL
+// SERVIDOR SOCKET.IO - VENTANA DIGITAL
 // ============================================
-// 🔥 VIDEO LOCAL (pantalla pequeña - esquina)
-const video = document.getElementById("video");
 
-// 🔥 VIDEO REMOTO (pantalla grande - fondo)
-const videoRemoto = document.getElementById("video-remoto");
+// Almacenar clientes conectados
+const clientes = {};
+const iceCandidatesCache = {};
 
-// ============================================
-// 📡 CONEXIÓN AL SERVIDOR EN RENDER.COM
-// ============================================
-const socket = io("https://ventana-digital.onrender.com", {
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionAttempts: 20,
-    reconnectionDelay: 1000,
-    timeout: 30000
-});
+module.exports = function(io) {
+    console.log("⚡ Servidor Socket.IO inicializado");
 
-// ============================================
-// VARIABLES WEBRTC
-// ============================================
-const peers = {};
-let streamLocal = null;
-let webRTCIniciado = false;
-const conexionesEnProceso = new Set();
-const iceCandidatesQueue = {};
-let turnServers = [];
-let audioContext = null;
-const ofertasEnviadas = new Set();
-const ofertasRecibidas = new Set();
+    io.on("connection", (socket) => {
+        console.log("=================================");
+        console.log("🔗 Nuevo cliente conectado");
+        console.log("📌 ID:", socket.id);
+        console.log("📡 IP:", socket.handshake.address);
+        console.log("=================================");
 
-// ============================================
-// 🚫 CONTROL DE RECONEXIÓN
-// ============================================
-let ultimoIntentoReconexion = 0;
-const INTERVALO_MINIMO_RECONEXION = 5000;
-const intentosReconexion = {};
-const MAX_INTENTOS_POR_PEER = 3;
-let reconexionActiva = false;
+        // ============================================
+        // REGISTRAR CLIENTE
+        // ============================================
+        clientes[socket.id] = {
+            id: socket.id,
+            ip: socket.handshake.address,
+            conectado: true,
+            timestamp: new Date().toISOString()
+        };
 
-// ============================================
-// 🔥 VARIABLE PARA SABER SI HAY VIDEO REMOTO
-// ============================================
-let videoRemotoActivo = false;
+        // 🔥 ENVIAR LISTA DE CLIENTES AL NUEVO CLIENTE
+        const listaClientes = Object.keys(clientes);
+        socket.emit("clientes-conectados", listaClientes);
+        console.log(📋 Clientes totales: ${listaClientes.length});
+        console.log(📋 IDs: ${listaClientes.join(", ")});
 
-// ============================================
-// 🎬 CONFIGURAR VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
-// ============================================
-video.style.display = "none"; // Inicialmente oculto hasta que se inicie la cámara
+        // 🔥 NOTIFICAR A TODOS LOS CLIENTES SOBRE EL NUEVO
+        io.emit("nuevo-cliente", {
+            id: socket.id,
+            total: listaClientes.length
+        });
 
-// ============================================
-// 🎬 CONFIGURAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
-// ============================================
-videoRemoto.style.display = "none"; // Inicialmente oculto
-
-// ============================================
-// 🎧 ELEMENTO DE AUDIO SEPARADO
-// ============================================
-const audioRemoto = document.createElement("audio");
-audioRemoto.id = "audio-remoto";
-audioRemoto.autoplay = true;
-audioRemoto.muted = false;
-audioRemoto.volume = 1.0;
-audioRemoto.style.display = "none";
-document.body.appendChild(audioRemoto);
-console.log("🎧 Elemento de audio separado creado");
-window.audioRemoto = audioRemoto;
-
-// ============================================
-// 🔥 OBTENER CREDENCIALES TURN DEL SERVIDOR
-// ============================================
-async function obtenerTurnServers() {
-    try {
-        const response = await fetch('/turn-credentials');
-        if (response.ok) {
-            const data = await response.json();
-            if (data.iceServers) {
-                turnServers = data.iceServers;
-                console.log('✅ Servidores TURN obtenidos del servidor:', turnServers.length);
-                return turnServers;
-            }
-        }
-    } catch (error) {
-        console.warn('⚠️ No se pudo obtener TURN del servidor:', error.message);
-    }
-    
-    console.log('🔄 Usando Metered.ca TURN de respaldo');
-    turnServers = [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-        { urls: "stun:stun3.l.google.com:19302" },
-        { urls: "stun:stun4.l.google.com:19302" },
-        {
-            urls: [
-                "turn:global.turn.metered.ca:80?transport=udp",
-                "turn:global.turn.metered.ca:443?transport=tcp",
-                "turn:global.turn.metered.ca:3478?transport=udp"
-            ],
-            username: "b4a446edd2810f74fb74b06d",
-            credential: "e025b9eb858a5142"
-        },
-        {
-            urls: [
-                "turn:openrelay.metered.ca:80",
-                "turn:openrelay.metered.ca:443",
-                "turn:openrelay.metered.ca:3478"
-            ],
-            username: "openrelayproject",
-            credential: "openrelayproject"
-        }
-    ];
-    return turnServers;
-}
-
-// ============================================
-// 🎯 FUNCIONES DE ESTADO Y VIDEO
-// ============================================
-function actualizarEstado(mensaje, tipo) {
-    const estado = document.getElementById("estado");
-    if (estado) {
-        estado.textContent = mensaje;
-        estado.className = tipo || "inicializando";
-    }
-}
-
-// ============================================
-// 🔥 FUNCIÓN PARA MOSTRAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
-// ============================================
-function mostrarVideoRemoto(stream, fromId) {
-    console.log(`📹 ASIGNANDO VIDEO REMOTO (PANTALLA GRANDE - FONDO) DE: ${fromId || 'desconocido'}`);
-    
-    if (!stream) {
-        console.error("❌ Stream vacío");
-        return;
-    }
-
-    const audioTracks = stream.getAudioTracks();
-    const videoTracks = stream.getVideoTracks();
-    
-    console.log(`🎤 Tracks de audio en el stream: ${audioTracks.length}`);
-    console.log(`📹 Tracks de video en el stream: ${videoTracks.length}`);
-    
-    // 🔥 FORZAR HABILITACIÓN DE TODOS LOS TRACKS
-    audioTracks.forEach(track => {
-        track.enabled = true;
-        console.log(`✅ Audio track habilitado: ${track.label}`);
-    });
-    
-    videoTracks.forEach(track => {
-        track.enabled = true;
-        console.log(`✅ Video track habilitado: ${track.label}`);
-    });
-
-    // 🔥 ASIGNAR AL VIDEO REMOTO (pantalla grande - fondo)
-    videoRemoto.srcObject = stream;
-    videoRemoto.style.display = "block";
-    videoRemoto.muted = false;
-    videoRemoto.volume = 1.0;
-    
-    // 🔥 VIDEO LOCAL (pantalla pequeña - esquina) siempre visible encima
-    video.style.display = "block";
-    
-    videoRemotoActivo = true;
-
-    // Asignar al audio separado
-    audioRemoto.srcObject = stream;
-    audioRemoto.muted = false;
-    audioRemoto.volume = 1.0;
-
-    // 🔥 REPRODUCIR CON MÚLTIPLES INTENTOS
-    let intentos = 0;
-    const maxIntentos = 5;
-    
-    function intentarReproducir() {
-        intentos++;
-        console.log(`🔄 Intento de reproducción ${intentos}/${maxIntentos}`);
-        
-        const promesas = [
-            videoRemoto.play().catch(e => {
-                console.warn(`⚠️ Error video remoto (${intentos}):`, e.message);
-                return null;
-            }),
-            audioRemoto.play().catch(e => {
-                console.warn(`⚠️ Error audio remoto (${intentos}):`, e.message);
-                return null;
-            })
-        ];
-        
-        Promise.all(promesas).then(resultados => {
-            const videoOk = resultados[0] !== null;
-            const audioOk = resultados[1] !== null;
+        // ============================================
+        // 📨 MANEJAR SOLICITUD DE CLIENTES CONECTADOS
+        // ============================================
+        socket.on("clientes-conectados", (callback) => {
+            const lista = Object.keys(clientes);
+            console.log(📋 Clientes conectados (solicitado): ${lista.length});
+            console.log(📋 IDs: ${lista.join(", ")});
             
-            if (videoOk && audioOk) {
-                console.log("🔊 Audio y video remoto reproduciéndose");
-                actualizarEstado("🟢 Conectado - Video en vivo", "conectado");
-            } else if (intentos < maxIntentos) {
-                setTimeout(intentarReproducir, 1000);
+            // 🔥 RESPONDER CON LA LISTA ACTUALIZADA
+            if (typeof callback === "function") {
+                callback(lista);
             } else {
-                console.warn("⚠️ No se pudo reproducir automáticamente, esperando clic");
-                document.addEventListener('click', function clickHandler() {
-                    audioRemoto.play().catch(() => {});
-                    videoRemoto.play().catch(() => {});
-                    document.removeEventListener('click', clickHandler);
-                    console.log("✅ Audio activado por clic");
-                }, { once: true });
-                console.log("💡 Haz clic en la página para activar el audio");
+                socket.emit("clientes-conectados", lista);
             }
         });
-    }
 
-    setTimeout(intentarReproducir, 500);
-
-    console.log(`✅ Video remoto de ${fromId || 'desconocido'} asignado correctamente`);
-}
-
-function ocultarVideoRemoto() {
-    videoRemoto.style.display = "none";
-    videoRemotoActivo = false;
-    video.style.display = "block";
-    
-    if (videoRemoto.srcObject) {
-        videoRemoto.srcObject.getTracks().forEach(track => track.stop());
-        videoRemoto.srcObject = null;
-    }
-    if (audioRemoto) {
-        audioRemoto.pause();
-        audioRemoto.srcObject = null;
-    }
-}
-
-// ============================================
-// 🎤 PROBAR AUDIO LOCAL
-// ============================================
-function probarAudioLocal(stream) {
-    try {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioContext.createMediaStreamSource(stream);
-        const analyser = audioContext.createAnalyser();
-        source.connect(analyser);
-        
-        const dataArray = new Uint8Array(analyser.fftSize);
-        let audioDetectado = false;
-        
-        function checkAudio() {
-            analyser.getByteTimeDomainData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-                const value = (dataArray[i] - 128) / 128;
-                sum += value * value;
-            }
-            const rms = Math.sqrt(sum / dataArray.length);
-            if (rms > 0.01 && !audioDetectado) {
-                audioDetectado = true;
-                console.log("🎤 ¡AUDIO DETECTADO! Nivel:", rms.toFixed(4));
-                console.log("✅ El micrófono está funcionando correctamente");
-            }
-            requestAnimationFrame(checkAudio);
-        }
-        checkAudio();
-        
-        setTimeout(() => {
-            if (!audioDetectado) {
-                console.warn("⚠️ No se detecta audio del micrófono");
-                console.warn("⚠️ Verifica que el micrófono esté conectado y permitido");
-            }
-        }, 3000);
-        
-    } catch (e) {
-        console.log("ℹ️ No se pudo probar audio localmente:", e.message);
-    }
-}
-
-// ============================================
-// 🔗 CREAR PEER CONNECTION CON TURN MEJORADO
-// ============================================
-async function crearPeerConnection(targetId) {
-    if (peers[targetId]) {
-        const pc = peers[targetId];
-        if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
-            console.log(`⚠️ Ya existe conexión activa con ${targetId}`);
-            return pc;
-        } else {
-            console.log(`🧹 Limpiando conexión muerta con ${targetId}`);
-            pc.close();
-            delete peers[targetId];
-            conexionesEnProceso.delete(targetId);
-            delete iceCandidatesQueue[targetId];
-            ofertasEnviadas.delete(targetId);
-        }
-    }
-
-    if (conexionesEnProceso.has(targetId)) {
-        console.log(`⚠️ Conexión con ${targetId} está en proceso`);
-        return null;
-    }
-
-    console.log(`🔗 Creando conexión con: ${targetId}`);
-    conexionesEnProceso.add(targetId);
-
-    if (!streamLocal) {
-        console.error("❌ No hay stream local");
-        conexionesEnProceso.delete(targetId);
-        return null;
-    }
-
-    if (turnServers.length === 0) {
-        await obtenerTurnServers();
-    }
-
-    const pc = new RTCPeerConnection({
-        iceServers: turnServers.length > 0 ? turnServers : [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" }
-        ],
-        iceCandidatePoolSize: 10,
-        bundlePolicy: "max-bundle",
-        rtcpMuxPolicy: "require",
-        iceTransportPolicy: "all"
-    });
-
-    // 🔥 IMPORTANTE: Agregar TODOS los tracks locales (AUDIO Y VIDEO)
-    const audioTracks = streamLocal.getAudioTracks();
-    const videoTracks = streamLocal.getVideoTracks();
-    
-    console.log(`📹 Agregando tracks locales para ${targetId}:`);
-    console.log(`  - Audio tracks: ${audioTracks.length}`);
-    console.log(`  - Video tracks: ${videoTracks.length}`);
-    
-    // 🔥 FORZAR HABILITACIÓN DE AUDIO Y VIDEO LOCAL
-    audioTracks.forEach(track => {
-        track.enabled = true;
-        console.log(`  ✅ Audio track habilitado: ${track.label}`);
-        pc.addTrack(track, streamLocal);
-    });
-    
-    videoTracks.forEach(track => {
-        track.enabled = true;
-        console.log(`  ✅ Video track habilitado: ${track.label}`);
-        pc.addTrack(track, streamLocal);
-    });
-
-    // 🔥 MANEJAR TRACKS REMOTOS
-    pc.ontrack = (event) => {
-        console.log(`📥 Track remoto recibido de: ${targetId}`);
-        console.log(`📥 Track kind: ${event.track.kind}`);
-        
-        if (event.streams && event.streams[0]) {
-            const remoteStream = event.streams[0];
-            const remoteAudioTracks = remoteStream.getAudioTracks();
-            const remoteVideoTracks = remoteStream.getVideoTracks();
+        // ============================================
+        // 🔥 MANEJAR OFERTA WEBRTC (CORREGIDO)
+        // ============================================
+        socket.on("offer", (data) => {
+            const { target, offer } = data;
+            console.log(📤 OFERTA de ${socket.id} para ${target});
             
-            console.log(`🎯 Stream remoto tiene:`);
-            console.log(`  - Audio tracks: ${remoteAudioTracks.length}`);
-            console.log(`  - Video tracks: ${remoteVideoTracks.length}`);
-            
-            // 🔥 FORZAR HABILITACIÓN DE AUDIO Y VIDEO REMOTO
-            remoteAudioTracks.forEach(track => {
-                track.enabled = true;
-                console.log(`🎤 Audio track remoto habilitado: ${track.label}`);
-            });
-            
-            remoteVideoTracks.forEach(track => {
-                track.enabled = true;
-                console.log(`📹 Video track remoto habilitado: ${track.label}`);
-            });
-            
-            // 🔥 MOSTRAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
-            mostrarVideoRemoto(remoteStream, targetId);
-        }
-    };
-
-    pc.onicecandidate = (event) => {
-        if (event.candidate) {
-            console.log(`🧊 ICE candidate generado para ${targetId}`);
-            
-            if (pc.remoteDescription) {
-                socket.emit("ice-candidate", {
-                    target: targetId,
-                    candidate: event.candidate
+            // Verificar que el target existe
+            if (!clientes[target]) {
+                console.log(❌ Target ${target} no existe);
+                // Notificar al emisor
+                socket.emit("error", { 
+                    message: Target ${target} no existe,
+                    type: "offer"
                 });
-                console.log(`📤 ICE candidate enviado a ${targetId}`);
-            } else {
-                if (!iceCandidatesQueue[targetId]) {
-                    iceCandidatesQueue[targetId] = [];
-                }
-                iceCandidatesQueue[targetId].push(event.candidate);
-                console.log(`📦 ICE candidate guardado en cola (${iceCandidatesQueue[targetId].length} pendientes)`);
-            }
-        }
-    };
-
-    pc.onconnectionstatechange = () => {
-        console.log(`🔗 Estado con ${targetId}: ${pc.connectionState}`);
-        if (pc.connectionState === "connected") {
-            console.log("✅ CONEXIÓN WEBRTC ESTABLECIDA!");
-            actualizarEstado("🟢 Conectado - WebRTC activo", "conectado");
-            webRTCIniciado = true;
-            conexionesEnProceso.delete(targetId);
-            delete iceCandidatesQueue[targetId];
-            ofertasEnviadas.delete(targetId);
-            intentosReconexion[targetId] = 0;
-        } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-            console.log(`❌ Conexión perdida con ${targetId}`);
-            delete peers[targetId];
-            conexionesEnProceso.delete(targetId);
-            delete iceCandidatesQueue[targetId];
-            ofertasEnviadas.delete(targetId);
-            webRTCIniciado = false;
-            ocultarVideoRemoto();
-            
-            if (!intentosReconexion[targetId]) {
-                intentosReconexion[targetId] = 0;
-            }
-            intentosReconexion[targetId]++;
-            
-            if (intentosReconexion[targetId] <= MAX_INTENTOS_POR_PEER) {
-                console.log(`🔄 Reintentando conexión con ${targetId} (${intentosReconexion[targetId]}/${MAX_INTENTOS_POR_PEER})`);
-                setTimeout(() => {
-                    if (!peers[targetId] && !conexionesEnProceso.has(targetId)) {
-                        iniciarOferta(targetId);
-                    }
-                }, 5000 * intentosReconexion[targetId]);
-            } else {
-                console.log(`🚫 Máximos intentos alcanzados para ${targetId}, esperando...`);
-                setTimeout(() => {
-                    intentosReconexion[targetId] = 0;
-                    console.log(`🔄 Reseteados intentos para ${targetId}`);
-                }, 60000);
-            }
-        }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-        console.log(`🧊 ICE estado con ${targetId}: ${pc.iceConnectionState}`);
-        if (pc.iceConnectionState === "failed") {
-            console.warn("⚠️ ICE failed, reiniciando conexión...");
-            pc.restartIce();
-        }
-    };
-
-    const timeoutId = setTimeout(() => {
-        if (pc.connectionState !== "connected" && pc.connectionState !== "connecting") {
-            console.log(`⏰ Timeout conectando con ${targetId}`);
-            pc.close();
-            delete peers[targetId];
-            conexionesEnProceso.delete(targetId);
-            delete iceCandidatesQueue[targetId];
-            ofertasEnviadas.delete(targetId);
-        }
-    }, 15000);
-
-    pc._timeoutId = timeoutId;
-
-    peers[targetId] = pc;
-    return pc;
-}
-
-// ============================================
-// 📤 ENVIAR ICE CANDIDATES PENDIENTES
-// ============================================
-function enviarIceCandidatesPendientes(targetId) {
-    const pc = peers[targetId];
-    if (!pc || !pc.remoteDescription) {
-        console.log(`⏳ No se pueden enviar ICE candidates: remoteDescription no disponible para ${targetId}`);
-        return;
-    }
-    
-    const pendientes = iceCandidatesQueue[targetId] || [];
-    if (pendientes.length === 0) return;
-    
-    console.log(`📤 Enviando ${pendientes.length} ICE candidates pendientes a ${targetId}`);
-    pendientes.forEach(candidate => {
-        socket.emit("ice-candidate", {
-            target: targetId,
-            candidate: candidate
-        });
-    });
-    delete iceCandidatesQueue[targetId];
-}
-
-// ============================================
-// 📨 WEBRTC - OFERTA Y RESPUESTA
-// ============================================
-async function iniciarOferta(targetId) {
-    if (ofertasEnviadas.has(targetId)) {
-        console.log(`⚠️ Oferta a ${targetId} ya fue enviada, omitiendo...`);
-        return;
-    }
-    
-    if (peers[targetId]) {
-        const pc = peers[targetId];
-        if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
-            console.log(`ℹ️ Ya conectado con ${targetId}`);
-            return;
-        } else {
-            if (pc._timeoutId) {
-                clearTimeout(pc._timeoutId);
-            }
-            pc.close();
-            delete peers[targetId];
-            conexionesEnProceso.delete(targetId);
-            delete iceCandidatesQueue[targetId];
-            ofertasEnviadas.delete(targetId);
-        }
-    }
-    
-    const pc = await crearPeerConnection(targetId);
-    if (!pc) return;
-
-    try {
-        console.log(`📤 Creando oferta para ${targetId}...`);
-        const offer = await pc.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true
-        });
-        await pc.setLocalDescription(offer);
-
-        ofertasEnviadas.add(targetId);
-
-        socket.emit("offer", {
-            target: targetId,
-            offer: pc.localDescription
-        });
-        console.log(`✅ Oferta enviada a: ${targetId}`);
-        
-        setTimeout(() => {
-            enviarIceCandidatesPendientes(targetId);
-        }, 1000);
-        
-    } catch (error) {
-        console.error(`❌ Error al crear oferta para ${targetId}:`, error);
-        delete peers[targetId];
-        conexionesEnProceso.delete(targetId);
-        delete iceCandidatesQueue[targetId];
-        ofertasEnviadas.delete(targetId);
-    }
-}
-
-async function manejarOferta(data) {
-    const { from, offer } = data;
-    console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
-
-    if (ofertasRecibidas.has(from)) {
-        console.log(`⚠️ Oferta duplicada de ${from}, ignorando...`);
-        return;
-    }
-    ofertasRecibidas.add(from);
-
-    if (peers[from]) {
-        const pc = peers[from];
-        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-            if (pc._timeoutId) {
-                clearTimeout(pc._timeoutId);
-            }
-            pc.close();
-            delete peers[from];
-            conexionesEnProceso.delete(from);
-            delete iceCandidatesQueue[from];
-            ofertasEnviadas.delete(from);
-        } else {
-            console.log(`⚠️ Conexión con ${from} ya existe`);
-            return;
-        }
-    }
-
-    if (conexionesEnProceso.has(from)) {
-        console.log(`⚠️ Conexión con ${from} está en proceso`);
-        return;
-    }
-
-    const pc = await crearPeerConnection(from);
-    if (!pc) return;
-
-    try {
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        console.log(`✅ Descripción remota establecida (oferta) de ${from}`);
-        
-        enviarIceCandidatesPendientes(from);
-
-        const answer = await pc.createAnswer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true
-        });
-        await pc.setLocalDescription(answer);
-
-        socket.emit("answer", {
-            target: from,
-            answer: pc.localDescription
-        });
-        console.log(`✅ Respuesta enviada a: ${from}`);
-        
-        setTimeout(() => {
-            enviarIceCandidatesPendientes(from);
-        }, 1000);
-        
-    } catch (error) {
-        console.error(`❌ Error al manejar oferta de ${from}:`, error);
-        delete peers[from];
-        conexionesEnProceso.delete(from);
-        delete iceCandidatesQueue[from];
-        ofertasEnviadas.delete(from);
-        ofertasRecibidas.delete(from);
-    }
-}
-
-async function manejarRespuesta(data) {
-    const { from, answer } = data;
-    console.log(`📩 RESPUESTA RECIBIDA DE: ${from}`);
-    const pc = peers[from];
-
-    if (!pc) {
-        console.warn(`⚠️ No hay conexión para respuesta de: ${from}`);
-        return;
-    }
-
-    try {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        console.log(`✅ Descripción remota establecida (respuesta) de ${from}`);
-        conexionesEnProceso.delete(from);
-        
-        enviarIceCandidatesPendientes(from);
-        
-    } catch (error) {
-        console.error(`❌ Error al procesar respuesta de ${from}:`, error);
-        delete peers[from];
-        conexionesEnProceso.delete(from);
-        delete iceCandidatesQueue[from];
-        ofertasEnviadas.delete(from);
-        ofertasRecibidas.delete(from);
-    }
-}
-
-async function manejarIceCandidate(data) {
-    const { from, candidate } = data;
-    console.log(`🧊 ICE candidate RECIBIDO de: ${from}`);
-    const pc = peers[from];
-
-    if (!pc) {
-        console.warn(`⚠️ No hay conexión para ICE candidate de: ${from}, guardando en cola`);
-        if (!iceCandidatesQueue[from]) {
-            iceCandidatesQueue[from] = [];
-        }
-        iceCandidatesQueue[from].push(candidate);
-        return;
-    }
-
-    try {
-        if (!pc.remoteDescription) {
-            console.log(`⏳ remoteDescription no disponible para ${from}, guardando en cola`);
-            if (!iceCandidatesQueue[from]) {
-                iceCandidatesQueue[from] = [];
-            }
-            iceCandidatesQueue[from].push(candidate);
-            return;
-        }
-        
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        console.log(`✅ ICE Candidate agregado de: ${from}`);
-    } catch (error) {
-        console.warn(`⚠️ Error al agregar ICE candidate de ${from}:`, error.message);
-        if (!iceCandidatesQueue[from]) {
-            iceCandidatesQueue[from] = [];
-        }
-        iceCandidatesQueue[from].push(candidate);
-    }
-}
-
-// ============================================
-// 🔄 CONECTAR CON TODOS LOS CLIENTES
-// ============================================
-function conectarConTodos(clientes) {
-    if (reconexionActiva) {
-        console.log("⏳ Reconexión ya en progreso, omitiendo...");
-        return;
-    }
-    
-    const ahora = Date.now();
-    if (ahora - ultimoIntentoReconexion < INTERVALO_MINIMO_RECONEXION) {
-        console.log(`⏳ Esperando ${(INTERVALO_MINIMO_RECONEXION - (ahora - ultimoIntentoReconexion))/1000}s antes de reconectar...`);
-        return;
-    }
-    ultimoIntentoReconexion = ahora;
-    
-    reconexionActiva = true;
-    
-    try {
-        console.log("🔄 CONECTANDO CON TODOS...");
-        console.log("📋 Clientes totales:", clientes);
-        console.log("📋 Mi ID:", socket.id);
-
-        const otros = clientes.filter(id => id !== socket.id);
-        console.log("🎯 Otros clientes:", otros);
-
-        if (otros.length === 0) {
-            console.log("⏳ No hay otros clientes. Esperando...");
-            actualizarEstado("🟢 Conectado - Esperando otro equipo", "conectado");
-            reconexionActiva = false;
-            return;
-        }
-
-        Object.keys(peers).forEach(id => {
-            if (!clientes.includes(id)) {
-                console.log(`🧹 Limpiando conexión a cliente desaparecido: ${id}`);
-                if (peers[id]) {
-                    if (peers[id]._timeoutId) {
-                        clearTimeout(peers[id]._timeoutId);
-                    }
-                    peers[id].close();
-                    delete peers[id];
-                }
-                conexionesEnProceso.delete(id);
-                delete iceCandidatesQueue[id];
-                ofertasEnviadas.delete(id);
-                ofertasRecibidas.delete(id);
-                delete intentosReconexion[id];
-            }
-        });
-
-        otros.forEach(targetId => {
-            if (peers[targetId]) {
-                const pc = peers[targetId];
-                if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
-                    console.log(`ℹ️ Ya conectado con ${targetId}`);
-                    return;
-                } else {
-                    if (pc._timeoutId) {
-                        clearTimeout(pc._timeoutId);
-                    }
-                    pc.close();
-                    delete peers[targetId];
-                    conexionesEnProceso.delete(targetId);
-                    delete iceCandidatesQueue[targetId];
-                    ofertasEnviadas.delete(targetId);
-                    ofertasRecibidas.delete(targetId);
-                }
-            }
-            
-            if (!intentosReconexion[targetId]) {
-                intentosReconexion[targetId] = 0;
-            }
-            
-            if (intentosReconexion[targetId] >= MAX_INTENTOS_POR_PEER) {
-                console.log(`🚫 Máximos intentos para ${targetId}, omitiendo...`);
                 return;
             }
             
-            if (!conexionesEnProceso.has(targetId)) {
-                console.log(`🔗 Iniciando conexión con ${targetId}`);
-                const delay = Math.random() * 2000 + 1000;
-                setTimeout(() => iniciarOferta(targetId), delay);
+            // Verificar si hay un conflicto de oferta duplicada
+            // Si el target ya tiene una oferta pendiente, ignorar
+            if (socket._ultimaOferta && socket._ultimaOferta === target) {
+                console.log(⚠️ Oferta duplicada a ${target}, ignorando...);
+                return;
             }
-        });
-        
-    } catch (error) {
-        console.error("❌ Error en conectarConTodos:", error);
-    } finally {
-        setTimeout(() => {
-            reconexionActiva = false;
-        }, 3000);
-    }
-}
-
-// ============================================
-// 📡 MANEJADORES DE SOCKET.IO
-// ============================================
-socket.on("offer", manejarOferta);
-socket.on("answer", manejarRespuesta);
-socket.on("ice-candidate", manejarIceCandidate);
-
-socket.on("clientes-conectados", (listaClientes) => {
-    console.log("📋 Lista de clientes recibida:", listaClientes);
-    if (typeof conectarConTodos === 'function') {
-        conectarConTodos(listaClientes);
-    }
-});
-
-socket.on("connect", async () => {
-    console.log("✅ Conectado al servidor:", socket.id);
-    actualizarEstado("🟢 Conectado - Esperando otro equipo", "conectado");
-    
-    await obtenerTurnServers();
-    
-    Object.keys(peers).forEach(key => {
-        if (peers[key]) {
-            if (peers[key]._timeoutId) {
-                clearTimeout(peers[key]._timeoutId);
-            }
-            peers[key].close();
-            delete peers[key];
-        }
-    });
-    conexionesEnProceso.clear();
-    Object.keys(iceCandidatesQueue).forEach(key => delete iceCandidatesQueue[key]);
-    ofertasEnviadas.clear();
-    ofertasRecibidas.clear();
-    intentosReconexion = {};
-    reconexionActiva = false;
-    ultimoIntentoReconexion = 0;
-    
-    setTimeout(() => {
-        socket.emit("clientes-conectados");
-    }, 3000);
-});
-
-socket.on("disconnect", () => {
-    console.log("❌ Desconectado del servidor");
-    actualizarEstado("🔴 Desconectado", "desconectado");
-    ocultarVideoRemoto();
-    webRTCIniciado = false;
-    Object.keys(peers).forEach(key => {
-        if (peers[key]) {
-            if (peers[key]._timeoutId) {
-                clearTimeout(peers[key]._timeoutId);
-            }
-            peers[key].close();
-            delete peers[key];
-        }
-    });
-    conexionesEnProceso.clear();
-    Object.keys(iceCandidatesQueue).forEach(key => delete iceCandidatesQueue[key]);
-    ofertasEnviadas.clear();
-    ofertasRecibidas.clear();
-    reconexionActiva = false;
-});
-
-socket.on("nuevo-cliente", (data) => {
-    console.log("🆕 Nuevo cliente conectado:", data.id);
-    if (data.id !== socket.id) {
-        intentosReconexion[data.id] = 0;
-        setTimeout(() => {
-            socket.emit("clientes-conectados");
-        }, 3000);
-    }
-});
-
-socket.on("cliente-desconectado", (data) => {
-    console.log("🔴 Cliente desconectado:", data.id);
-    if (peers[data.id]) {
-        if (peers[data.id]._timeoutId) {
-            clearTimeout(peers[data.id]._timeoutId);
-        }
-        peers[data.id].close();
-        delete peers[data.id];
-    }
-    conexionesEnProceso.delete(data.id);
-    delete iceCandidatesQueue[data.id];
-    ofertasEnviadas.delete(data.id);
-    ofertasRecibidas.delete(data.id);
-    delete intentosReconexion[data.id];
-    ocultarVideoRemoto();
-    webRTCIniciado = false;
-    setTimeout(() => {
-        socket.emit("clientes-conectados");
-    }, 2000);
-});
-
-// ============================================
-// 🎥 INICIAR CÁMARA
-// ============================================
-async function iniciarCamara() {
-    try {
-        console.log("📷 Solicitando cámara y micrófono...");
-        
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-                width: { ideal: 640 }, 
-                height: { ideal: 480 },
-                facingMode: "user"
-            },
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                sampleRate: 48000,
-                sampleSize: 16,
-                channelCount: 1
-            }
-        });
-        
-        streamLocal = stream;
-        
-        const audioTracks = stream.getAudioTracks();
-        console.log("🎤 Tracks de audio disponibles:", audioTracks.length);
-        audioTracks.forEach((track, i) => {
-            track.enabled = true;
-            console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
-        });
-        
-        const videoTracks = stream.getVideoTracks();
-        console.log("📹 Tracks de video disponibles:", videoTracks.length);
-        videoTracks.forEach((track, i) => {
-            track.enabled = true;
-            console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
-        });
-        
-        // 🔥 ASIGNAR STREAM AL VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
-        video.srcObject = stream;
-        video.style.display = "block";
-        await new Promise(resolve => {
-            video.onloadedmetadata = () => {
-                video.play();
-                resolve();
-            };
-        });
-        
-        console.log("📹 Cámara iniciada correctamente");
-        console.log("📐 Resolución:", video.videoWidth, "x", video.videoHeight);
-        console.log("🎤 Audio capturado correctamente");
-        
-        probarAudioLocal(stream);
-
-        await obtenerTurnServers();
-
-        setTimeout(() => {
-            socket.emit("clientes-conectados");
-        }, 3000);
-
-    } catch (error) {
-        console.error("❌ Error al acceder a cámara/micrófono:", error);
-        
-        try {
-            console.log("🔄 Intentando con configuración básica...");
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: true
+            
+            // Guardar la última oferta para evitar duplicados
+            socket._ultimaOferta = target;
+            
+            // 🔥 REENVIAR LA OFERTA AL TARGET
+            io.to(target).emit("offer", {
+                from: socket.id,
+                offer: offer
             });
-            streamLocal = stream;
-            video.srcObject = stream;
-            video.style.display = "block";
-            await new Promise(resolve => {
-                video.onloadedmetadata = () => {
-                    video.play();
-                    resolve();
-                };
+            console.log(✅ Oferta REENVIADA a ${target});
+        });
+
+        // ============================================
+        // 🔥 MANEJAR RESPUESTA WEBRTC (CORREGIDO)
+        // ============================================
+        socket.on("answer", (data) => {
+            const { target, answer } = data;
+            console.log(📤 RESPUESTA de ${socket.id} para ${target});
+            
+            if (!clientes[target]) {
+                console.log(❌ Target ${target} no existe);
+                socket.emit("error", { 
+                    message: Target ${target} no existe,
+                    type: "answer"
+                });
+                return;
+            }
+            
+            // Limpiar la oferta guardada al recibir respuesta
+            if (socket._ultimaOferta === target) {
+                socket._ultimaOferta = null;
+            }
+            
+            // 🔥 REENVIAR LA RESPUESTA AL TARGET
+            io.to(target).emit("answer", {
+                from: socket.id,
+                answer: answer
             });
-            console.log("📹 Cámara iniciada en modo básico");
-            probarAudioLocal(stream);
-            
-            await obtenerTurnServers();
-            
-            setTimeout(() => {
-                socket.emit("clientes-conectados");
-            }, 3000);
-            
-        } catch (fallbackError) {
-            console.error("❌ Error en modo básico:", fallbackError);
-            alert("⚠️ No se pudo acceder a la cámara o micrófono.\n" +
-                  "Verifica que estén conectados y permitidos.");
-            actualizarEstado("🔴 Error de cámara", "desconectado");
-        }
-    }
-}
+            console.log(✅ Respuesta REENVIADA a ${target});
+        });
 
-// ============================================
-// 🔄 FUNCIÓN DE RECONEXIÓN MANUAL
-// ============================================
-window.forzarReconexion = () => {
-    console.log("🔄 Forzando reconexión...");
-    ocultarVideoRemoto();
-    webRTCIniciado = false;
-    reconexionActiva = false;
-    conexionesEnProceso.clear();
-    Object.keys(iceCandidatesQueue).forEach(key => delete iceCandidatesQueue[key]);
-    ofertasEnviadas.clear();
-    ofertasRecibidas.clear();
-    Object.keys(intentosReconexion).forEach(key => {
-        intentosReconexion[key] = 0;
-    });
-    Object.keys(peers).forEach(key => {
-        if (peers[key]) {
-            if (peers[key]._timeoutId) {
-                clearTimeout(peers[key]._timeoutId);
+        // ============================================
+        // 🔥 MANEJAR ICE CANDIDATE (CORREGIDO)
+        // ============================================
+        socket.on("ice-candidate", (data) => {
+            const { target, candidate } = data;
+            console.log(🧊 ICE CANDIDATE de ${socket.id} para ${target});
+            
+            if (!clientes[target]) {
+                console.log(❌ Target ${target} no existe, guardando en caché);
+                if (!iceCandidatesCache[target]) {
+                    iceCandidatesCache[target] = [];
+                }
+                iceCandidatesCache[target].push({
+                    from: socket.id,
+                    candidate: candidate
+                });
+                console.log(📦 ICE candidate guardado en caché para ${target});
+                return;
             }
-            peers[key].close();
-            delete peers[key];
-        }
-    });
-    ultimoIntentoReconexion = 0;
-    setTimeout(() => {
-        socket.emit("clientes-conectados");
-    }, 1000);
-};
+            
+            // 🔥 REENVIAR EL ICE CANDIDATE AL TARGET
+            io.to(target).emit("ice-candidate", {
+                from: socket.id,
+                candidate: candidate
+            });
+            console.log(✅ ICE REENVIADO a ${target});
+        });
 
-console.log("💡 Para forzar reconexión: forzarReconexion()");
+        // ============================================
+        // MANEJAR PING/PONG
+        // ============================================
+        socket.on("ping", (data) => {
+            console.log(🏓 PING de ${socket.id});
+            socket.emit("pong", {
+                from: socket.id,
+                message: "pong",
+                timestamp: new Date().toISOString()
+            });
+        });
 
-// ============================================
-// 📊 FUNCIÓN DE DIAGNÓSTICO
-// ============================================
-window.estadoConexiones = () => {
-    console.log("📊 ESTADO DE CONEXIONES:");
-    console.log("📊 Conexiones activas:", Object.keys(peers).length);
-    Object.keys(peers).forEach(id => {
-        const pc = peers[id];
-        console.log(`  ${id}: ${pc.connectionState} (${pc.iceConnectionState})`);
-    });
-    console.log("📊 En proceso:", Array.from(conexionesEnProceso));
-    console.log("📊 Intentos:", intentosReconexion);
-    console.log("📊 Ofertas enviadas:", Array.from(ofertasEnviadas));
-    console.log("📊 Ofertas recibidas:", Array.from(ofertasRecibidas));
-    console.log("📊 Reconexión activa:", reconexionActiva);
-    console.log("📊 Video remoto activo:", videoRemotoActivo);
-    return {
-        peers: Object.keys(peers).length,
-        enProceso: Array.from(conexionesEnProceso),
-        intentos: intentosReconexion,
-        reconexionActiva: reconexionActiva,
-        videoRemotoActivo: videoRemotoActivo
-    };
-};
-
-console.log("💡 Para ver estado: estadoConexiones()");
-
-// ============================================
-// 🔥 FUNCIÓN PARA FORZAR OFERTA MANUAL
-// ============================================
-window.forzarOferta = (targetId) => {
-    if (!targetId) {
-        console.log("❌ Especifica el ID del target. Ejemplo: forzarOferta('ID_DEL_CLIENTE')");
-        console.log("📋 IDs disponibles:", Object.keys(peers));
-        return;
-    }
-    
-    console.log(`🔥 Forzando oferta a: ${targetId}`);
-    ofertasEnviadas.delete(targetId);
-    ofertasRecibidas.delete(targetId);
-    delete intentosReconexion[targetId];
-    
-    if (peers[targetId]) {
-        if (peers[targetId]._timeoutId) {
-            clearTimeout(peers[targetId]._timeoutId);
-        }
-        peers[targetId].close();
-        delete peers[targetId];
-    }
-    conexionesEnProceso.delete(targetId);
-    delete iceCandidatesQueue[targetId];
-    
-    setTimeout(() => {
-        iniciarOferta(targetId);
-    }, 1000);
-};
-
-console.log("💡 Para forzar oferta: forzarOferta('ID_DEL_CLIENTE')");
-
-// ============================================
-// 🚀 INICIO
-// ============================================
-window.addEventListener("load", () => {
-    console.log("🚀 Iniciando Ventana Digital...");
-    iniciarCamara();
-});
-
-window.addEventListener("beforeunload", () => {
-    Object.keys(peers).forEach(key => {
-        if (peers[key]) {
-            if (peers[key]._timeoutId) {
-                clearTimeout(peers[key]._timeoutId);
+        // ============================================
+        // MANEJAR DESCONEXIÓN
+        // ============================================
+        socket.on("disconnect", () => {
+            console.log("=================================");
+            console.log("❌ Cliente desconectado:", socket.id);
+            console.log("=================================");
+            
+            // Limpiar oferta guardada
+            if (socket._ultimaOferta) {
+                socket._ultimaOferta = null;
             }
-            peers[key].close();
-            delete peers[key];
+            
+            // Eliminar cliente
+            delete clientes[socket.id];
+            
+            // 🔥 NOTIFICAR A TODOS LOS CLIENTES
+            io.emit("cliente-desconectado", {
+                id: socket.id,
+                total: Object.keys(clientes).length
+            });
+            
+            console.log(📋 Clientes restantes: ${Object.keys(clientes).length});
+            
+            // 🔥 Limpiar caché de ICE candidates para este cliente
+            if (iceCandidatesCache[socket.id]) {
+                delete iceCandidatesCache[socket.id];
+            }
+        });
+
+        // ============================================
+        // MANEJAR ERRORES
+        // ============================================
+        socket.on("error", (error) => {
+            console.error(❌ Error en socket ${socket.id}:, error);
+        });
+
+    });
+
+    // ============================================
+    // 📊 ESTADÍSTICAS DEL SERVIDOR
+    // ============================================
+    setInterval(() => {
+        const total = Object.keys(clientes).length;
+        console.log(📊 Estado: ${total} clientes conectados);
+        if (total > 0) {
+            console.log(📋 IDs: ${Object.keys(clientes).join(", ")});
         }
-    });
-    if (streamLocal) {
-        streamLocal.getTracks().forEach(track => track.stop());
-    }
-    if (audioRemoto) {
-        audioRemoto.pause();
-        audioRemoto.srcObject = null;
-    }
-    if (audioContext) {
-        audioContext.close();
-    }
-});
-
-// ============================================
-// 🏓 PRUEBA DE PING
-// ============================================
-socket.on("connect", () => {
-    setTimeout(() => {
-        console.log("🏓 Enviando ping de prueba...");
-        socket.emit("ping", { target: socket.id });
-    }, 3000);
-});
-
-socket.on("pong", (data) => {
-    console.log("🏓 PONG recibido del servidor:", data);
-});
-
-// ============================================
-// ⏰ RECONEXIÓN AUTOMÁTICA PERIÓDICA
-// ============================================
-setInterval(() => {
-    if (reconexionActiva) {
-        return;
-    }
-    
-    const conexionesActivas = Object.keys(peers).filter(id => {
-        const pc = peers[id];
-        return pc && (pc.connectionState === "connected" || pc.connectionState === "connecting");
-    });
-    
-    if (conexionesActivas.length === 0 && socket.connected) {
-        console.log("🔄 Sin conexiones activas, verificando clientes...");
-        socket.emit("clientes-conectados");
-    }
-}, 15000);
+    }, 30000);
+};

@@ -123,7 +123,7 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 // ============================================
-// 🔥 ACTIVAR AUDIO
+// 🔥 ACTIVAR AUDIO AUTOMÁTICAMENTE
 // ============================================
 function activarAudio() {
     if (audioActivado) return;
@@ -135,6 +135,7 @@ function activarAudio() {
             .then(() => {
                 audioActivado = true;
                 console.log("✅ Audio activado correctamente al 80%");
+                // Ocultar botón si existe
                 const btn = document.getElementById('btn-activar-audio');
                 if (btn) {
                     btn.textContent = "✅ Audio Activado";
@@ -144,7 +145,12 @@ function activarAudio() {
             })
             .catch(e => {
                 console.warn("⚠️ Error activando audio:", e.message);
-                crearBotonAudio();
+                // Intentar de nuevo después de 1 segundo
+                setTimeout(() => {
+                    if (!audioActivado) {
+                        audioRemoto.play().catch(() => {});
+                    }
+                }, 1000);
             });
     }
     
@@ -154,62 +160,7 @@ function activarAudio() {
 }
 
 // ============================================
-// 🔥 CREAR BOTÓN PARA ACTIVAR AUDIO
-// ============================================
-function crearBotonAudio() {
-    if (document.getElementById('btn-activar-audio')) return;
-    
-    const btn = document.createElement('button');
-    btn.id = 'btn-activar-audio';
-    btn.textContent = '🔊 Activar Audio';
-    btn.style.cssText = `
-        position: fixed;
-        bottom: 180px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 1000;
-        padding: 16px 40px;
-        background: #00aaff;
-        color: #ffffff;
-        border: none;
-        border-radius: 16px;
-        font-size: 20px;
-        font-weight: bold;
-        cursor: pointer;
-        box-shadow: 0 4px 40px rgba(0,170,255,0.6);
-        font-family: Arial, sans-serif;
-        transition: all 0.3s ease;
-    `;
-    document.body.appendChild(btn);
-    
-    btn.addEventListener('click', function() {
-        console.log("🔊 Activando audio manualmente...");
-        if (audioRemoto) {
-            audioRemoto.play()
-                .then(() => {
-                    audioActivado = true;
-                    console.log("✅ Audio activado!");
-                    btn.textContent = "✅ Audio Activado";
-                    btn.style.background = "#00cc66";
-                    setTimeout(() => btn.remove(), 3000);
-                })
-                .catch(e => {
-                    console.warn("⚠️ Error:", e.message);
-                    btn.textContent = "❌ Clic nuevamente";
-                    btn.style.background = "#ff4444";
-                    setTimeout(() => {
-                        btn.textContent = "🔊 Activar Audio";
-                        btn.style.background = "#00aaff";
-                    }, 2000);
-                });
-        }
-    });
-    
-    console.log("🔔 Botón de activación de audio creado");
-}
-
-// ============================================
-// 🔥 MOSTRAR VIDEO REMOTO
+// 🔥 MOSTRAR VIDEO REMOTO (AUDIO AUTOMÁTICO)
 // ============================================
 function mostrarVideoRemoto(stream, fromId) {
     console.log(`📹 ASIGNANDO VIDEO REMOTO DE: ${fromId}`);
@@ -225,6 +176,7 @@ function mostrarVideoRemoto(stream, fromId) {
     console.log(`🎤 Audio tracks remotos: ${audioTracks.length}`);
     console.log(`📹 Video tracks remotos: ${videoTracks.length}`);
     
+    // HABILITAR TODOS LOS TRACKS REMOTOS
     audioTracks.forEach(track => {
         track.enabled = true;
         console.log(`✅ Audio remoto habilitado: ${track.label}`);
@@ -234,6 +186,7 @@ function mostrarVideoRemoto(stream, fromId) {
         console.log(`✅ Video remoto habilitado: ${track.label}`);
     });
 
+    // VIDEO: se muestra en pantalla grande
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     videoRemoto.muted = false;
@@ -241,22 +194,18 @@ function mostrarVideoRemoto(stream, fromId) {
     video.style.display = "block";
     videoRemotoActivo = true;
 
+    // AUDIO: se reproduce por separado
     audioRemoto.srcObject = stream;
     audioRemoto.muted = false;
     audioRemoto.volume = 0.8;
     
+    // Intentar reproducir audio automáticamente
     console.log("🔊 Intentando reproducir audio remoto...");
-    audioRemoto.play()
-        .then(() => {
-            audioActivado = true;
-            console.log("✅ Audio remoto reproduciéndose al 80%");
-            actualizarEstado("🟢 Conectado - Audio y Video en vivo", "conectado");
-        })
-        .catch(e => {
-            console.warn("⚠️ Error reproduciendo audio:", e.message);
-            setTimeout(crearBotonAudio, 1000);
-        });
+    setTimeout(() => {
+        activarAudio();
+    }, 500);
 
+    // REPRODUCIR VIDEO
     let intentos = 0;
     const maxIntentos = 5;
     
@@ -267,6 +216,7 @@ function mostrarVideoRemoto(stream, fromId) {
         videoRemoto.play()
             .then(() => {
                 console.log("✅ Video reproduciéndose");
+                actualizarEstado("🟢 Conectado - Audio y Video en vivo", "conectado");
             })
             .catch(e => {
                 console.warn(`⚠️ Error video (${intentos}):`, e.message);
@@ -294,8 +244,6 @@ function ocultarVideoRemoto() {
         audioRemoto.srcObject = null;
         audioActivado = false;
     }
-    const btn = document.getElementById('btn-activar-audio');
-    if (btn) btn.remove();
 }
 
 // ============================================
@@ -457,6 +405,7 @@ async function crearPeerConnection(targetId) {
             delete iceCandidatesQueue[targetId];
             ofertasEnviadas.delete(targetId);
             intentosReconexion[targetId] = 0;
+            // Intentar activar audio cuando la conexión se establece
             setTimeout(() => activarAudio(), 1000);
         } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
             console.log(`❌ Conexión perdida con ${targetId}`);
@@ -723,7 +672,7 @@ async function manejarIceCandidate(data) {
 }
 
 // ============================================
-// 🔄 CONECTAR CON TODOS LOS CLIENTES (CORREGIDO)
+// 🔄 CONECTAR CON TODOS LOS CLIENTES
 // ============================================
 function conectarConTodos(clientes) {
     if (reconexionActiva) {
@@ -774,7 +723,7 @@ function conectarConTodos(clientes) {
         });
 
         otros.forEach(targetId => {
-            // 🔥 DECIDIR QUIEN OFERTA
+            // Decidir quien oferta
             const soyOferenteLocal = soyOferente(socket.id, targetId);
             
             if (peers[targetId]) {
@@ -1109,47 +1058,6 @@ window.estadoConexiones = () => {
         videoRemotoActivo: videoRemotoActivo,
         audioActivado: audioActivado
     };
-};
-
-window.verificarAudio = function() {
-    console.log("🔊 ===== ESTADO DEL AUDIO =====");
-    console.log("📌 Elemento audioRemoto:");
-    console.log("  - Existe:", !!audioRemoto);
-    console.log("  - Pausado:", audioRemoto ? audioRemoto.paused : 'no existe');
-    console.log("  - Volumen:", audioRemoto ? audioRemoto.volume : 'no existe');
-    console.log("  - Muted:", audioRemoto ? audioRemoto.muted : 'no existe');
-    console.log("  - Tiene srcObject:", audioRemoto ? !!audioRemoto.srcObject : 'no existe');
-    
-    if (audioRemoto && audioRemoto.srcObject) {
-        const tracks = audioRemoto.srcObject.getAudioTracks();
-        console.log("  - Tracks de audio:", tracks.length);
-        tracks.forEach((t, i) => {
-            console.log(`    Track ${i}: ${t.label}`);
-            console.log(`      Enabled: ${t.enabled}`);
-            console.log(`      Muted: ${t.muted}`);
-        });
-    }
-    
-    console.log("📌 Stream Local:");
-    if (streamLocal) {
-        const tracks = streamLocal.getAudioTracks();
-        console.log("  - Tracks de audio local:", tracks.length);
-        tracks.forEach((t, i) => {
-            console.log(`    Track ${i}: ${t.label}`);
-            console.log(`      Enabled: ${t.enabled}`);
-            console.log(`      Muted: ${t.muted}`);
-        });
-    } else {
-        console.log("  ❌ No hay stream local");
-    }
-    
-    if (audioRemoto && audioRemoto.paused) {
-        console.log("  🔴 AUDIO PAUSADO - Ejecuta: audioRemoto.play()");
-    } else if (audioRemoto && !audioRemoto.paused) {
-        console.log("  🟢 AUDIO REPRODUCIÉNDOSE");
-    }
-    
-    console.log("🔊 ===== FIN ESTADO ===== ");
 };
 
 // ============================================

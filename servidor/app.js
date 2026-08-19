@@ -34,7 +34,7 @@ app.use(cors({
 app.use(express.json());
 
 // ============================================
-// 🔥 RUTAS TURN (ESTO ES LO QUE FALTABA)
+// 🔥 RUTAS TURN
 // ============================================
 
 // Ruta principal de TURN
@@ -140,7 +140,7 @@ app.use("/socket.io", express.static(
     path.join(__dirname, "node_modules/socket.io/client-dist")
 ));
 
-// Servir los archivos del cliente (HTML, CSS, JS)
+// Servir los archivos del cliente
 app.use(express.static(path.join(__dirname, "../cliente")));
 
 // Ruta principal para servir index.html
@@ -199,7 +199,6 @@ server.listen(PORT, "0.0.0.0", () => {
 // MANEJO DE ERRORES Y SEÑALES
 // ============================================
 
-// Manejo de errores no capturados
 process.on('uncaughtException', (err) => {
     console.error('❌ Error no capturado:', err);
 });
@@ -208,7 +207,6 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ Promesa rechazada no manejada:', reason);
 });
 
-// Señales de terminación
 process.on('SIGTERM', () => {
     console.log('🛑 Recibida señal SIGTERM, cerrando servidor...');
     server.close(() => {

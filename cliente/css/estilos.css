@@ -1,7 +1,6 @@
 /* ============================================
    ESTILOS PRINCIPALES
    ============================================ */
-
 * {
     margin: 0;
     padding: 0;
@@ -12,7 +11,8 @@ body {
     background: #000;
     overflow: hidden;
     height: 100vh;
-    font-family: Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    user-select: none;
 }
 
 /* ============================================
@@ -25,7 +25,7 @@ body {
     width: 100vw;
     height: 100vh;
     object-fit: cover;
-    background: #000;
+    background: #0a0a0a;
     z-index: 1;
 }
 
@@ -40,8 +40,8 @@ body {
     height: 150px;
     object-fit: cover;
     border-radius: 12px;
-    border: 3px solid rgba(255, 255, 255, 0.8);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+    border: 3px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
     z-index: 10;
     background: #1a1a1a;
     cursor: pointer;
@@ -51,6 +51,7 @@ body {
 #video:hover {
     transform: scale(1.05);
     border-color: #00aaff;
+    box-shadow: 0 8px 40px rgba(0, 170, 255, 0.3);
 }
 
 /* ============================================
@@ -61,30 +62,33 @@ body {
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    padding: 10px 24px;
+    padding: 10px 28px;
     border-radius: 30px;
     font-size: 14px;
     font-weight: 600;
     z-index: 100;
     color: white;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.75);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     transition: all 0.3s ease;
     text-align: center;
-    user-select: none;
+    letter-spacing: 0.3px;
 }
 
 #estado.inicializando {
-    background: rgba(255, 165, 0, 0.8);
+    background: rgba(255, 165, 0, 0.85);
+    border-color: rgba(255, 165, 0, 0.4);
 }
 
 #estado.conectado {
-    background: rgba(0, 200, 0, 0.8);
+    background: rgba(0, 200, 80, 0.85);
+    border-color: rgba(0, 200, 80, 0.4);
 }
 
 #estado.desconectado {
-    background: rgba(255, 0, 0, 0.8);
+    background: rgba(255, 50, 50, 0.85);
+    border-color: rgba(255, 50, 50, 0.4);
 }
 
 /* ============================================
@@ -96,17 +100,18 @@ body {
     left: 50%;
     transform: translateX(-50%);
     z-index: 20;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(10px);
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(12px);
     padding: 16px 24px;
     border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
-    gap: 24px;
+    gap: 20px;
     align-items: center;
     flex-wrap: wrap;
     justify-content: center;
-    min-width: 300px;
+    min-width: 280px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
 .control-group {
@@ -116,13 +121,14 @@ body {
 }
 
 #controles label {
-    color: #fff;
-    font-size: 14px;
+    color: #ccc;
+    font-size: 13px;
     font-weight: 500;
+    letter-spacing: 0.2px;
 }
 
 #controles input[type="range"] {
-    width: 120px;
+    width: 100px;
     height: 4px;
     -webkit-appearance: none;
     appearance: none;
@@ -141,33 +147,42 @@ body {
     background: #fff;
     cursor: pointer;
     border: 2px solid #00aaff;
-    box-shadow: 0 2px 8px rgba(0, 170, 255, 0.4);
+    box-shadow: 0 2px 12px rgba(0, 170, 255, 0.4);
+    transition: all 0.2s ease;
+}
+
+#controles input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
 }
 
 #volumen-label {
     color: #fff;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     min-width: 40px;
     text-align: center;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
 }
 
 #controles button {
     padding: 8px 16px;
     border: none;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.1);
     color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    letter-spacing: 0.3px;
 }
 
 #controles button:hover {
-    background: rgba(255, 255, 255, 0.25);
-    transform: scale(1.05);
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
 }
 
 #controles button:active {
@@ -175,21 +190,30 @@ body {
 }
 
 #btn-silenciar {
-    background: rgba(255, 100, 100, 0.3);
-    border-color: rgba(255, 100, 100, 0.4);
+    background: rgba(255, 100, 100, 0.2);
+    border-color: rgba(255, 100, 100, 0.3);
 }
 
 #btn-silenciar:hover {
-    background: rgba(255, 100, 100, 0.5);
+    background: rgba(255, 100, 100, 0.35);
 }
 
 #btn-reconectar {
-    background: rgba(100, 200, 255, 0.3);
-    border-color: rgba(100, 200, 255, 0.4);
+    background: rgba(100, 200, 255, 0.2);
+    border-color: rgba(100, 200, 255, 0.3);
 }
 
 #btn-reconectar:hover {
-    background: rgba(100, 200, 255, 0.5);
+    background: rgba(100, 200, 255, 0.35);
+}
+
+#btn-diagnostico {
+    background: rgba(200, 200, 100, 0.2);
+    border-color: rgba(200, 200, 100, 0.3);
+}
+
+#btn-diagnostico:hover {
+    background: rgba(200, 200, 100, 0.35);
 }
 
 /* ============================================
@@ -201,15 +225,17 @@ body {
         height: 90px;
         bottom: 10px;
         right: 10px;
+        border-radius: 8px;
     }
 
     #controles {
-        bottom: 120px;
+        bottom: 110px;
         padding: 12px 16px;
         min-width: unset;
-        width: 90%;
-        gap: 12px;
+        width: 92%;
+        gap: 10px;
         flex-direction: column;
+        border-radius: 12px;
     }
 
     .control-group {
@@ -222,8 +248,32 @@ body {
     }
 
     #estado {
-        font-size: 12px;
+        font-size: 11px;
         padding: 6px 16px;
         top: 10px;
+        max-width: 90%;
+    }
+
+    #controles button {
+        padding: 6px 12px;
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 480px) {
+    #video {
+        width: 90px;
+        height: 68px;
+        bottom: 70px;
+        right: 8px;
+    }
+
+    #controles {
+        bottom: 90px;
+        padding: 10px 12px;
+    }
+
+    #controles input[type="range"] {
+        width: 60px;
     }
 }

@@ -23,7 +23,7 @@ let streamLocal = null;
 let webRTCIniciado = false;
 const conexionesEnProceso = new Set();
 const iceCandidatesQueue = {};
-let turnServers = []; // ✅ CAMBIADO: const → let
+let turnServers = []; // ✅ CAMBIADO A let
 let audioContext = null;
 const ofertasEnviadas = new Set();
 const ofertasRecibidas = new Set();
@@ -42,20 +42,19 @@ let videoRemotoActivo = false;
 // 🎬 CONFIGURAR VIDEOS
 // ============================================
 video.style.display = "none";
-
 videoRemoto.style.display = "none";
 
 // ============================================
-// 🎧 AUDIO REMOTO SEPARADO (EVITA ECO)
+// 🎧 AUDIO REMOTO SEPARADO
 // ============================================
 const audioRemoto = document.createElement("audio");
 audioRemoto.id = "audio-remoto";
 audioRemoto.autoplay = true;
 audioRemoto.muted = false;
-audioRemoto.volume = 0.4; // 🔥 40% - volumen óptimo como en Zoom
+audioRemoto.volume = 0.5; // 🔥 50% para mejor audibilidad
 audioRemoto.style.display = "none";
 document.body.appendChild(audioRemoto);
-console.log("🎧 Audio remoto configurado al 40%");
+console.log("🎧 Audio remoto configurado al 50%");
 
 // ============================================
 // 🔥 OBTENER CREDENCIALES TURN
@@ -116,7 +115,7 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 // ============================================
-// 🔥 MOSTRAR VIDEO REMOTO (ESTILO ZOOM/TEAMS)
+// 🔥 MOSTRAR VIDEO REMOTO (CON AUDIO FORZADO)
 // ============================================
 function mostrarVideoRemoto(stream, fromId) {
     console.log(`📹 ASIGNANDO VIDEO REMOTO DE: ${fromId}`);
@@ -145,47 +144,54 @@ function mostrarVideoRemoto(stream, fromId) {
     // 🔥 VIDEO: se muestra en pantalla grande
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
-    videoRemoto.muted = false;  // ✅ El video NO está mudo
-    videoRemoto.volume = 0;     // Volumen a 0 (el audio va por separado)
+    videoRemoto.muted = false;
+    videoRemoto.volume = 0;
     video.style.display = "block";
     videoRemotoActivo = true;
 
-    // 🔥 AUDIO: se reproduce por separado (como en Zoom)
+    // 🔥 AUDIO: se reproduce por separado
     audioRemoto.srcObject = stream;
     audioRemoto.muted = false;
-    audioRemoto.volume = 0.4;   // 40% - volumen óptimo
+    audioRemoto.volume = 0.5;
+    
+    // 🔥 FORZAR REPRODUCCIÓN DEL AUDIO
+    console.log("🔊 Intentando reproducir audio...");
+    audioRemoto.play()
+        .then(() => {
+            console.log("✅ Audio reproduciéndose correctamente al 50%");
+        })
+        .catch(e => {
+            console.warn("⚠️ Error reproduciendo audio:", e.message);
+            // Si falla, intentar con clic del usuario
+            document.addEventListener('click', function clickHandler() {
+                audioRemoto.play().catch(() => {});
+                document.removeEventListener('click', clickHandler);
+                console.log("✅ Audio activado por clic");
+            }, { once: true });
+        });
 
-    // 🔥 REPRODUCIR CON REINTENTOS
+    // 🔥 REPRODUCIR VIDEO
     let intentos = 0;
     const maxIntentos = 5;
     
-    function intentarReproducir() {
+    function intentarReproducirVideo() {
         intentos++;
-        console.log(`🔄 Intento reproducción ${intentos}/${maxIntentos}`);
+        console.log(`🔄 Intento video ${intentos}/${maxIntentos}`);
         
-        Promise.all([
-            videoRemoto.play().catch(() => {}),
-            audioRemoto.play().catch(() => {})
-        ]).then(() => {
-            console.log("🔊 Audio (40%) y Video reproduciéndose");
-            actualizarEstado("🟢 Conectado - Audio y Video en vivo", "conectado");
-        }).catch(e => {
-            console.warn(`⚠️ Error reproducción (${intentos}):`, e.message);
-            if (intentos < maxIntentos) {
-                setTimeout(intentarReproducir, 1000);
-            } else {
-                console.log("💡 Haz clic en la página para activar el audio");
-                document.addEventListener('click', function clickHandler() {
-                    audioRemoto.play().catch(() => {});
-                    videoRemoto.play().catch(() => {});
-                    document.removeEventListener('click', clickHandler);
-                    console.log("✅ Audio activado por clic");
-                }, { once: true });
-            }
-        });
+        videoRemoto.play()
+            .then(() => {
+                console.log("✅ Video reproduciéndose");
+                actualizarEstado("🟢 Conectado - Audio y Video en vivo", "conectado");
+            })
+            .catch(e => {
+                console.warn(`⚠️ Error video (${intentos}):`, e.message);
+                if (intentos < maxIntentos) {
+                    setTimeout(intentarReproducirVideo, 1000);
+                }
+            });
     }
 
-    setTimeout(intentarReproducir, 500);
+    setTimeout(intentarReproducirVideo, 500);
     console.log(`✅ Video remoto de ${fromId} asignado`);
 }
 
@@ -286,7 +292,6 @@ async function crearPeerConnection(targetId) {
         iceTransportPolicy: "all"
     });
 
-    // AGREGAR TRACKS LOCALES
     const audioTracks = streamLocal.getAudioTracks();
     const videoTracks = streamLocal.getVideoTracks();
     
@@ -306,7 +311,6 @@ async function crearPeerConnection(targetId) {
         pc.addTrack(track, streamLocal);
     });
 
-    // MANEJAR TRACKS REMOTOS
     pc.ontrack = (event) => {
         console.log(`📥 Track remoto recibido de: ${targetId}`);
         console.log(`📥 Track kind: ${event.track.kind}`);
@@ -820,13 +824,12 @@ socket.on("cliente-desconectado", (data) => {
 });
 
 // ============================================
-// 🎥 INICIAR CÁMARA (COMO ZOOM - SIN ECO)
+// 🎥 INICIAR CÁMARA
 // ============================================
 async function iniciarCamara() {
     try {
         console.log("📷 Solicitando cámara y micrófono...");
         
-        // 🔥 CONFIGURACIÓN DE AUDIO COMO ZOOM/TEAMS
         const stream = await navigator.mediaDevices.getUserMedia({
             video: { 
                 width: { ideal: 640 }, 
@@ -834,9 +837,9 @@ async function iniciarCamara() {
                 facingMode: "user"
             },
             audio: {
-                echoCancellation: true,    // 🔥 CANCELA ECO
-                noiseSuppression: true,     // 🔥 REDUCE RUIDO
-                autoGainControl: true,      // 🔥 CONTROL DE GANANCIA
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
                 sampleRate: 48000,
                 sampleSize: 16,
                 channelCount: 1
@@ -859,12 +862,10 @@ async function iniciarCamara() {
             console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
         });
         
-        // 🔥 VIDEO LOCAL (pantalla pequeña)
         video.srcObject = stream;
         video.style.display = "block";
-        video.muted = true;  // 🔇 IMPORTANTE: MUTEADO PARA EVITAR ECO
+        video.muted = true;
         video.volume = 0;
-        
         await new Promise(resolve => {
             video.onloadedmetadata = () => {
                 video.play();
@@ -927,23 +928,22 @@ async function iniciarCamara() {
 }
 
 // ============================================
-// 🎛️ CONTROL DE VOLUMEN MANUAL (COMO ZOOM)
+// 🎛️ CONTROL DE VOLUMEN
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
     const controlVolumen = document.getElementById('volumen');
     const labelVolumen = document.getElementById('volumen-label');
     const btnSilenciar = document.getElementById('btn-silenciar');
-    const btnReconectar = document.getElementById('btn-reconectar');
     
     if (controlVolumen) {
-        controlVolumen.value = 0.4;
+        controlVolumen.value = 0.5;
         controlVolumen.addEventListener('input', (e) => {
             const vol = parseFloat(e.target.value);
             audioRemoto.volume = vol;
             if (labelVolumen) {
                 labelVolumen.textContent = `${Math.round(vol * 100)}%`;
             }
-            console.log(`🔊 Volumen ajustado a: ${Math.round(vol * 100)}%`);
+            console.log(`🔊 Volumen: ${Math.round(vol * 100)}%`);
         });
     }
     
@@ -955,10 +955,6 @@ document.addEventListener('DOMContentLoaded', () => {
             btnSilenciar.textContent = silenciado ? '🔊 Activar sonido' : '🔇 Silenciar';
             console.log(`🔇 Audio ${silenciado ? 'silenciado' : 'activado'}`);
         });
-    }
-    
-    if (btnReconectar) {
-        btnReconectar.addEventListener('click', forzarReconexion);
     }
 });
 

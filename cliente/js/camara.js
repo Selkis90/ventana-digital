@@ -37,32 +37,12 @@ const intentosReconexion = {};
 const MAX_INTENTOS_POR_PEER = 3;
 let reconexionActiva = false;
 let videoRemotoActivo = false;
-let audioActivado = false;
-
-// ============================================
-// 🔥 FUNCIÓN PARA DECIDIR QUIEN OFERTA
-// ============================================
-function soyOferente(miId, otroId) {
-    return miId < otroId;
-}
 
 // ============================================
 // 🎬 CONFIGURAR VIDEOS
 // ============================================
 video.style.display = "none";
 videoRemoto.style.display = "none";
-
-// ============================================
-// 🎧 AUDIO REMOTO SEPARADO
-// ============================================
-const audioRemoto = document.createElement("audio");
-audioRemoto.id = "audio-remoto";
-audioRemoto.autoplay = true;
-audioRemoto.muted = false;
-audioRemoto.volume = 0.8;
-audioRemoto.style.display = "none";
-document.body.appendChild(audioRemoto);
-console.log("🎧 Audio remoto configurado al 80%");
 
 // ============================================
 // 🔥 OBTENER CREDENCIALES TURN
@@ -123,37 +103,14 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 // ============================================
-// 🔥 ACTIVAR AUDIO AUTOMÁTICAMENTE (SIN BOTÓN)
+// 🔥 FUNCIÓN PARA DECIDIR QUIEN OFERTA
 // ============================================
-function activarAudio() {
-    if (audioActivado) return;
-    
-    console.log("🔊 Intentando activar audio automáticamente...");
-    
-    if (audioRemoto && audioRemoto.srcObject) {
-        audioRemoto.play()
-            .then(() => {
-                audioActivado = true;
-                console.log("✅ Audio activado correctamente al 80%");
-            })
-            .catch(e => {
-                console.warn("⚠️ Error activando audio:", e.message);
-                // Reintentar después de 500ms
-                setTimeout(() => {
-                    if (!audioActivado && audioRemoto) {
-                        audioRemoto.play().catch(() => {});
-                    }
-                }, 500);
-            });
-    }
-    
-    if (videoRemoto && videoRemoto.srcObject) {
-        videoRemoto.play().catch(() => {});
-    }
+function soyOferente(miId, otroId) {
+    return miId < otroId;
 }
 
 // ============================================
-// 🔥 MOSTRAR VIDEO REMOTO (AUDIO AUTOMÁTICO)
+// 🔥 MOSTRAR VIDEO REMOTO - AUDIO UNIFICADO
 // ============================================
 function mostrarVideoRemoto(stream, fromId) {
     console.log(`📹 ASIGNANDO VIDEO REMOTO DE: ${fromId}`);
@@ -169,7 +126,7 @@ function mostrarVideoRemoto(stream, fromId) {
     console.log(`🎤 Audio tracks remotos: ${audioTracks.length}`);
     console.log(`📹 Video tracks remotos: ${videoTracks.length}`);
     
-    // HABILITAR TODOS LOS TRACKS REMOTOS
+    // HABILITAR TODOS LOS TRACKS
     audioTracks.forEach(track => {
         track.enabled = true;
         console.log(`✅ Audio remoto habilitado: ${track.label}`);
@@ -179,47 +136,43 @@ function mostrarVideoRemoto(stream, fromId) {
         console.log(`✅ Video remoto habilitado: ${track.label}`);
     });
 
-    // VIDEO: se muestra en pantalla grande
+    // 🔥 UNIFICAR: EL VIDEO REMOTO ES EL ÚNICO QUE REPRODUCE AUDIO Y VIDEO
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     videoRemoto.muted = false;
-    videoRemoto.volume = 0;
+    videoRemoto.volume = 0.3; // Volumen bajo para evitar eco
     video.style.display = "block";
     videoRemotoActivo = true;
 
-    // AUDIO: se reproduce por separado
-    audioRemoto.srcObject = stream;
-    audioRemoto.muted = false;
-    audioRemoto.volume = 0.8;
-    
-    // Intentar reproducir audio automáticamente
-    console.log("🔊 Intentando reproducir audio remoto...");
-    setTimeout(() => {
-        activarAudio();
-    }, 300);
-
-    // REPRODUCIR VIDEO
+    // REPRODUCIR
     let intentos = 0;
-    const maxIntentos = 5;
+    const maxIntentos = 10;
     
-    function intentarReproducirVideo() {
+    function intentarReproducir() {
         intentos++;
-        console.log(`🔄 Intento video ${intentos}/${maxIntentos}`);
+        console.log(`🔄 Intento reproducción ${intentos}/${maxIntentos}`);
         
         videoRemoto.play()
             .then(() => {
-                console.log("✅ Video reproduciéndose");
+                console.log("✅ Audio y Video remoto reproduciéndose al 30%");
                 actualizarEstado("🟢 Conectado - Audio y Video en vivo", "conectado");
             })
             .catch(e => {
-                console.warn(`⚠️ Error video (${intentos}):`, e.message);
+                console.warn(`⚠️ Error (${intentos}):`, e.message);
                 if (intentos < maxIntentos) {
-                    setTimeout(intentarReproducirVideo, 1000);
+                    setTimeout(intentarReproducir, 1000);
+                } else {
+                    console.log("💡 Haz clic en la página para activar el audio");
+                    document.addEventListener('click', function clickHandler() {
+                        videoRemoto.play().catch(() => {});
+                        document.removeEventListener('click', clickHandler);
+                        console.log("✅ Audio activado por clic");
+                    }, { once: true });
                 }
             });
     }
 
-    setTimeout(intentarReproducirVideo, 500);
+    setTimeout(intentarReproducir, 500);
     console.log(`✅ Video remoto de ${fromId} asignado`);
 }
 
@@ -231,11 +184,6 @@ function ocultarVideoRemoto() {
     if (videoRemoto.srcObject) {
         videoRemoto.srcObject.getTracks().forEach(track => track.stop());
         videoRemoto.srcObject = null;
-    }
-    if (audioRemoto) {
-        audioRemoto.pause();
-        audioRemoto.srcObject = null;
-        audioActivado = false;
     }
 }
 
@@ -263,7 +211,7 @@ function probarAudioLocal(stream) {
             if (rms > 0.01 && !audioDetectado) {
                 audioDetectado = true;
                 console.log("🎤 AUDIO LOCAL DETECTADO! Nivel:", rms.toFixed(4));
-                console.log("✅ Tu micrófono está funcionando correctamente");
+                console.log("✅ Micrófono funcionando correctamente");
             }
             requestAnimationFrame(checkAudio);
         }
@@ -398,8 +346,6 @@ async function crearPeerConnection(targetId) {
             delete iceCandidatesQueue[targetId];
             ofertasEnviadas.delete(targetId);
             intentosReconexion[targetId] = 0;
-            // Intentar activar audio cuando la conexión se establece
-            setTimeout(() => activarAudio(), 1000);
         } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
             console.log(`❌ Conexión perdida con ${targetId}`);
             delete peers[targetId];
@@ -541,7 +487,6 @@ async function manejarOferta(data) {
     const { from, offer } = data;
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
 
-    // Limpiar ofertas duplicadas
     if (ofertasRecibidas.has(from)) {
         console.log(`⚠️ Oferta duplicada de ${from}, limpiando...`);
         ofertasRecibidas.delete(from);
@@ -716,7 +661,6 @@ function conectarConTodos(clientes) {
         });
 
         otros.forEach(targetId => {
-            // Decidir quien oferta
             const soyOferenteLocal = soyOferente(socket.id, targetId);
             
             if (peers[targetId]) {
@@ -910,7 +854,7 @@ async function iniciarCamara() {
         
         console.log("📹 Cámara iniciada correctamente");
         console.log("🔇 Video local MUTEADO - SIN ECO");
-        console.log("🎤 Audio local ENABLED para transmitir");
+        console.log("🎤 Audio local optimizado - SIN RUIDO");
         
         probarAudioLocal(stream);
         await obtenerTurnServers();
@@ -945,7 +889,6 @@ async function iniciarCamara() {
             });
             console.log("📹 Cámara iniciada en modo básico");
             console.log("🔇 Video local MUTEADO - SIN ECO");
-            console.log("🎤 Audio local ENABLED para transmitir");
             probarAudioLocal(stream);
             
             await obtenerTurnServers();
@@ -973,10 +916,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnReconectar = document.getElementById('btn-reconectar');
     
     if (controlVolumen) {
-        controlVolumen.value = 0.8;
+        controlVolumen.value = 0.3;
         controlVolumen.addEventListener('input', (e) => {
             const vol = parseFloat(e.target.value);
-            audioRemoto.volume = vol;
+            videoRemoto.volume = vol;
             if (labelVolumen) {
                 labelVolumen.textContent = `${Math.round(vol * 100)}%`;
             }
@@ -988,7 +931,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let silenciado = false;
         btnSilenciar.addEventListener('click', () => {
             silenciado = !silenciado;
-            audioRemoto.muted = silenciado;
+            videoRemoto.muted = silenciado;
             btnSilenciar.textContent = silenciado ? '🔊 Activar sonido' : '🔇 Silenciar';
             console.log(`🔇 Audio ${silenciado ? 'silenciado' : 'activado'}`);
         });
@@ -1042,14 +985,12 @@ window.estadoConexiones = () => {
     console.log("📊 Ofertas recibidas:", Array.from(ofertasRecibidas));
     console.log("📊 Reconexión activa:", reconexionActiva);
     console.log("📊 Video remoto activo:", videoRemotoActivo);
-    console.log("📊 Audio activado:", audioActivado);
     return {
         peers: Object.keys(peers).length,
         enProceso: Array.from(conexionesEnProceso),
         intentos: intentosReconexion,
         reconexionActiva: reconexionActiva,
-        videoRemotoActivo: videoRemotoActivo,
-        audioActivado: audioActivado
+        videoRemotoActivo: videoRemotoActivo
     };
 };
 

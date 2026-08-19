@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ventana Digital</title>
+    <title>Ventana Digital - Videollamada</title>
     <link rel="stylesheet" href="css/estilos.css">
 </head>
 <body>
@@ -16,16 +16,17 @@
     <!-- ESTADO -->
     <div id="estado" class="inicializando">🔄 Inicializando...</div>
     
-    <!-- CONTROLES DE VOLUMEN -->
+    <!-- CONTROLES -->
     <div id="controles">
         <div class="control-group">
-            <label for="volumen">🔊 Volumen remoto:</label>
-            <input type="range" id="volumen" min="0" max="1" step="0.05" value="0.25">
-            <span id="volumen-label">25%</span>
+            <label for="volumen">🔊 Volumen:</label>
+            <input type="range" id="volumen" min="0" max="1" step="0.05" value="0.4">
+            <span id="volumen-label">40%</span>
         </div>
         <div class="control-group">
             <button id="btn-silenciar">🔇 Silenciar</button>
             <button id="btn-reconectar" onclick="forzarReconexion()">🔄 Reconectar</button>
+            <button id="btn-diagnostico" onclick="estadoConexiones()">📊 Diagnóstico</button>
         </div>
     </div>
 

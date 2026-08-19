@@ -2,7 +2,7 @@ const express = require("express");
 const http = require("http");
 const path = require("path");
 const { Server } = require("socket.io");
-const cors = require("cors"); // 🔥 NUEVO: Para CORS
+const cors = require("cors");
 
 const app = express();
 const server = http.createServer(app);
@@ -34,22 +34,19 @@ app.use(cors({
 app.use(express.json());
 
 // ============================================
-// 🔥 RUTAS TURN (NUEVO)
+// 🔥 RUTAS TURN (ESTO ES LO QUE FALTABA)
 // ============================================
 
 // Ruta principal de TURN
 app.get('/turn', (req, res) => {
     const turnConfig = {
         iceServers: [
-            // STUN servers
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
             { urls: "stun:stun2.l.google.com:19302" },
             { urls: "stun:stun3.l.google.com:19302" },
             { urls: "stun:stun4.l.google.com:19302" },
             { urls: "stun:stun.services.mozilla.com" },
-            
-            // TURN - OpenRelay (gratuito)
             {
                 urls: [
                     "turn:openrelay.metered.ca:80",
@@ -59,8 +56,6 @@ app.get('/turn', (req, res) => {
                 username: "openrelayproject",
                 credential: "openrelayproject"
             },
-            
-            // TURN - Metered.ca
             {
                 urls: [
                     "turn:global.turn.metered.ca:80?transport=udp",
@@ -70,15 +65,15 @@ app.get('/turn', (req, res) => {
                 username: "b4a446edd2810f74fb74b06d",
                 credential: "e025b9eb858a5142"
             },
-            
-            // TURN de respaldo
             {
                 urls: "turn:turn.anyfirewall.com:443?transport=tcp",
                 username: "webrtc",
                 credential: "webrtc"
             }
         ],
-        iceCandidatePoolSize: 10
+        iceCandidatePoolSize: 10,
+        bundlePolicy: "max-bundle",
+        rtcpMuxPolicy: "require"
     };
     
     res.header('Access-Control-Allow-Origin', '*');
@@ -124,7 +119,9 @@ app.get('/turn-credentials', (req, res) => {
                 credential: "webrtc"
             }
         ],
-        iceCandidatePoolSize: 10
+        iceCandidatePoolSize: 10,
+        bundlePolicy: "max-bundle",
+        rtcpMuxPolicy: "require"
     };
     
     res.header('Access-Control-Allow-Origin', '*');

@@ -23,7 +23,7 @@ let streamLocal = null;
 let webRTCIniciado = false;
 const conexionesEnProceso = new Set();
 const iceCandidatesQueue = {};
-let turnServers = []; // ✅ CAMBIADO A let
+let turnServers = [];
 let audioContext = null;
 const ofertasEnviadas = new Set();
 const ofertasRecibidas = new Set();
@@ -55,7 +55,14 @@ videoRemoto.style.display = "none";
 videoRemoto.volume = VOLUMEN_REMOTO;
 
 // ============================================
-// 🔥 OBTENER CREDENCIALES TURN (CORREGIDO)
+// 🔥 FUNCIÓN PARA DECIDIR QUIEN OFERTA
+// ============================================
+function soyOferente(miId, otroId) {
+    return miId < otroId; // El ID más pequeño alfabéticamente oferta
+}
+
+// ============================================
+// 🔥 OBTENER CREDENCIALES TURN
 // ============================================
 async function obtenerTurnServers() {
     try {
@@ -63,7 +70,7 @@ async function obtenerTurnServers() {
         if (response.ok) {
             const data = await response.json();
             if (data.iceServers) {
-                turnServers = data.iceServers; // ✅ AHORA FUNCIONA
+                turnServers = data.iceServers;
                 console.log('✅ Servidores TURN obtenidos:', turnServers.length);
                 return turnServers;
             }
@@ -73,7 +80,7 @@ async function obtenerTurnServers() {
     }
     
     console.log('🔄 Usando TURN de respaldo');
-    turnServers = [ // ✅ AHORA FUNCIONA
+    turnServers = [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
         { urls: "stun:stun2.l.google.com:19302" },
@@ -230,7 +237,6 @@ function probarAudioLocal(stream) {
 // 🔗 CREAR PEER CONNECTION
 // ============================================
 async function crearPeerConnection(targetId) {
-    // ESPERAR A QUE LA CÁMARA ESTÉ LISTA
     let esperas = 0;
     while (!streamLocal && esperas < 20) {
         console.log(`⏳ Esperando stream local... (${esperas + 1}/20)`);
@@ -281,7 +287,6 @@ async function crearPeerConnection(targetId) {
         rtcpMuxPolicy: "require"
     });
 
-    // AGREGAR TRACKS LOCALES
     const audioTracks = streamLocal.getAudioTracks();
     const videoTracks = streamLocal.getVideoTracks();
     
@@ -482,6 +487,12 @@ async function manejarOferta(data) {
     const { from, offer } = data;
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
 
+    // 🔥 SI YA SOMOS OFERENTE, IGNORAR
+    if (ofertasEnviadas.has(from)) {
+        console.log(`⚠️ Ya somos oferente con ${from}, ignorando oferta...`);
+        return;
+    }
+
     if (ofertasRecibidas.has(from)) {
         console.log(`⚠️ Oferta duplicada de ${from}, ignorando...`);
         return;
@@ -645,6 +656,7 @@ function conectarConTodos(clientes) {
             return;
         }
 
+        // Limpiar clientes desaparecidos
         Object.keys(peers).forEach(id => {
             if (!clientes.includes(id)) {
                 console.log(`🧹 Limpiando conexión a cliente desaparecido: ${id}`);
@@ -664,6 +676,9 @@ function conectarConTodos(clientes) {
         });
 
         otros.forEach(targetId => {
+            // 🔥 DECIDIR QUIEN OFERTA
+            const soyOferenteLocal = soyOferente(socket.id, targetId);
+            
             if (peers[targetId]) {
                 const pc = peers[targetId];
                 if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
@@ -692,9 +707,13 @@ function conectarConTodos(clientes) {
             }
             
             if (!conexionesEnProceso.has(targetId)) {
-                console.log(`🔗 Iniciando conexión con ${targetId}`);
-                const delay = Math.random() * 2000 + 1000;
-                setTimeout(() => iniciarOferta(targetId), delay);
+                if (soyOferenteLocal) {
+                    console.log(`🔗 Iniciando conexión COMO OFERENTE con ${targetId}`);
+                    setTimeout(() => iniciarOferta(targetId), 1000);
+                } else {
+                    console.log(`⏳ Esperando oferta de ${targetId} (soy respondedor)`);
+                    // No hacemos nada, esperamos la oferta del otro
+                }
             }
         });
         

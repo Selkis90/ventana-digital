@@ -27,7 +27,7 @@ let turnServers = [];
 let audioContext = null;
 const ofertasEnviadas = new Set();
 const ofertasRecibidas = new Set();
-let camaraIniciada = false; // 🔥 NUEVO: bandera para saber si la cámara está lista
+let camaraIniciada = false;
 
 // ============================================
 // 🚫 CONTROL DE RECONEXIÓN
@@ -230,19 +230,18 @@ function probarAudioLocal(stream) {
 // 🔗 CREAR PEER CONNECTION
 // ============================================
 async function crearPeerConnection(targetId) {
-    // 🔥 VERIFICAR QUE LA CÁMARA ESTÉ INICIADA
+    // 🔥 ESPERAR A QUE LA CÁMARA ESTÉ LISTA
+    let esperas = 0;
+    while (!streamLocal && esperas < 20) {
+        console.log(`⏳ Esperando stream local... (${esperas + 1}/20)`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        esperas++;
+    }
+    
     if (!streamLocal) {
-        console.error("❌ No hay stream local - esperando que la cámara se inicie...");
-        // 🔥 ESPERAR HASTA QUE LA CÁMARA ESTÉ LISTA
-        await new Promise(resolve => {
-            const checkStream = setInterval(() => {
-                if (streamLocal) {
-                    clearInterval(checkStream);
-                    resolve();
-                }
-            }, 100);
-        });
-        console.log("✅ Stream local disponible, continuando...");
+        console.error("❌ No hay stream local después de esperar");
+        conexionesEnProceso.delete(targetId);
+        return null;
     }
 
     if (peers[targetId]) {
@@ -269,26 +268,17 @@ async function crearPeerConnection(targetId) {
     console.log(`🔗 Creando conexión con: ${targetId}`);
     conexionesEnProceso.add(targetId);
 
-    // 🔥 VERIFICAR NUEVAMENTE ANTES DE CREAR
-    if (!streamLocal) {
-        console.error("❌ No hay stream local después de esperar");
-        conexionesEnProceso.delete(targetId);
-        return null;
-    }
-
     if (turnServers.length === 0) {
         await obtenerTurnServers();
     }
 
     const pc = new RTCPeerConnection({
         iceServers: turnServers.length > 0 ? turnServers : [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" }
+            { urls: "stun:stun.l.google.com:19302" }
         ],
         iceCandidatePoolSize: 10,
         bundlePolicy: "max-bundle",
-        rtcpMuxPolicy: "require",
-        iceTransportPolicy: "all"
+        rtcpMuxPolicy: "require"
     });
 
     // AGREGAR TRACKS LOCALES
@@ -311,7 +301,6 @@ async function crearPeerConnection(targetId) {
         pc.addTrack(track, streamLocal);
     });
 
-    // MANEJAR TRACKS REMOTOS
     pc.ontrack = (event) => {
         console.log(`📥 Track remoto recibido de: ${targetId}`);
         console.log(`📥 Track kind: ${event.track.kind}`);
@@ -346,7 +335,7 @@ async function crearPeerConnection(targetId) {
         console.log(`🔗 Estado con ${targetId}: ${pc.connectionState}`);
         if (pc.connectionState === "connected") {
             console.log("✅ CONEXIÓN WEBRTC ESTABLECIDA!");
-            actualizarEstado("🟢 Conectado - WebRTC activo", "conectado");
+            actualizarEstado("🟢 Conectado", "conectado");
             webRTCIniciado = true;
             conexionesEnProceso.delete(targetId);
             delete iceCandidatesQueue[targetId];
@@ -622,18 +611,9 @@ async function manejarIceCandidate(data) {
 // 🔄 CONECTAR CON TODOS LOS CLIENTES
 // ============================================
 function conectarConTodos(clientes) {
-    // 🔥 ESPERAR A QUE LA CÁMARA ESTÉ INICIADA
+    // 🔥 SI NO HAY CÁMARA, NO INTENTAR CONECTAR
     if (!streamLocal) {
-        console.log("⏳ Esperando a que la cámara se inicie...");
-        setTimeout(() => {
-            if (streamLocal) {
-                console.log("✅ Cámara lista, conectando...");
-                conectarConTodos(clientes);
-            } else {
-                console.log("⏳ Cámara aún no lista, reintentando en 1s...");
-                setTimeout(() => conectarConTodos(clientes), 1000);
-            }
-        }, 1000);
+        console.log("⏳ Cámara no iniciada, esperando...");
         return;
     }
 
@@ -737,9 +717,7 @@ socket.on("ice-candidate", manejarIceCandidate);
 
 socket.on("clientes-conectados", (listaClientes) => {
     console.log("📋 Lista de clientes recibida:", listaClientes);
-    if (typeof conectarConTodos === 'function') {
-        conectarConTodos(listaClientes);
-    }
+    conectarConTodos(listaClientes);
 });
 
 socket.on("connect", async () => {
@@ -748,6 +726,7 @@ socket.on("connect", async () => {
     
     await obtenerTurnServers();
     
+    // Limpiar todo
     Object.keys(peers).forEach(key => {
         if (peers[key]) {
             if (peers[key]._timeoutId) {
@@ -765,9 +744,12 @@ socket.on("connect", async () => {
     reconexionActiva = false;
     ultimoIntentoReconexion = 0;
     
-    setTimeout(() => {
-        socket.emit("clientes-conectados");
-    }, 3000);
+    // 🔥 SI LA CÁMARA YA ESTÁ INICIADA, CONECTAR
+    if (streamLocal) {
+        setTimeout(() => {
+            socket.emit("clientes-conectados");
+        }, 2000);
+    }
 });
 
 socket.on("disconnect", () => {
@@ -793,11 +775,11 @@ socket.on("disconnect", () => {
 
 socket.on("nuevo-cliente", (data) => {
     console.log("🆕 Nuevo cliente conectado:", data.id);
-    if (data.id !== socket.id) {
+    if (data.id !== socket.id && streamLocal) {
         intentosReconexion[data.id] = 0;
         setTimeout(() => {
             socket.emit("clientes-conectados");
-        }, 3000);
+        }, 2000);
     }
 });
 
@@ -823,73 +805,89 @@ socket.on("cliente-desconectado", (data) => {
 });
 
 // ============================================
-// 🎥 INICIAR CÁMARA
+// 🎥 INICIAR CÁMARA (CON REINTENTOS)
 // ============================================
 async function iniciarCamara() {
-    try {
-        console.log("📷 Solicitando cámara y micrófono...");
-        
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-                width: { ideal: 640 }, 
-                height: { ideal: 480 },
-                facingMode: "user"
-            },
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                sampleRate: 48000,
-                sampleSize: 16,
-                channelCount: 1
+    let intentos = 0;
+    const maxIntentos = 3;
+    
+    while (intentos < maxIntentos) {
+        try {
+            console.log(`📷 Solicitando cámara y micrófono... (Intento ${intentos + 1}/${maxIntentos})`);
+            
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { 
+                    width: { ideal: 640 }, 
+                    height: { ideal: 480 },
+                    facingMode: "user"
+                },
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: 48000,
+                    sampleSize: 16,
+                    channelCount: 1
+                }
+            });
+            
+            streamLocal = stream;
+            camaraIniciada = true;
+            
+            const audioTracks = stream.getAudioTracks();
+            console.log("🎤 Tracks de audio disponibles:", audioTracks.length);
+            audioTracks.forEach((track, i) => {
+                track.enabled = true;
+                console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
+            });
+            
+            const videoTracks = stream.getVideoTracks();
+            console.log("📹 Tracks de video disponibles:", videoTracks.length);
+            videoTracks.forEach((track, i) => {
+                track.enabled = true;
+                console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
+            });
+            
+            video.srcObject = stream;
+            video.style.display = "block";
+            video.muted = true;
+            video.volume = 0;
+            
+            await new Promise(resolve => {
+                video.onloadedmetadata = () => {
+                    video.play();
+                    resolve();
+                };
+            });
+            
+            console.log("📹 Cámara iniciada correctamente");
+            console.log("🔇 Video local MUTEADO para evitar eco");
+            
+            probarAudioLocal(stream);
+            await obtenerTurnServers();
+            
+            // 🔥 CONECTAR CON OTROS CLIENTES
+            setTimeout(() => {
+                socket.emit("clientes-conectados");
+            }, 2000);
+            
+            return; // SALIR DEL BUCLE SI EXITOSO
+            
+        } catch (error) {
+            console.error(`❌ Error al acceder a cámara (Intento ${intentos + 1}):`, error.message);
+            intentos++;
+            
+            if (intentos < maxIntentos) {
+                console.log(`⏳ Reintentando en 2 segundos...`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            } else {
+                console.error("❌ No se pudo acceder a la cámara después de 3 intentos");
+                alert("⚠️ No se pudo acceder a la cámara o micrófono.\n" +
+                      "Verifica que estén conectados y permitidos.\n" +
+                      "Haz clic en el candado en la barra de direcciones y permite la cámara.");
+                actualizarEstado("🔴 Error de cámara", "desconectado");
             }
-        });
-        
-        streamLocal = stream;
-        camaraIniciada = true; // 🔥 MARCAR QUE LA CÁMARA ESTÁ LISTA
-        
-        const audioTracks = stream.getAudioTracks();
-        console.log("🎤 Tracks de audio disponibles:", audioTracks.length);
-        audioTracks.forEach((track, i) => {
-            track.enabled = true;
-            console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
-        });
-        
-        const videoTracks = stream.getVideoTracks();
-        console.log("📹 Tracks de video disponibles:", videoTracks.length);
-        videoTracks.forEach((track, i) => {
-            track.enabled = true;
-            console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
-        });
-        
-        video.srcObject = stream;
-        video.style.display = "block";
-        video.muted = true;
-        video.volume = 0;
-        await new Promise(resolve => {
-            video.onloadedmetadata = () => {
-                video.play();
-                resolve();
-            };
-        });
-        
-        console.log("📹 Cámara iniciada correctamente");
-        console.log("🔇 Video local MUTEADO para evitar eco");
-        
-        probarAudioLocal(stream);
-
-        await obtenerTurnServers();
-
-        // 🔥 AHORA QUE LA CÁMARA ESTÁ LISTA, CONECTAR CON OTROS
-        setTimeout(() => {
-            socket.emit("clientes-conectados");
-        }, 3000);
-
-    } catch (error) {
-        console.error("❌ Error al acceder a cámara/micrófono:", error);
-        alert("⚠️ No se pudo acceder a la cámara o micrófono.\n" +
-              "Verifica que estén conectados y permitidos.");
-        actualizarEstado("🔴 Error de cámara", "desconectado");
+        }
     }
 }
 
@@ -954,11 +952,6 @@ window.forzarReconexion = () => {
     }, 1000);
 };
 
-console.log("💡 Para forzar reconexión: forzarReconexion()");
-
-// ============================================
-// 📊 FUNCIÓN DE DIAGNÓSTICO
-// ============================================
 window.estadoConexiones = () => {
     console.log("📊 ESTADO DE CONEXIONES:");
     console.log("📊 Conexiones activas:", Object.keys(peers).length);
@@ -984,40 +977,6 @@ window.estadoConexiones = () => {
         streamLocal: !!streamLocal
     };
 };
-
-console.log("💡 Para ver estado: estadoConexiones()");
-
-// ============================================
-// 🔥 FUNCIÓN PARA FORZAR OFERTA MANUAL
-// ============================================
-window.forzarOferta = (targetId) => {
-    if (!targetId) {
-        console.log("❌ Especifica el ID del target. Ejemplo: forzarOferta('ID_DEL_CLIENTE')");
-        console.log("📋 IDs disponibles:", Object.keys(peers));
-        return;
-    }
-    
-    console.log(`🔥 Forzando oferta a: ${targetId}`);
-    ofertasEnviadas.delete(targetId);
-    ofertasRecibidas.delete(targetId);
-    delete intentosReconexion[targetId];
-    
-    if (peers[targetId]) {
-        if (peers[targetId]._timeoutId) {
-            clearTimeout(peers[targetId]._timeoutId);
-        }
-        peers[targetId].close();
-        delete peers[targetId];
-    }
-    conexionesEnProceso.delete(targetId);
-    delete iceCandidatesQueue[targetId];
-    
-    setTimeout(() => {
-        iniciarOferta(targetId);
-    }, 1000);
-};
-
-console.log("💡 Para forzar oferta: forzarOferta('ID_DEL_CLIENTE')");
 
 // ============================================
 // 🚀 INICIO
@@ -1046,33 +1005,18 @@ window.addEventListener("beforeunload", () => {
 });
 
 // ============================================
-// 🏓 PRUEBA DE PING
-// ============================================
-socket.on("connect", () => {
-    setTimeout(() => {
-        console.log("🏓 Enviando ping de prueba...");
-        socket.emit("ping", { target: socket.id });
-    }, 3000);
-});
-
-socket.on("pong", (data) => {
-    console.log("🏓 PONG recibido del servidor:", data);
-});
-
-// ============================================
-// ⏰ RECONEXIÓN AUTOMÁTICA PERIÓDICA
+// ⏰ RECONEXIÓN AUTOMÁTICA
 // ============================================
 setInterval(() => {
-    if (reconexionActiva) {
-        return;
-    }
+    if (reconexionActiva) return;
+    if (!streamLocal) return; // 🔥 NO RECONECTAR SI NO HAY CÁMARA
     
     const conexionesActivas = Object.keys(peers).filter(id => {
         const pc = peers[id];
         return pc && (pc.connectionState === "connected" || pc.connectionState === "connecting");
     });
     
-    if (conexionesActivas.length === 0 && socket.connected && streamLocal) {
+    if (conexionesActivas.length === 0 && socket.connected) {
         console.log("🔄 Sin conexiones activas, verificando clientes...");
         socket.emit("clientes-conectados");
     }

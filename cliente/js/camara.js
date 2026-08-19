@@ -27,6 +27,7 @@ let turnServers = [];
 let audioContext = null;
 const ofertasEnviadas = new Set();
 const ofertasRecibidas = new Set();
+let camaraIniciada = false; // 🔥 NUEVO: bandera para saber si la cámara está lista
 
 // ============================================
 // 🚫 CONTROL DE RECONEXIÓN
@@ -226,9 +227,24 @@ function probarAudioLocal(stream) {
 }
 
 // ============================================
-// 🔗 CREAR PEER CONNECTION (VERSIÓN ORIGINAL RESTAURADA)
+// 🔗 CREAR PEER CONNECTION
 // ============================================
 async function crearPeerConnection(targetId) {
+    // 🔥 VERIFICAR QUE LA CÁMARA ESTÉ INICIADA
+    if (!streamLocal) {
+        console.error("❌ No hay stream local - esperando que la cámara se inicie...");
+        // 🔥 ESPERAR HASTA QUE LA CÁMARA ESTÉ LISTA
+        await new Promise(resolve => {
+            const checkStream = setInterval(() => {
+                if (streamLocal) {
+                    clearInterval(checkStream);
+                    resolve();
+                }
+            }, 100);
+        });
+        console.log("✅ Stream local disponible, continuando...");
+    }
+
     if (peers[targetId]) {
         const pc = peers[targetId];
         if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
@@ -253,8 +269,9 @@ async function crearPeerConnection(targetId) {
     console.log(`🔗 Creando conexión con: ${targetId}`);
     conexionesEnProceso.add(targetId);
 
+    // 🔥 VERIFICAR NUEVAMENTE ANTES DE CREAR
     if (!streamLocal) {
-        console.error("❌ No hay stream local");
+        console.error("❌ No hay stream local después de esperar");
         conexionesEnProceso.delete(targetId);
         return null;
     }
@@ -415,7 +432,7 @@ function enviarIceCandidatesPendientes(targetId) {
 }
 
 // ============================================
-// 📨 WEBRTC - OFERTA Y RESPUESTA (VERSIÓN ORIGINAL RESTAURADA)
+// 📨 WEBRTC - OFERTA Y RESPUESTA
 // ============================================
 async function iniciarOferta(targetId) {
     if (ofertasEnviadas.has(targetId)) {
@@ -602,9 +619,24 @@ async function manejarIceCandidate(data) {
 }
 
 // ============================================
-// 🔄 CONECTAR CON TODOS LOS CLIENTES (VERSIÓN ORIGINAL RESTAURADA)
+// 🔄 CONECTAR CON TODOS LOS CLIENTES
 // ============================================
 function conectarConTodos(clientes) {
+    // 🔥 ESPERAR A QUE LA CÁMARA ESTÉ INICIADA
+    if (!streamLocal) {
+        console.log("⏳ Esperando a que la cámara se inicie...");
+        setTimeout(() => {
+            if (streamLocal) {
+                console.log("✅ Cámara lista, conectando...");
+                conectarConTodos(clientes);
+            } else {
+                console.log("⏳ Cámara aún no lista, reintentando en 1s...");
+                setTimeout(() => conectarConTodos(clientes), 1000);
+            }
+        }, 1000);
+        return;
+    }
+
     if (reconexionActiva) {
         console.log("⏳ Reconexión ya en progreso, omitiendo...");
         return;
@@ -814,6 +846,7 @@ async function iniciarCamara() {
         });
         
         streamLocal = stream;
+        camaraIniciada = true; // 🔥 MARCAR QUE LA CÁMARA ESTÁ LISTA
         
         const audioTracks = stream.getAudioTracks();
         console.log("🎤 Tracks de audio disponibles:", audioTracks.length);
@@ -847,6 +880,7 @@ async function iniciarCamara() {
 
         await obtenerTurnServers();
 
+        // 🔥 AHORA QUE LA CÁMARA ESTÁ LISTA, CONECTAR CON OTROS
         setTimeout(() => {
             socket.emit("clientes-conectados");
         }, 3000);
@@ -938,12 +972,16 @@ window.estadoConexiones = () => {
     console.log("📊 Ofertas recibidas:", Array.from(ofertasRecibidas));
     console.log("📊 Reconexión activa:", reconexionActiva);
     console.log("📊 Video remoto activo:", videoRemotoActivo);
+    console.log("📊 Cámara iniciada:", camaraIniciada);
+    console.log("📊 StreamLocal:", !!streamLocal);
     return {
         peers: Object.keys(peers).length,
         enProceso: Array.from(conexionesEnProceso),
         intentos: intentosReconexion,
         reconexionActiva: reconexionActiva,
-        videoRemotoActivo: videoRemotoActivo
+        videoRemotoActivo: videoRemotoActivo,
+        camaraIniciada: camaraIniciada,
+        streamLocal: !!streamLocal
     };
 };
 
@@ -1034,7 +1072,7 @@ setInterval(() => {
         return pc && (pc.connectionState === "connected" || pc.connectionState === "connecting");
     });
     
-    if (conexionesActivas.length === 0 && socket.connected) {
+    if (conexionesActivas.length === 0 && socket.connected && streamLocal) {
         console.log("🔄 Sin conexiones activas, verificando clientes...");
         socket.emit("clientes-conectados");
     }

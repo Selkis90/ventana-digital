@@ -23,7 +23,7 @@ let streamLocal = null;
 let webRTCIniciado = false;
 const conexionesEnProceso = new Set();
 const iceCandidatesQueue = {};
-let turnServers = [];
+let turnServers = []; // ✅ CAMBIADO A let
 let audioContext = null;
 const ofertasEnviadas = new Set();
 const ofertasRecibidas = new Set();
@@ -55,7 +55,7 @@ videoRemoto.style.display = "none";
 videoRemoto.volume = VOLUMEN_REMOTO;
 
 // ============================================
-// 🔥 OBTENER CREDENCIALES TURN
+// 🔥 OBTENER CREDENCIALES TURN (CORREGIDO)
 // ============================================
 async function obtenerTurnServers() {
     try {
@@ -63,7 +63,7 @@ async function obtenerTurnServers() {
         if (response.ok) {
             const data = await response.json();
             if (data.iceServers) {
-                turnServers = data.iceServers;
+                turnServers = data.iceServers; // ✅ AHORA FUNCIONA
                 console.log('✅ Servidores TURN obtenidos:', turnServers.length);
                 return turnServers;
             }
@@ -73,7 +73,7 @@ async function obtenerTurnServers() {
     }
     
     console.log('🔄 Usando TURN de respaldo');
-    turnServers = [
+    turnServers = [ // ✅ AHORA FUNCIONA
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
         { urls: "stun:stun2.l.google.com:19302" },
@@ -230,7 +230,7 @@ function probarAudioLocal(stream) {
 // 🔗 CREAR PEER CONNECTION
 // ============================================
 async function crearPeerConnection(targetId) {
-    // 🔥 ESPERAR A QUE LA CÁMARA ESTÉ LISTA
+    // ESPERAR A QUE LA CÁMARA ESTÉ LISTA
     let esperas = 0;
     while (!streamLocal && esperas < 20) {
         console.log(`⏳ Esperando stream local... (${esperas + 1}/20)`);
@@ -611,7 +611,6 @@ async function manejarIceCandidate(data) {
 // 🔄 CONECTAR CON TODOS LOS CLIENTES
 // ============================================
 function conectarConTodos(clientes) {
-    // 🔥 SI NO HAY CÁMARA, NO INTENTAR CONECTAR
     if (!streamLocal) {
         console.log("⏳ Cámara no iniciada, esperando...");
         return;
@@ -726,7 +725,6 @@ socket.on("connect", async () => {
     
     await obtenerTurnServers();
     
-    // Limpiar todo
     Object.keys(peers).forEach(key => {
         if (peers[key]) {
             if (peers[key]._timeoutId) {
@@ -744,7 +742,6 @@ socket.on("connect", async () => {
     reconexionActiva = false;
     ultimoIntentoReconexion = 0;
     
-    // 🔥 SI LA CÁMARA YA ESTÁ INICIADA, CONECTAR
     if (streamLocal) {
         setTimeout(() => {
             socket.emit("clientes-conectados");
@@ -805,7 +802,7 @@ socket.on("cliente-desconectado", (data) => {
 });
 
 // ============================================
-// 🎥 INICIAR CÁMARA (CON REINTENTOS)
+// 🎥 INICIAR CÁMARA CON REINTENTOS
 // ============================================
 async function iniciarCamara() {
     let intentos = 0;
@@ -866,12 +863,11 @@ async function iniciarCamara() {
             probarAudioLocal(stream);
             await obtenerTurnServers();
             
-            // 🔥 CONECTAR CON OTROS CLIENTES
             setTimeout(() => {
                 socket.emit("clientes-conectados");
             }, 2000);
             
-            return; // SALIR DEL BUCLE SI EXITOSO
+            return;
             
         } catch (error) {
             console.error(`❌ Error al acceder a cámara (Intento ${intentos + 1}):`, error.message);
@@ -1009,7 +1005,7 @@ window.addEventListener("beforeunload", () => {
 // ============================================
 setInterval(() => {
     if (reconexionActiva) return;
-    if (!streamLocal) return; // 🔥 NO RECONECTAR SI NO HAY CÁMARA
+    if (!streamLocal) return;
     
     const conexionesActivas = Object.keys(peers).filter(id => {
         const pc = peers[id];

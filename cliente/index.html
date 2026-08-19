@@ -16,7 +16,7 @@
     <!-- ESTADO -->
     <div id="estado" class="inicializando">🔄 Inicializando...</div>
     
-    <!-- CONTROLES -->
+    <!-- CONTROLES (COMO ZOOM) -->
     <div id="controles">
         <div class="control-group">
             <label for="volumen">🔊 Volumen:</label>
@@ -25,7 +25,8 @@
         </div>
         <div class="control-group">
             <button id="btn-silenciar">🔇 Silenciar</button>
-            <button id="btn-reconectar" onclick="forzarReconexion()">🔄 Reconectar</button>
+            <button id="btn-reconectar">🔄 Reconectar</button>
+            <button id="btn-diagnostico" onclick="estadoConexiones()">📊 Diagnóstico</button>
         </div>
     </div>
 

@@ -1068,3 +1068,92 @@ setInterval(() => {
         socket.emit("clientes-conectados");
     }
 }, 15000);
+
+// ============================================
+// 🔥 BOTÓN PARA ACTIVAR AUDIO MANUALMENTE
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+    const btnActivarAudio = document.getElementById('btn-activar-audio');
+    
+    // Mostrar el botón cuando el audio no se reproduce
+    if (btnActivarAudio) {
+        // Mostrar el botón después de 3 segundos si el audio no se ha activado
+        setTimeout(() => {
+            if (audioRemoto && audioRemoto.paused) {
+                btnActivarAudio.style.display = "block";
+                btnActivarAudio.textContent = "🔊 Activar Audio";
+                console.log("🔔 Botón de activación de audio mostrado");
+            }
+        }, 5000);
+        
+        btnActivarAudio.addEventListener('click', () => {
+            console.log("🔊 Activando audio manualmente...");
+            
+            // Intentar reproducir audio remoto
+            if (audioRemoto) {
+                audioRemoto.play()
+                    .then(() => {
+                        console.log("✅ Audio remoto activado");
+                        btnActivarAudio.textContent = "✅ Audio Activado";
+                        btnActivarAudio.style.background = "#00cc66";
+                        setTimeout(() => {
+                            btnActivarAudio.style.display = "none";
+                        }, 2000);
+                    })
+                    .catch(e => {
+                        console.warn("⚠️ Error activando audio:", e.message);
+                        btnActivarAudio.textContent = "❌ Clic nuevamente";
+                        btnActivarAudio.style.background = "#ff4444";
+                    });
+            }
+            
+            // Intentar reproducir video remoto también
+            if (videoRemoto) {
+                videoRemoto.play().catch(() => {});
+            }
+        });
+    }
+    
+    // También activar audio con cualquier clic en la página (opcional)
+    document.addEventListener('click', function clickHandler() {
+        if (audioRemoto && audioRemoto.paused) {
+            audioRemoto.play()
+                .then(() => {
+                    console.log("✅ Audio activado por clic en página");
+                    const btn = document.getElementById('btn-activar-audio');
+                    if (btn) btn.style.display = "none";
+                })
+                .catch(() => {});
+        }
+        // Remover el listener después del primer clic
+        document.removeEventListener('click', clickHandler);
+    }, { once: true });
+});
+
+// ============================================
+// 🎛️ FUNCIÓN PARA VERIFICAR EL ESTADO DEL AUDIO
+// ============================================
+window.verificarAudio = () => {
+    console.log("🔊 ESTADO DEL AUDIO:");
+    console.log("  audioRemoto:", audioRemoto);
+    console.log("  audioRemoto.paused:", audioRemoto.paused);
+    console.log("  audioRemoto.muted:", audioRemoto.muted);
+    console.log("  audioRemoto.volume:", audioRemoto.volume);
+    console.log("  audioRemoto.srcObject:", !!audioRemoto.srcObject);
+    
+    if (audioRemoto.paused) {
+        console.log("  🔴 AUDIO PAUSADO - Haz clic en 'Activar Audio'");
+    } else {
+        console.log("  🟢 AUDIO REPRODUCIÉNDOSE");
+    }
+    
+    return {
+        paused: audioRemoto.paused,
+        muted: audioRemoto.muted,
+        volume: audioRemoto.volume,
+        hasSource: !!audioRemoto.srcObject
+    };
+};
+
+console.log("💡 Si no escuchas audio, ejecuta: verificarAudio()");
+console.log("💡 O haz clic en el botón 'Activar Audio'");

@@ -123,34 +123,27 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 // ============================================
-// 🔥 ACTIVAR AUDIO AUTOMÁTICAMENTE
+// 🔥 ACTIVAR AUDIO AUTOMÁTICAMENTE (SIN BOTÓN)
 // ============================================
 function activarAudio() {
     if (audioActivado) return;
     
-    console.log("🔊 Intentando activar audio...");
+    console.log("🔊 Intentando activar audio automáticamente...");
     
     if (audioRemoto && audioRemoto.srcObject) {
         audioRemoto.play()
             .then(() => {
                 audioActivado = true;
                 console.log("✅ Audio activado correctamente al 80%");
-                // Ocultar botón si existe
-                const btn = document.getElementById('btn-activar-audio');
-                if (btn) {
-                    btn.textContent = "✅ Audio Activado";
-                    btn.style.background = "#00cc66";
-                    setTimeout(() => { btn.style.display = "none"; }, 2000);
-                }
             })
             .catch(e => {
                 console.warn("⚠️ Error activando audio:", e.message);
-                // Intentar de nuevo después de 1 segundo
+                // Reintentar después de 500ms
                 setTimeout(() => {
-                    if (!audioActivado) {
+                    if (!audioActivado && audioRemoto) {
                         audioRemoto.play().catch(() => {});
                     }
-                }, 1000);
+                }, 500);
             });
     }
     
@@ -203,7 +196,7 @@ function mostrarVideoRemoto(stream, fromId) {
     console.log("🔊 Intentando reproducir audio remoto...");
     setTimeout(() => {
         activarAudio();
-    }, 500);
+    }, 300);
 
     // REPRODUCIR VIDEO
     let intentos = 0;

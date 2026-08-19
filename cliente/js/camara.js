@@ -1,14 +1,11 @@
 // ============================================
 // CONFIGURACIÓN INICIAL
 // ============================================
-// 🔥 VIDEO LOCAL (pantalla pequeña - esquina)
 const video = document.getElementById("video");
-
-// 🔥 VIDEO REMOTO (pantalla grande - fondo)
 const videoRemoto = document.getElementById("video-remoto");
 
 // ============================================
-// 📡 CONEXIÓN AL SERVIDOR EN RENDER.COM
+// 📡 CONEXIÓN AL SERVIDOR
 // ============================================
 const socket = io("https://ventana-digital.onrender.com", {
     transports: ['websocket', 'polling'],
@@ -26,7 +23,7 @@ let streamLocal = null;
 let webRTCIniciado = false;
 const conexionesEnProceso = new Set();
 const iceCandidatesQueue = {};
-let turnServers = []; // ✅ CAMBIO 1: const → let
+let turnServers = []; // ✅ CAMBIADO: const → let
 let audioContext = null;
 const ofertasEnviadas = new Set();
 const ofertasRecibidas = new Set();
@@ -39,37 +36,29 @@ const INTERVALO_MINIMO_RECONEXION = 5000;
 const intentosReconexion = {};
 const MAX_INTENTOS_POR_PEER = 3;
 let reconexionActiva = false;
-
-// ============================================
-// 🔥 VARIABLE PARA SABER SI HAY VIDEO REMOTO
-// ============================================
 let videoRemotoActivo = false;
 
 // ============================================
-// 🎬 CONFIGURAR VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
+// 🎬 CONFIGURAR VIDEOS
 // ============================================
 video.style.display = "none";
 
-// ============================================
-// 🎬 CONFIGURAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
-// ============================================
 videoRemoto.style.display = "none";
 
 // ============================================
-// 🎧 CREAR ELEMENTO DE AUDIO SEPARADO (SOLO AUDIO)
+// 🎧 AUDIO REMOTO SEPARADO (EVITA ECO)
 // ============================================
 const audioRemoto = document.createElement("audio");
 audioRemoto.id = "audio-remoto";
 audioRemoto.autoplay = true;
 audioRemoto.muted = false;
-audioRemoto.volume = 0.5; // 🔥 50% para evitar eco
+audioRemoto.volume = 0.4; // 🔥 40% - volumen óptimo como en Zoom
 audioRemoto.style.display = "none";
 document.body.appendChild(audioRemoto);
-console.log("🎧 Elemento de audio separado creado");
-window.audioRemoto = audioRemoto;
+console.log("🎧 Audio remoto configurado al 40%");
 
 // ============================================
-// 🔥 OBTENER CREDENCIALES TURN DEL SERVIDOR
+// 🔥 OBTENER CREDENCIALES TURN
 // ============================================
 async function obtenerTurnServers() {
     try {
@@ -78,15 +67,15 @@ async function obtenerTurnServers() {
             const data = await response.json();
             if (data.iceServers) {
                 turnServers = data.iceServers;
-                console.log('✅ Servidores TURN obtenidos del servidor:', turnServers.length);
+                console.log('✅ Servidores TURN obtenidos:', turnServers.length);
                 return turnServers;
             }
         }
     } catch (error) {
-        console.warn('⚠️ No se pudo obtener TURN del servidor:', error.message);
+        console.warn('⚠️ No se pudo obtener TURN:', error.message);
     }
     
-    console.log('🔄 Usando Metered.ca TURN de respaldo');
+    console.log('🔄 Usando TURN de respaldo');
     turnServers = [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
@@ -116,7 +105,7 @@ async function obtenerTurnServers() {
 }
 
 // ============================================
-// 🎯 FUNCIONES DE ESTADO Y VIDEO
+// 🎯 FUNCIONES DE ESTADO
 // ============================================
 function actualizarEstado(mensaje, tipo) {
     const estado = document.getElementById("estado");
@@ -127,10 +116,10 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 // ============================================
-// 🔥 FUNCIÓN PARA MOSTRAR VIDEO REMOTO (CORREGIDA - SIN DUPLICACIÓN)
+// 🔥 MOSTRAR VIDEO REMOTO (ESTILO ZOOM/TEAMS)
 // ============================================
 function mostrarVideoRemoto(stream, fromId) {
-    console.log(`📹 ASIGNANDO VIDEO REMOTO DE: ${fromId || 'desconocido'}`);
+    console.log(`📹 ASIGNANDO VIDEO REMOTO DE: ${fromId}`);
     
     if (!stream) {
         console.error("❌ Stream vacío");
@@ -143,30 +132,30 @@ function mostrarVideoRemoto(stream, fromId) {
     console.log(`🎤 Audio tracks: ${audioTracks.length}`);
     console.log(`📹 Video tracks: ${videoTracks.length}`);
     
-    // Habilitar todos los tracks
+    // HABILITAR TODOS LOS TRACKS
     audioTracks.forEach(track => {
         track.enabled = true;
-        console.log(`✅ Audio habilitado: ${track.label}`);
+        console.log(`✅ Audio remoto habilitado: ${track.label}`);
     });
     videoTracks.forEach(track => {
         track.enabled = true;
-        console.log(`✅ Video habilitado: ${track.label}`);
+        console.log(`✅ Video remoto habilitado: ${track.label}`);
     });
 
-    // 🔥 VIDEO: Asignar al video-remoto
+    // 🔥 VIDEO: se muestra en pantalla grande
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
-    videoRemoto.muted = false; // ✅ CAMBIO 2: false para que se vea
+    videoRemoto.muted = false;  // ✅ El video NO está mudo
     videoRemoto.volume = 0;     // Volumen a 0 (el audio va por separado)
     video.style.display = "block";
     videoRemotoActivo = true;
 
-    // 🔥 AUDIO: Asignar SOLO al audio-remoto
+    // 🔥 AUDIO: se reproduce por separado (como en Zoom)
     audioRemoto.srcObject = stream;
-    audioRemoto.muted = false;  // ✅ CAMBIO 3: Asegurar que no esté mudo
-    audioRemoto.volume = 0.5;   // 50% para evitar eco
+    audioRemoto.muted = false;
+    audioRemoto.volume = 0.4;   // 40% - volumen óptimo
 
-    // 🔥 REPRODUCIR
+    // 🔥 REPRODUCIR CON REINTENTOS
     let intentos = 0;
     const maxIntentos = 5;
     
@@ -178,7 +167,7 @@ function mostrarVideoRemoto(stream, fromId) {
             videoRemoto.play().catch(() => {}),
             audioRemoto.play().catch(() => {})
         ]).then(() => {
-            console.log("🔊 Audio (50%) y Video reproduciéndose correctamente");
+            console.log("🔊 Audio (40%) y Video reproduciéndose");
             actualizarEstado("🟢 Conectado - Audio y Video en vivo", "conectado");
         }).catch(e => {
             console.warn(`⚠️ Error reproducción (${intentos}):`, e.message);
@@ -197,7 +186,7 @@ function mostrarVideoRemoto(stream, fromId) {
     }
 
     setTimeout(intentarReproducir, 500);
-    console.log(`✅ Video remoto de ${fromId || 'desconocido'} asignado`);
+    console.log(`✅ Video remoto de ${fromId} asignado`);
 }
 
 function ocultarVideoRemoto() {
@@ -238,27 +227,18 @@ function probarAudioLocal(stream) {
             const rms = Math.sqrt(sum / dataArray.length);
             if (rms > 0.01 && !audioDetectado) {
                 audioDetectado = true;
-                console.log("🎤 ¡AUDIO DETECTADO! Nivel:", rms.toFixed(4));
-                console.log("✅ El micrófono está funcionando correctamente");
+                console.log("🎤 AUDIO DETECTADO! Nivel:", rms.toFixed(4));
             }
             requestAnimationFrame(checkAudio);
         }
         checkAudio();
-        
-        setTimeout(() => {
-            if (!audioDetectado) {
-                console.warn("⚠️ No se detecta audio del micrófono");
-                console.warn("⚠️ Verifica que el micrófono esté conectado y permitido");
-            }
-        }, 3000);
-        
     } catch (e) {
-        console.log("ℹ️ No se pudo probar audio localmente:", e.message);
+        console.log("ℹ️ No se pudo probar audio:", e.message);
     }
 }
 
 // ============================================
-// 🔗 CREAR PEER CONNECTION CON TURN MEJORADO
+// 🔗 CREAR PEER CONNECTION
 // ============================================
 async function crearPeerConnection(targetId) {
     if (peers[targetId]) {
@@ -268,6 +248,7 @@ async function crearPeerConnection(targetId) {
             return pc;
         } else {
             console.log(`🧹 Limpiando conexión muerta con ${targetId}`);
+            if (pc._timeoutId) clearTimeout(pc._timeoutId);
             pc.close();
             delete peers[targetId];
             conexionesEnProceso.delete(targetId);
@@ -305,7 +286,7 @@ async function crearPeerConnection(targetId) {
         iceTransportPolicy: "all"
     });
 
-    // 🔥 IMPORTANTE: Agregar TODOS los tracks locales (AUDIO Y VIDEO)
+    // AGREGAR TRACKS LOCALES
     const audioTracks = streamLocal.getAudioTracks();
     const videoTracks = streamLocal.getVideoTracks();
     
@@ -313,7 +294,6 @@ async function crearPeerConnection(targetId) {
     console.log(`  - Audio tracks: ${audioTracks.length}`);
     console.log(`  - Video tracks: ${videoTracks.length}`);
     
-    // 🔥 FORZAR HABILITACIÓN DE AUDIO Y VIDEO LOCAL
     audioTracks.forEach(track => {
         track.enabled = true;
         console.log(`  ✅ Audio track habilitado: ${track.label}`);
@@ -326,7 +306,7 @@ async function crearPeerConnection(targetId) {
         pc.addTrack(track, streamLocal);
     });
 
-    // 🔥 MANEJAR TRACKS REMOTOS
+    // MANEJAR TRACKS REMOTOS
     pc.ontrack = (event) => {
         console.log(`📥 Track remoto recibido de: ${targetId}`);
         console.log(`📥 Track kind: ${event.track.kind}`);
@@ -340,7 +320,6 @@ async function crearPeerConnection(targetId) {
             console.log(`  - Audio tracks: ${remoteAudioTracks.length}`);
             console.log(`  - Video tracks: ${remoteVideoTracks.length}`);
             
-            // 🔥 FORZAR HABILITACIÓN DE AUDIO Y VIDEO REMOTO
             remoteAudioTracks.forEach(track => {
                 track.enabled = true;
                 console.log(`🎤 Audio track remoto habilitado: ${track.label}`);
@@ -351,7 +330,6 @@ async function crearPeerConnection(targetId) {
                 console.log(`📹 Video track remoto habilitado: ${track.label}`);
             });
             
-            // 🔥 MOSTRAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
             mostrarVideoRemoto(remoteStream, targetId);
         }
     };
@@ -842,12 +820,13 @@ socket.on("cliente-desconectado", (data) => {
 });
 
 // ============================================
-// 🎥 INICIAR CÁMARA
+// 🎥 INICIAR CÁMARA (COMO ZOOM - SIN ECO)
 // ============================================
 async function iniciarCamara() {
     try {
         console.log("📷 Solicitando cámara y micrófono...");
         
+        // 🔥 CONFIGURACIÓN DE AUDIO COMO ZOOM/TEAMS
         const stream = await navigator.mediaDevices.getUserMedia({
             video: { 
                 width: { ideal: 640 }, 
@@ -855,9 +834,9 @@ async function iniciarCamara() {
                 facingMode: "user"
             },
             audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
+                echoCancellation: true,    // 🔥 CANCELA ECO
+                noiseSuppression: true,     // 🔥 REDUCE RUIDO
+                autoGainControl: true,      // 🔥 CONTROL DE GANANCIA
                 sampleRate: 48000,
                 sampleSize: 16,
                 channelCount: 1
@@ -880,9 +859,12 @@ async function iniciarCamara() {
             console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
         });
         
-        // 🔥 ASIGNAR STREAM AL VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
+        // 🔥 VIDEO LOCAL (pantalla pequeña)
         video.srcObject = stream;
         video.style.display = "block";
+        video.muted = true;  // 🔇 IMPORTANTE: MUTEADO PARA EVITAR ECO
+        video.volume = 0;
+        
         await new Promise(resolve => {
             video.onloadedmetadata = () => {
                 video.play();
@@ -891,8 +873,7 @@ async function iniciarCamara() {
         });
         
         console.log("📹 Cámara iniciada correctamente");
-        console.log("📐 Resolución:", video.videoWidth, "x", video.videoHeight);
-        console.log("🎤 Audio capturado correctamente");
+        console.log("🔇 Video local MUTEADO - SIN ECO");
         
         probarAudioLocal(stream);
 
@@ -909,11 +890,17 @@ async function iniciarCamara() {
             console.log("🔄 Intentando con configuración básica...");
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: true,
-                audio: true
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
             });
             streamLocal = stream;
             video.srcObject = stream;
             video.style.display = "block";
+            video.muted = true;
+            video.volume = 0;
             await new Promise(resolve => {
                 video.onloadedmetadata = () => {
                     video.play();
@@ -921,6 +908,7 @@ async function iniciarCamara() {
                 };
             });
             console.log("📹 Cámara iniciada en modo básico");
+            console.log("🔇 Video local MUTEADO - SIN ECO");
             probarAudioLocal(stream);
             
             await obtenerTurnServers();
@@ -939,7 +927,43 @@ async function iniciarCamara() {
 }
 
 // ============================================
-// 🔄 FUNCIÓN DE RECONEXIÓN MANUAL
+// 🎛️ CONTROL DE VOLUMEN MANUAL (COMO ZOOM)
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+    const controlVolumen = document.getElementById('volumen');
+    const labelVolumen = document.getElementById('volumen-label');
+    const btnSilenciar = document.getElementById('btn-silenciar');
+    const btnReconectar = document.getElementById('btn-reconectar');
+    
+    if (controlVolumen) {
+        controlVolumen.value = 0.4;
+        controlVolumen.addEventListener('input', (e) => {
+            const vol = parseFloat(e.target.value);
+            audioRemoto.volume = vol;
+            if (labelVolumen) {
+                labelVolumen.textContent = `${Math.round(vol * 100)}%`;
+            }
+            console.log(`🔊 Volumen ajustado a: ${Math.round(vol * 100)}%`);
+        });
+    }
+    
+    if (btnSilenciar) {
+        let silenciado = false;
+        btnSilenciar.addEventListener('click', () => {
+            silenciado = !silenciado;
+            audioRemoto.muted = silenciado;
+            btnSilenciar.textContent = silenciado ? '🔊 Activar sonido' : '🔇 Silenciar';
+            console.log(`🔇 Audio ${silenciado ? 'silenciado' : 'activado'}`);
+        });
+    }
+    
+    if (btnReconectar) {
+        btnReconectar.addEventListener('click', forzarReconexion);
+    }
+});
+
+// ============================================
+// 🔄 FUNCIONES DE CONTROL
 // ============================================
 window.forzarReconexion = () => {
     console.log("🔄 Forzando reconexión...");
@@ -968,11 +992,6 @@ window.forzarReconexion = () => {
     }, 1000);
 };
 
-console.log("💡 Para forzar reconexión: forzarReconexion()");
-
-// ============================================
-// 📊 FUNCIÓN DE DIAGNÓSTICO
-// ============================================
 window.estadoConexiones = () => {
     console.log("📊 ESTADO DE CONEXIONES:");
     console.log("📊 Conexiones activas:", Object.keys(peers).length);
@@ -994,40 +1013,6 @@ window.estadoConexiones = () => {
         videoRemotoActivo: videoRemotoActivo
     };
 };
-
-console.log("💡 Para ver estado: estadoConexiones()");
-
-// ============================================
-// 🔥 FUNCIÓN PARA FORZAR OFERTA MANUAL
-// ============================================
-window.forzarOferta = (targetId) => {
-    if (!targetId) {
-        console.log("❌ Especifica el ID del target. Ejemplo: forzarOferta('ID_DEL_CLIENTE')");
-        console.log("📋 IDs disponibles:", Object.keys(peers));
-        return;
-    }
-    
-    console.log(`🔥 Forzando oferta a: ${targetId}`);
-    ofertasEnviadas.delete(targetId);
-    ofertasRecibidas.delete(targetId);
-    delete intentosReconexion[targetId];
-    
-    if (peers[targetId]) {
-        if (peers[targetId]._timeoutId) {
-            clearTimeout(peers[targetId]._timeoutId);
-        }
-        peers[targetId].close();
-        delete peers[targetId];
-    }
-    conexionesEnProceso.delete(targetId);
-    delete iceCandidatesQueue[targetId];
-    
-    setTimeout(() => {
-        iniciarOferta(targetId);
-    }, 1000);
-};
-
-console.log("💡 Para forzar oferta: forzarOferta('ID_DEL_CLIENTE')");
 
 // ============================================
 // 🚀 INICIO
@@ -1070,7 +1055,7 @@ socket.on("pong", (data) => {
 });
 
 // ============================================
-// ⏰ RECONEXIÓN AUTOMÁTICA PERIÓDICA
+// ⏰ RECONEXIÓN AUTOMÁTICA
 // ============================================
 setInterval(() => {
     if (reconexionActiva) {

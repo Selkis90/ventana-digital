@@ -48,38 +48,36 @@ let videoRemotoActivo = false;
 // ============================================
 // 🎬 CONFIGURAR VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
 // ============================================
-video.style.display = "none";
+video.style.display = "none"; // Inicialmente oculto hasta que se inicie la cámara
 
 // ============================================
 // 🎬 CONFIGURAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
 // ============================================
-videoRemoto.style.display = "none";
+videoRemoto.style.display = "none"; // Inicialmente oculto
 
 // ============================================
-// 🎧 CREAR ELEMENTO DE AUDIO SEPARADO (SOLO AUDIO)
+// 🔊 CONFIGURACIÓN DE VOLUMEN PARA EVITAR ECO
 // ============================================
-const audioRemoto = document.createElement("audio");
-audioRemoto.id = "audio-remoto";
-audioRemoto.autoplay = true;
-audioRemoto.muted = false;
-audioRemoto.volume = 0.5; // 🔥 50% para evitar eco
-audioRemoto.style.display = "none";
-document.body.appendChild(audioRemoto);
-console.log("🎧 Elemento de audio separado creado");
-window.audioRemoto = audioRemoto;
+const VOLUMEN_MAXIMO = 0.6; // 60% máximo para evitar eco
+
+// ============================================
+// 🎧 ELIMINAR ELEMENTO DE AUDIO SEPARADO - USAR SOLO videoRemoto
+// ============================================
+// Ya no creamos audioRemoto separado para evitar duplicación
 
 // ============================================
 // 🔥 OBTENER CREDENCIALES TURN DEL SERVIDOR
 // ============================================
 async function obtenerTurnServers() {
     try {
-        // ✅ CORREGIDO: Usar ruta completa
+        // ✅ CORREGIDO: Usar URL completa para el servidor
         const response = await fetch('/turn-credentials');
         if (response.ok) {
             const data = await response.json();
             if (data.iceServers) {
                 turnServers = data.iceServers; // ✅ AHORA SE PUEDE REASIGNAR
                 console.log('✅ Servidores TURN obtenidos del servidor:', turnServers.length);
+                console.log('📋 Servidores TURN:', turnServers.map(s => s.urls).flat());
                 return turnServers;
             }
         }
@@ -113,6 +111,7 @@ async function obtenerTurnServers() {
             credential: "openrelayproject"
         }
     ];
+    console.log('📋 Servidores TURN de respaldo configurados:', turnServers.length);
     return turnServers;
 }
 
@@ -128,10 +127,33 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 // ============================================
-// 🔥 FUNCIÓN PARA MOSTRAR VIDEO REMOTO (CORREGIDA - SIN DUPLICACIÓN)
+// 🔊 CONTROL DE VOLUMEN PARA EVITAR ECO
+// ============================================
+function configurarVolumenRemoto() {
+    if (!videoRemoto) return;
+    
+    // Limitar volumen al máximo configurado
+    videoRemoto.volume = Math.min(videoRemoto.volume || 0.5, VOLUMEN_MAXIMO);
+    
+    // Monitorear cambios de volumen y limitarlos
+    const handler = function() {
+        if (this.volume > VOLUMEN_MAXIMO) {
+            this.volume = VOLUMEN_MAXIMO;
+            console.log(`🔊 Volumen limitado a ${VOLUMEN_MAXIMO * 100}% para evitar eco`);
+        }
+    };
+    
+    videoRemoto.removeEventListener('volumechange', handler);
+    videoRemoto.addEventListener('volumechange', handler);
+    
+    console.log(`🔊 Volumen configurado al ${VOLUMEN_MAXIMO * 100}% máximo`);
+}
+
+// ============================================
+// 🔥 FUNCIÓN PARA MOSTRAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
 // ============================================
 function mostrarVideoRemoto(stream, fromId) {
-    console.log(`📹 ASIGNANDO VIDEO REMOTO DE: ${fromId || 'desconocido'}`);
+    console.log(`📹 ASIGNANDO VIDEO REMOTO (PANTALLA GRANDE - FONDO) DE: ${fromId || 'desconocido'}`);
     
     if (!stream) {
         console.error("❌ Stream vacío");
@@ -141,33 +163,34 @@ function mostrarVideoRemoto(stream, fromId) {
     const audioTracks = stream.getAudioTracks();
     const videoTracks = stream.getVideoTracks();
     
-    console.log(`🎤 Audio tracks: ${audioTracks.length}`);
-    console.log(`📹 Video tracks: ${videoTracks.length}`);
+    console.log(`🎤 Tracks de audio en el stream: ${audioTracks.length}`);
+    console.log(`📹 Tracks de video en el stream: ${videoTracks.length}`);
     
-    // Habilitar todos los tracks
+    // 🔥 FORZAR HABILITACIÓN DE TODOS LOS TRACKS
     audioTracks.forEach(track => {
         track.enabled = true;
-        console.log(`✅ Audio habilitado: ${track.label}`);
+        console.log(`✅ Audio track habilitado: ${track.label}`);
     });
+    
     videoTracks.forEach(track => {
         track.enabled = true;
-        console.log(`✅ Video habilitado: ${track.label}`);
+        console.log(`✅ Video track habilitado: ${track.label}`);
     });
 
-    // 🔥 VIDEO: Asignar al video-remoto pero SILENCIADO
+    // 🔥 ASIGNAR AL VIDEO REMOTO (pantalla grande - fondo) - ÚNICO ELEMENTO PARA AUDIO Y VIDEO
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
-    videoRemoto.muted = true;  // 🔇 SILENCIADO para evitar duplicación
-    videoRemoto.volume = 0;     // Volumen a 0
+    videoRemoto.muted = false;
+    
+    // 🔥 CONFIGURAR VOLUMEN PARA EVITAR ECO
+    configurarVolumenRemoto();
+    
+    // 🔥 VIDEO LOCAL (pantalla pequeña - esquina) siempre visible encima
     video.style.display = "block";
+    
     videoRemotoActivo = true;
 
-    // 🔥 AUDIO: Asignar SOLO al audio-remoto
-    audioRemoto.srcObject = stream;
-    audioRemoto.muted = false;
-    audioRemoto.volume = 0.5;   // 50% para evitar eco
-
-    // 🔥 REPRODUCIR con mejor manejo de errores
+    // 🔥 REPRODUCIR CON MÚLTIPLES INTENTOS
     let intentos = 0;
     const maxIntentos = 5;
     
@@ -175,35 +198,29 @@ function mostrarVideoRemoto(stream, fromId) {
         intentos++;
         console.log(`🔄 Intento de reproducción ${intentos}/${maxIntentos}`);
         
-        Promise.all([
-            videoRemoto.play().catch(() => {}),
-            audioRemoto.play().catch(() => {})
-        ]).then(() => {
-            // Verificar si al menos uno se reprodujo
-            if (!videoRemoto.paused || !audioRemoto.paused) {
-                console.log("🔊 Audio y video remoto reproduciéndose");
-                actualizarEstado("🟢 Conectado - Audio y Video en vivo", "conectado");
-            }
-        }).catch(e => {
-            console.warn(`⚠️ Error reproducción (${intentos}):`, e.message);
-            if (intentos < maxIntentos) {
-                setTimeout(intentarReproducir, 1000);
-            } else {
-                console.log("💡 Haz clic en la página para activar el audio");
-                // 🔥 Listener único para activar con clic
-                const clickHandler = function() {
-                    audioRemoto.play().catch(() => {});
-                    videoRemoto.play().catch(() => {});
-                    document.removeEventListener('click', clickHandler);
-                    console.log("✅ Audio activado por clic");
-                };
-                document.addEventListener('click', clickHandler, { once: true });
-            }
-        });
+        videoRemoto.play()
+            .then(() => {
+                console.log(`🔊 Audio y video remoto reproduciéndose al ${VOLUMEN_MAXIMO * 100}%`);
+                actualizarEstado("🟢 Conectado - Video en vivo", "conectado");
+            })
+            .catch(e => {
+                console.warn(`⚠️ Error video remoto (${intentos}):`, e.message);
+                if (intentos < maxIntentos) {
+                    setTimeout(intentarReproducir, 1000);
+                } else {
+                    console.log("💡 Haz clic en la página para activar el audio");
+                    document.addEventListener('click', function clickHandler() {
+                        videoRemoto.play().catch(() => {});
+                        document.removeEventListener('click', clickHandler);
+                        console.log("✅ Audio activado por clic");
+                    }, { once: true });
+                }
+            });
     }
 
     setTimeout(intentarReproducir, 500);
-    console.log(`✅ Video remoto de ${fromId || 'desconocido'} asignado`);
+
+    console.log(`✅ Video remoto de ${fromId || 'desconocido'} asignado correctamente`);
 }
 
 function ocultarVideoRemoto() {
@@ -214,10 +231,6 @@ function ocultarVideoRemoto() {
     if (videoRemoto.srcObject) {
         videoRemoto.srcObject.getTracks().forEach(track => track.stop());
         videoRemoto.srcObject = null;
-    }
-    if (audioRemoto) {
-        audioRemoto.pause();
-        audioRemoto.srcObject = null;
     }
 }
 
@@ -304,6 +317,8 @@ async function crearPeerConnection(targetId) {
     if (turnServers.length === 0) {
         await obtenerTurnServers();
     }
+
+    console.log(`📋 Usando ${turnServers.length} servidores ICE`);
 
     const pc = new RTCPeerConnection({
         iceServers: turnServers.length > 0 ? turnServers : [
@@ -1147,19 +1162,13 @@ window.diagnosticoCompleto = () => {
     console.log("📥 Ofertas recibidas:", Array.from(ofertasRecibidas));
     console.log("🔄 Reconexión activa:", reconexionActiva);
     console.log("🎬 Video remoto activo:", videoRemotoActivo);
-    console.log("🎧 Elemento audio remoto:", {
-        existe: !!audioRemoto,
-        muted: audioRemoto.muted,
-        paused: audioRemoto.paused,
-        volume: audioRemoto.volume,
-        srcObject: !!audioRemoto.srcObject
-    });
     console.log("📹 Elemento video remoto:", {
         existe: !!videoRemoto,
         muted: videoRemoto.muted,
         paused: videoRemoto.paused,
         volume: videoRemoto.volume,
-        srcObject: !!videoRemoto.srcObject
+        srcObject: !!videoRemoto.srcObject,
+        display: videoRemoto.style.display
     });
     
     return {

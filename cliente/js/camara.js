@@ -26,7 +26,7 @@ let streamLocal = null;
 let webRTCIniciado = false;
 const conexionesEnProceso = new Set();
 const iceCandidatesQueue = {};
-let turnServers = []; // ✅ CAMBIADO: de const a let
+let turnServers = [];
 let audioContext = null;
 const ofertasEnviadas = new Set();
 const ofertasRecibidas = new Set();
@@ -46,38 +46,33 @@ let reconexionActiva = false;
 let videoRemotoActivo = false;
 
 // ============================================
-// 🎬 CONFIGURAR VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
+// 🎬 CONFIGURAR VIDEO LOCAL
 // ============================================
-video.style.display = "none"; // Inicialmente oculto hasta que se inicie la cámara
+video.style.display = "none";
+video.muted = true;  // 🔥 MUTEAR VIDEO LOCAL
+video.volume = 0;    // 🔥 VOLUMEN A 0
 
 // ============================================
-// 🎬 CONFIGURAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
+// 🎬 CONFIGURAR VIDEO REMOTO
 // ============================================
-videoRemoto.style.display = "none"; // Inicialmente oculto
+videoRemoto.style.display = "none";
 
 // ============================================
 // 🔊 CONFIGURACIÓN DE VOLUMEN PARA EVITAR ECO
 // ============================================
-const VOLUMEN_MAXIMO = 0.6; // 60% máximo para evitar eco
-
-// ============================================
-// 🎧 ELIMINAR ELEMENTO DE AUDIO SEPARADO - USAR SOLO videoRemoto
-// ============================================
-// Ya no creamos audioRemoto separado para evitar duplicación
+const VOLUMEN_MAXIMO = 0.25; // 🔥 25% máximo para evitar eco
 
 // ============================================
 // 🔥 OBTENER CREDENCIALES TURN DEL SERVIDOR
 // ============================================
 async function obtenerTurnServers() {
     try {
-        // ✅ CORREGIDO: Usar URL completa para el servidor
         const response = await fetch('/turn-credentials');
         if (response.ok) {
             const data = await response.json();
             if (data.iceServers) {
-                turnServers = data.iceServers; // ✅ AHORA SE PUEDE REASIGNAR
+                turnServers = data.iceServers;
                 console.log('✅ Servidores TURN obtenidos del servidor:', turnServers.length);
-                console.log('📋 Servidores TURN:', turnServers.map(s => s.urls).flat());
                 return turnServers;
             }
         }
@@ -111,7 +106,6 @@ async function obtenerTurnServers() {
             credential: "openrelayproject"
         }
     ];
-    console.log('📋 Servidores TURN de respaldo configurados:', turnServers.length);
     return turnServers;
 }
 
@@ -133,7 +127,7 @@ function configurarVolumenRemoto() {
     if (!videoRemoto) return;
     
     // Limitar volumen al máximo configurado
-    videoRemoto.volume = Math.min(videoRemoto.volume || 0.5, VOLUMEN_MAXIMO);
+    videoRemoto.volume = Math.min(videoRemoto.volume || 0.2, VOLUMEN_MAXIMO);
     
     // Monitorear cambios de volumen y limitarlos
     const handler = function() {
@@ -150,7 +144,7 @@ function configurarVolumenRemoto() {
 }
 
 // ============================================
-// 🔥 FUNCIÓN PARA MOSTRAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
+// 🔥 FUNCIÓN PARA MOSTRAR VIDEO REMOTO
 // ============================================
 function mostrarVideoRemoto(stream, fromId) {
     console.log(`📹 ASIGNANDO VIDEO REMOTO (PANTALLA GRANDE - FONDO) DE: ${fromId || 'desconocido'}`);
@@ -166,7 +160,7 @@ function mostrarVideoRemoto(stream, fromId) {
     console.log(`🎤 Tracks de audio en el stream: ${audioTracks.length}`);
     console.log(`📹 Tracks de video en el stream: ${videoTracks.length}`);
     
-    // 🔥 FORZAR HABILITACIÓN DE TODOS LOS TRACKS
+    // FORZAR HABILITACIÓN DE TODOS LOS TRACKS
     audioTracks.forEach(track => {
         track.enabled = true;
         console.log(`✅ Audio track habilitado: ${track.label}`);
@@ -177,20 +171,22 @@ function mostrarVideoRemoto(stream, fromId) {
         console.log(`✅ Video track habilitado: ${track.label}`);
     });
 
-    // 🔥 ASIGNAR AL VIDEO REMOTO (pantalla grande - fondo) - ÚNICO ELEMENTO PARA AUDIO Y VIDEO
+    // ASIGNAR AL VIDEO REMOTO
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     videoRemoto.muted = false;
     
-    // 🔥 CONFIGURAR VOLUMEN PARA EVITAR ECO
+    // CONFIGURAR VOLUMEN PARA EVITAR ECO
     configurarVolumenRemoto();
     
-    // 🔥 VIDEO LOCAL (pantalla pequeña - esquina) siempre visible encima
+    // VIDEO LOCAL SIEMPRE VISIBLE
     video.style.display = "block";
+    video.muted = true;  // 🔥 ASEGURAR QUE EL LOCAL ESTÁ MUDO
+    video.volume = 0;
     
     videoRemotoActivo = true;
 
-    // 🔥 REPRODUCIR CON MÚLTIPLES INTENTOS
+    // REPRODUCIR CON MÚLTIPLES INTENTOS
     let intentos = 0;
     const maxIntentos = 5;
     
@@ -227,6 +223,8 @@ function ocultarVideoRemoto() {
     videoRemoto.style.display = "none";
     videoRemotoActivo = false;
     video.style.display = "block";
+    video.muted = true;
+    video.volume = 0;
     
     if (videoRemoto.srcObject) {
         videoRemoto.srcObject.getTracks().forEach(track => track.stop());
@@ -277,10 +275,9 @@ function probarAudioLocal(stream) {
 }
 
 // ============================================
-// 🔗 CREAR PEER CONNECTION CON TURN MEJORADO
+// 🔗 CREAR PEER CONNECTION
 // ============================================
 async function crearPeerConnection(targetId) {
-    // 🔥 Verificar si ya existe conexión activa
     if (peers[targetId]) {
         const pc = peers[targetId];
         if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
@@ -299,7 +296,6 @@ async function crearPeerConnection(targetId) {
         }
     }
 
-    // 🔥 Verificar si ya hay una conexión en proceso
     if (conexionesEnProceso.has(targetId)) {
         console.log(`⚠️ Conexión con ${targetId} está en proceso`);
         return null;
@@ -318,8 +314,6 @@ async function crearPeerConnection(targetId) {
         await obtenerTurnServers();
     }
 
-    console.log(`📋 Usando ${turnServers.length} servidores ICE`);
-
     const pc = new RTCPeerConnection({
         iceServers: turnServers.length > 0 ? turnServers : [
             { urls: "stun:stun.l.google.com:19302" },
@@ -331,7 +325,7 @@ async function crearPeerConnection(targetId) {
         iceTransportPolicy: "all"
     });
 
-    // 🔥 IMPORTANTE: Agregar TODOS los tracks locales (AUDIO Y VIDEO)
+    // AGREGAR TRACKS LOCALES
     const audioTracks = streamLocal.getAudioTracks();
     const videoTracks = streamLocal.getVideoTracks();
     
@@ -339,7 +333,6 @@ async function crearPeerConnection(targetId) {
     console.log(`  - Audio tracks: ${audioTracks.length}`);
     console.log(`  - Video tracks: ${videoTracks.length}`);
     
-    // 🔥 FORZAR HABILITACIÓN DE AUDIO Y VIDEO LOCAL
     audioTracks.forEach(track => {
         track.enabled = true;
         console.log(`  ✅ Audio track habilitado: ${track.label}`);
@@ -352,7 +345,7 @@ async function crearPeerConnection(targetId) {
         pc.addTrack(track, streamLocal);
     });
 
-    // 🔥 MANEJAR TRACKS REMOTOS
+    // MANEJAR TRACKS REMOTOS
     pc.ontrack = (event) => {
         console.log(`📥 Track remoto recibido de: ${targetId}`);
         console.log(`📥 Track kind: ${event.track.kind}`);
@@ -366,7 +359,6 @@ async function crearPeerConnection(targetId) {
             console.log(`  - Audio tracks: ${remoteAudioTracks.length}`);
             console.log(`  - Video tracks: ${remoteVideoTracks.length}`);
             
-            // 🔥 FORZAR HABILITACIÓN DE AUDIO Y VIDEO REMOTO
             remoteAudioTracks.forEach(track => {
                 track.enabled = true;
                 console.log(`🎤 Audio track remoto habilitado: ${track.label}`);
@@ -377,7 +369,6 @@ async function crearPeerConnection(targetId) {
                 console.log(`📹 Video track remoto habilitado: ${track.label}`);
             });
             
-            // 🔥 MOSTRAR VIDEO REMOTO (PANTALLA GRANDE - FONDO)
             mostrarVideoRemoto(remoteStream, targetId);
         }
     };
@@ -469,7 +460,7 @@ async function crearPeerConnection(targetId) {
 }
 
 // ============================================
-// 📤 ENVIAR ICE CANDIDATES PENDIENTES (MEJORADO)
+// 📤 ENVIAR ICE CANDIDATES PENDIENTES
 // ============================================
 function enviarIceCandidatesPendientes(targetId) {
     const pc = peers[targetId];
@@ -478,13 +469,9 @@ function enviarIceCandidatesPendientes(targetId) {
         return;
     }
     
-    // 🔥 Verificar si hay candidates pendientes
     const pendientes = iceCandidatesQueue[targetId] || [];
-    if (pendientes.length === 0) {
-        return;
-    }
+    if (pendientes.length === 0) return;
     
-    // 🔥 Función para intentar enviar
     function intentarEnviar() {
         if (pc.remoteDescription) {
             console.log(`📤 Enviando ${pendientes.length} ICE candidates pendientes a ${targetId}`);
@@ -500,12 +487,10 @@ function enviarIceCandidatesPendientes(targetId) {
         return false;
     }
     
-    // Intentar inmediatamente
     if (intentarEnviar()) {
         return;
     }
     
-    // Si no está disponible, esperar con intervalos
     console.log(`⏳ Esperando remoteDescription para ${targetId}...`);
     let waitTime = 0;
     const interval = setInterval(() => {
@@ -514,7 +499,6 @@ function enviarIceCandidatesPendientes(targetId) {
             clearInterval(interval);
             if (waitTime > 5000) {
                 console.log(`⚠️ Timeout esperando remoteDescription para ${targetId}`);
-                // Guardar para intentar más tarde
                 setTimeout(() => {
                     if (pc.remoteDescription && iceCandidatesQueue[targetId]) {
                         enviarIceCandidatesPendientes(targetId);
@@ -526,24 +510,20 @@ function enviarIceCandidatesPendientes(targetId) {
 }
 
 // ============================================
-// 📨 WEBRTC - OFERTA Y RESPUESTA (CORREGIDO)
+// 📨 WEBRTC - OFERTA Y RESPUESTA
 // ============================================
 async function iniciarOferta(targetId) {
-    // 🔥 Verificar si ya hay una oferta en proceso
     if (ofertasEnviadas.has(targetId)) {
         console.log(`⚠️ Oferta a ${targetId} ya fue enviada, omitiendo...`);
         return;
     }
     
-    // 🔥 Verificar si ya existe conexión activa
     if (peers[targetId]) {
         const pc = peers[targetId];
         if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
             console.log(`ℹ️ Ya conectado o conectando con ${targetId}`);
             return;
         } else {
-            // Limpiar conexión muerta
-            console.log(`🧹 Limpiando conexión muerta con ${targetId}`);
             if (pc._timeoutId) {
                 clearTimeout(pc._timeoutId);
             }
@@ -555,13 +535,11 @@ async function iniciarOferta(targetId) {
         }
     }
     
-    // 🔥 Verificar si ya hay una conexión en proceso
     if (conexionesEnProceso.has(targetId)) {
         console.log(`⏳ Conexión con ${targetId} ya está en proceso`);
         return;
     }
     
-    // 🔥 Marcar como en proceso antes de crear
     conexionesEnProceso.add(targetId);
     ofertasEnviadas.add(targetId);
     
@@ -586,7 +564,6 @@ async function iniciarOferta(targetId) {
         });
         console.log(`✅ Oferta enviada a: ${targetId}`);
         
-        // Programar envío de ICE candidates pendientes
         setTimeout(() => {
             enviarIceCandidatesPendientes(targetId);
         }, 1000);
@@ -604,14 +581,12 @@ async function manejarOferta(data) {
     const { from, offer } = data;
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
 
-    // 🔥 Prevenir ofertas duplicadas
     if (ofertasRecibidas.has(from)) {
         console.log(`⚠️ Oferta duplicada de ${from}, ignorando...`);
         return;
     }
     ofertasRecibidas.add(from);
 
-    // 🔥 Limpiar conexiones muertas
     if (peers[from]) {
         const pc = peers[from];
         if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
@@ -641,7 +616,6 @@ async function manejarOferta(data) {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         console.log(`✅ Descripción remota establecida (oferta) de ${from}`);
         
-        // Enviar ICE candidates pendientes
         setTimeout(() => {
             enviarIceCandidatesPendientes(from);
         }, 500);
@@ -687,7 +661,6 @@ async function manejarRespuesta(data) {
         console.log(`✅ Descripción remota establecida (respuesta) de ${from}`);
         conexionesEnProceso.delete(from);
         
-        // Enviar ICE candidates pendientes
         setTimeout(() => {
             enviarIceCandidatesPendientes(from);
         }, 500);
@@ -730,7 +703,6 @@ async function manejarIceCandidate(data) {
         console.log(`✅ ICE Candidate agregado de: ${from}`);
     } catch (error) {
         console.warn(`⚠️ Error al agregar ICE candidate de ${from}:`, error.message);
-        // Reintentar después de un delay
         setTimeout(() => {
             if (pc && pc.remoteDescription) {
                 pc.addIceCandidate(new RTCIceCandidate(candidate))
@@ -774,7 +746,6 @@ function conectarConTodos(clientes) {
             return;
         }
 
-        // Limpiar clientes desaparecidos
         Object.keys(peers).forEach(id => {
             if (!clientes.includes(id)) {
                 console.log(`🧹 Limpiando conexión a cliente desaparecido: ${id}`);
@@ -793,9 +764,7 @@ function conectarConTodos(clientes) {
             }
         });
 
-        // Conectar con otros clientes
         otros.forEach(targetId => {
-            // Verificar si ya existe conexión
             if (peers[targetId]) {
                 const pc = peers[targetId];
                 if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
@@ -814,7 +783,6 @@ function conectarConTodos(clientes) {
                 }
             }
             
-            // Verificar intentos de reconexión
             if (!intentosReconexion[targetId]) {
                 intentosReconexion[targetId] = 0;
             }
@@ -824,7 +792,6 @@ function conectarConTodos(clientes) {
                 return;
             }
             
-            // Iniciar conexión
             if (!conexionesEnProceso.has(targetId)) {
                 console.log(`🔗 Iniciando conexión con ${targetId}`);
                 const delay = Math.random() * 2000 + 1000;
@@ -861,7 +828,6 @@ socket.on("connect", async () => {
     
     await obtenerTurnServers();
     
-    // Limpiar conexiones antiguas
     Object.keys(peers).forEach(key => {
         if (peers[key]) {
             if (peers[key]._timeoutId) {
@@ -875,10 +841,7 @@ socket.on("connect", async () => {
     Object.keys(iceCandidatesQueue).forEach(key => delete iceCandidatesQueue[key]);
     ofertasEnviadas.clear();
     ofertasRecibidas.clear();
-    // Limpiar intentos de reconexión
-    Object.keys(intentosReconexion).forEach(key => {
-        intentosReconexion[key] = 0;
-    });
+    intentosReconexion = {};
     reconexionActiva = false;
     ultimoIntentoReconexion = 0;
     
@@ -940,12 +903,13 @@ socket.on("cliente-desconectado", (data) => {
 });
 
 // ============================================
-// 🎥 INICIAR CÁMARA
+// 🎥 INICIAR CÁMARA (CORREGIDO - SIN ECO)
 // ============================================
 async function iniciarCamara() {
     try {
         console.log("📷 Solicitando cámara y micrófono...");
         
+        // 🔥 CONFIGURACIÓN DE AUDIO PARA EVITAR ECO
         const stream = await navigator.mediaDevices.getUserMedia({
             video: { 
                 width: { ideal: 640 }, 
@@ -953,12 +917,12 @@ async function iniciarCamara() {
                 facingMode: "user"
             },
             audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
+                echoCancellation: true,        // 🔥 Cancela eco
+                noiseSuppression: true,         // 🔥 Reduce ruido
+                autoGainControl: true,          // 🔥 Control de ganancia
                 sampleRate: 48000,
                 sampleSize: 16,
-                channelCount: 1
+                channelCount: 1                 // 🔥 Mono para evitar problemas
             }
         });
         
@@ -978,9 +942,12 @@ async function iniciarCamara() {
             console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
         });
         
-        // 🔥 ASIGNAR STREAM AL VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
+        // 🔥 VIDEO LOCAL - MUTEADO PARA EVITAR ECO
         video.srcObject = stream;
         video.style.display = "block";
+        video.muted = true;  // 🔥 IMPORTANTE: Mutear
+        video.volume = 0;    // 🔥 Volumen a 0
+        
         await new Promise(resolve => {
             video.onloadedmetadata = () => {
                 video.play();
@@ -991,6 +958,7 @@ async function iniciarCamara() {
         console.log("📹 Cámara iniciada correctamente");
         console.log("📐 Resolución:", video.videoWidth, "x", video.videoHeight);
         console.log("🎤 Audio capturado correctamente");
+        console.log("🔇 Video local MUTEADO para evitar eco");
         
         probarAudioLocal(stream);
 
@@ -1007,11 +975,16 @@ async function iniciarCamara() {
             console.log("🔄 Intentando con configuración básica...");
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: true,
-                audio: true
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true                }
             });
             streamLocal = stream;
             video.srcObject = stream;
             video.style.display = "block";
+            video.muted = true;
+            video.volume = 0;
             await new Promise(resolve => {
                 video.onloadedmetadata = () => {
                     video.play();
@@ -1019,6 +992,7 @@ async function iniciarCamara() {
                 };
             });
             console.log("📹 Cámara iniciada en modo básico");
+            console.log("🔇 Video local MUTEADO para evitar eco");
             probarAudioLocal(stream);
             
             await obtenerTurnServers();
@@ -1035,6 +1009,37 @@ async function iniciarCamara() {
         }
     }
 }
+
+// ============================================
+// 🎛️ CONTROL DE VOLUMEN MANUAL
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+    const controlVolumen = document.getElementById('volumen');
+    const labelVolumen = document.getElementById('volumen-label');
+    const btnSilenciar = document.getElementById('btn-silenciar');
+    
+    if (controlVolumen) {
+        controlVolumen.value = VOLUMEN_MAXIMO;
+        controlVolumen.addEventListener('input', (e) => {
+            const vol = parseFloat(e.target.value);
+            videoRemoto.volume = vol;
+            if (labelVolumen) {
+                labelVolumen.textContent = `${Math.round(vol * 100)}%`;
+            }
+            console.log(`🔊 Volumen ajustado a: ${Math.round(vol * 100)}%`);
+        });
+    }
+    
+    if (btnSilenciar) {
+        let silenciado = false;
+        btnSilenciar.addEventListener('click', () => {
+            silenciado = !silenciado;
+            videoRemoto.muted = silenciado;
+            btnSilenciar.textContent = silenciado ? '🔊 Activar sonido' : '🔇 Silenciar';
+            console.log(`🔇 Audio ${silenciado ? 'silenciado' : 'activado'}`);
+        });
+    }
+});
 
 // ============================================
 // 🔄 FUNCIÓN DE RECONEXIÓN MANUAL
@@ -1126,62 +1131,6 @@ window.forzarOferta = (targetId) => {
 };
 
 console.log("💡 Para forzar oferta: forzarOferta('ID_DEL_CLIENTE')");
-
-// ============================================
-// 📊 DIAGNÓSTICO COMPLETO (NUEVO)
-// ============================================
-window.diagnosticoCompleto = () => {
-    console.log("🔍 DIAGNÓSTICO COMPLETO:");
-    console.log("📡 Socket:", {
-        id: socket.id,
-        connected: socket.connected,
-        disconnected: socket.disconnected
-    });
-    
-    console.log("📹 Stream Local:", {
-        existe: !!streamLocal,
-        audioTracks: streamLocal ? streamLocal.getAudioTracks().length : 0,
-        videoTracks: streamLocal ? streamLocal.getVideoTracks().length : 0
-    });
-    
-    console.log("🔗 Conexiones:");
-    Object.keys(peers).forEach(id => {
-        const pc = peers[id];
-        console.log(`  ${id}:`, {
-            connectionState: pc.connectionState,
-            iceState: pc.iceConnectionState,
-            signalingState: pc.signalingState,
-            remoteDescription: !!pc.remoteDescription,
-            localDescription: !!pc.localDescription
-        });
-    });
-    
-    console.log("📦 ICE Candidates en cola:", Object.keys(iceCandidatesQueue).length > 0 ? iceCandidatesQueue : "Ninguno");
-    console.log("🔄 Conexiones en proceso:", Array.from(conexionesEnProceso));
-    console.log("📤 Ofertas enviadas:", Array.from(ofertasEnviadas));
-    console.log("📥 Ofertas recibidas:", Array.from(ofertasRecibidas));
-    console.log("🔄 Reconexión activa:", reconexionActiva);
-    console.log("🎬 Video remoto activo:", videoRemotoActivo);
-    console.log("📹 Elemento video remoto:", {
-        existe: !!videoRemoto,
-        muted: videoRemoto.muted,
-        paused: videoRemoto.paused,
-        volume: videoRemoto.volume,
-        srcObject: !!videoRemoto.srcObject,
-        display: videoRemoto.style.display
-    });
-    
-    return {
-        socket: { id: socket.id, connected: socket.connected },
-        streamLocal: !!streamLocal,
-        peers: Object.keys(peers),
-        conexionesEnProceso: Array.from(conexionesEnProceso),
-        iceCandidatesQueue: iceCandidatesQueue,
-        videoRemotoActivo: videoRemotoActivo
-    };
-};
-
-console.log("💡 Para diagnóstico completo: diagnosticoCompleto()");
 
 // ============================================
 // 🚀 INICIO

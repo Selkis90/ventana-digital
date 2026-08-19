@@ -23,7 +23,7 @@ let streamLocal = null;
 let webRTCIniciado = false;
 const conexionesEnProceso = new Set();
 const iceCandidatesQueue = {};
-let turnServers = [];
+let turnServers = []; // ✅ CAMBIADO: const → let
 let audioContext = null;
 const ofertasEnviadas = new Set();
 const ofertasRecibidas = new Set();
@@ -52,7 +52,7 @@ const audioRemoto = document.createElement("audio");
 audioRemoto.id = "audio-remoto";
 audioRemoto.autoplay = true;
 audioRemoto.muted = false;
-audioRemoto.volume = 0.8; // 🔥 SUBIDO A 80%
+audioRemoto.volume = 0.8;
 audioRemoto.style.display = "none";
 document.body.appendChild(audioRemoto);
 console.log("🎧 Audio remoto configurado al 80%");
@@ -66,7 +66,7 @@ async function obtenerTurnServers() {
         if (response.ok) {
             const data = await response.json();
             if (data.iceServers) {
-                turnServers = data.iceServers;
+                turnServers = data.iceServers; // ✅ AHORA FUNCIONA
                 console.log('✅ Servidores TURN obtenidos:', turnServers.length);
                 return turnServers;
             }
@@ -76,7 +76,7 @@ async function obtenerTurnServers() {
     }
     
     console.log('🔄 Usando TURN de respaldo');
-    turnServers = [
+    turnServers = [ // ✅ AHORA FUNCIONA
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
         { urls: "stun:stun2.l.google.com:19302" },
@@ -128,7 +128,6 @@ function activarAudio() {
             .then(() => {
                 audioActivado = true;
                 console.log("✅ Audio activado correctamente al 80%");
-                // Ocultar botón si existe
                 const btn = document.getElementById('btn-activar-audio');
                 if (btn) {
                     btn.textContent = "✅ Audio Activado";
@@ -151,7 +150,6 @@ function activarAudio() {
 // 🔥 CREAR BOTÓN PARA ACTIVAR AUDIO
 // ============================================
 function crearBotonAudio() {
-    // Verificar si ya existe
     if (document.getElementById('btn-activar-audio')) return;
     
     const btn = document.createElement('button');
@@ -204,7 +202,7 @@ function crearBotonAudio() {
 }
 
 // ============================================
-// 🔥 MOSTRAR VIDEO REMOTO (CORREGIDO)
+// 🔥 MOSTRAR VIDEO REMOTO
 // ============================================
 function mostrarVideoRemoto(stream, fromId) {
     console.log(`📹 ASIGNANDO VIDEO REMOTO DE: ${fromId}`);
@@ -220,7 +218,6 @@ function mostrarVideoRemoto(stream, fromId) {
     console.log(`🎤 Audio tracks remotos: ${audioTracks.length}`);
     console.log(`📹 Video tracks remotos: ${videoTracks.length}`);
     
-    // 🔥 HABILITAR TODOS LOS TRACKS REMOTOS
     audioTracks.forEach(track => {
         track.enabled = true;
         console.log(`✅ Audio remoto habilitado: ${track.label}`);
@@ -230,7 +227,6 @@ function mostrarVideoRemoto(stream, fromId) {
         console.log(`✅ Video remoto habilitado: ${track.label}`);
     });
 
-    // 🔥 VIDEO: se muestra en pantalla grande
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     videoRemoto.muted = false;
@@ -238,12 +234,10 @@ function mostrarVideoRemoto(stream, fromId) {
     video.style.display = "block";
     videoRemotoActivo = true;
 
-    // 🔥 AUDIO: se reproduce por separado
     audioRemoto.srcObject = stream;
     audioRemoto.muted = false;
     audioRemoto.volume = 0.8;
     
-    // 🔥 FORZAR REPRODUCCIÓN DEL AUDIO
     console.log("🔊 Intentando reproducir audio remoto...");
     audioRemoto.play()
         .then(() => {
@@ -253,11 +247,9 @@ function mostrarVideoRemoto(stream, fromId) {
         })
         .catch(e => {
             console.warn("⚠️ Error reproduciendo audio:", e.message);
-            // Mostrar botón si falla
             setTimeout(crearBotonAudio, 1000);
         });
 
-    // 🔥 REPRODUCIR VIDEO
     let intentos = 0;
     const maxIntentos = 5;
     
@@ -295,7 +287,6 @@ function ocultarVideoRemoto() {
         audioRemoto.srcObject = null;
         audioActivado = false;
     }
-    // Eliminar botón de audio si existe
     const btn = document.getElementById('btn-activar-audio');
     if (btn) btn.remove();
 }
@@ -383,7 +374,6 @@ async function crearPeerConnection(targetId) {
         iceTransportPolicy: "all"
     });
 
-    // 🔥 AGREGAR TRACKS LOCALES (AUDIO Y VIDEO)
     const audioTracks = streamLocal.getAudioTracks();
     const videoTracks = streamLocal.getVideoTracks();
     
@@ -391,7 +381,6 @@ async function crearPeerConnection(targetId) {
     console.log(`  - Audio tracks: ${audioTracks.length}`);
     console.log(`  - Video tracks: ${videoTracks.length}`);
     
-    // 🔥 FORZAR HABILITACIÓN DE AUDIO LOCAL
     audioTracks.forEach(track => {
         track.enabled = true;
         console.log(`  ✅ Audio local habilitado: ${track.label}`);
@@ -404,7 +393,6 @@ async function crearPeerConnection(targetId) {
         pc.addTrack(track, streamLocal);
     });
 
-    // MANEJAR TRACKS REMOTOS
     pc.ontrack = (event) => {
         console.log(`📥 Track remoto recibido de: ${targetId}`);
         console.log(`📥 Track kind: ${event.track.kind}`);
@@ -462,8 +450,6 @@ async function crearPeerConnection(targetId) {
             delete iceCandidatesQueue[targetId];
             ofertasEnviadas.delete(targetId);
             intentosReconexion[targetId] = 0;
-            
-            // Intentar activar audio cuando la conexión se establece
             setTimeout(() => activarAudio(), 1000);
         } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
             console.log(`❌ Conexión perdida con ${targetId}`);
@@ -921,7 +907,7 @@ socket.on("cliente-desconectado", (data) => {
 });
 
 // ============================================
-// 🎥 INICIAR CÁMARA (CORREGIDO)
+// 🎥 INICIAR CÁMARA
 // ============================================
 async function iniciarCamara() {
     try {
@@ -945,7 +931,6 @@ async function iniciarCamara() {
         
         streamLocal = stream;
         
-        // 🔥 FORZAR HABILITACIÓN DEL AUDIO LOCAL
         const audioTracks = stream.getAudioTracks();
         console.log("🎤 Tracks de audio disponibles:", audioTracks.length);
         audioTracks.forEach((track, i) => {
@@ -960,7 +945,6 @@ async function iniciarCamara() {
             console.log(`  Track ${i}: ${track.label} - habilitado: ${track.enabled}`);
         });
         
-        // VIDEO LOCAL
         video.srcObject = stream;
         video.style.display = "block";
         video.muted = true;
@@ -1117,9 +1101,6 @@ window.estadoConexiones = () => {
     };
 };
 
-// ============================================
-// 🎛️ FUNCIÓN PARA VERIFICAR EL ESTADO DEL AUDIO
-// ============================================
 window.verificarAudio = function() {
     console.log("🔊 ===== ESTADO DEL AUDIO =====");
     console.log("📌 Elemento audioRemoto:");

@@ -23,7 +23,7 @@ let streamLocal = null;
 let webRTCIniciado = false;
 const conexionesEnProceso = new Set();
 const iceCandidatesQueue = {};
-let turnServers = []; // ✅ CAMBIADO: const → let
+let turnServers = [];
 let audioContext = null;
 const ofertasEnviadas = new Set();
 const ofertasRecibidas = new Set();
@@ -38,6 +38,13 @@ const MAX_INTENTOS_POR_PEER = 3;
 let reconexionActiva = false;
 let videoRemotoActivo = false;
 let audioActivado = false;
+
+// ============================================
+// 🔥 FUNCIÓN PARA DECIDIR QUIEN OFERTA
+// ============================================
+function soyOferente(miId, otroId) {
+    return miId < otroId;
+}
 
 // ============================================
 // 🎬 CONFIGURAR VIDEOS
@@ -66,7 +73,7 @@ async function obtenerTurnServers() {
         if (response.ok) {
             const data = await response.json();
             if (data.iceServers) {
-                turnServers = data.iceServers; // ✅ AHORA FUNCIONA
+                turnServers = data.iceServers;
                 console.log('✅ Servidores TURN obtenidos:', turnServers.length);
                 return turnServers;
             }
@@ -76,7 +83,7 @@ async function obtenerTurnServers() {
     }
     
     console.log('🔄 Usando TURN de respaldo');
-    turnServers = [ // ✅ AHORA FUNCIONA
+    turnServers = [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
         { urls: "stun:stun2.l.google.com:19302" },
@@ -116,7 +123,7 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 // ============================================
-// 🔥 ACTIVAR AUDIO (FUNCIÓN REUTILIZABLE)
+// 🔥 ACTIVAR AUDIO
 // ============================================
 function activarAudio() {
     if (audioActivado) return;
@@ -592,27 +599,17 @@ async function manejarOferta(data) {
     const { from, offer } = data;
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
 
+    // Limpiar ofertas duplicadas
     if (ofertasRecibidas.has(from)) {
-        console.log(`⚠️ Oferta duplicada de ${from}, ignorando...`);
-        return;
-    }
-    ofertasRecibidas.add(from);
-
-    if (peers[from]) {
-        const pc = peers[from];
-        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-            if (pc._timeoutId) {
-                clearTimeout(pc._timeoutId);
-            }
-            pc.close();
+        console.log(`⚠️ Oferta duplicada de ${from}, limpiando...`);
+        ofertasRecibidas.delete(from);
+        if (peers[from]) {
+            peers[from].close();
             delete peers[from];
-            conexionesEnProceso.delete(from);
-            delete iceCandidatesQueue[from];
-            ofertasEnviadas.delete(from);
-        } else {
-            console.log(`⚠️ Conexión con ${from} ya existe`);
-            return;
         }
+        conexionesEnProceso.delete(from);
+        delete iceCandidatesQueue[from];
+        ofertasEnviadas.delete(from);
     }
 
     if (conexionesEnProceso.has(from)) {
@@ -626,8 +623,11 @@ async function manejarOferta(data) {
     try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         console.log(`✅ Descripción remota establecida (oferta) de ${from}`);
+        ofertasRecibidas.add(from);
         
-        enviarIceCandidatesPendientes(from);
+        setTimeout(() => {
+            enviarIceCandidatesPendientes(from);
+        }, 500);
 
         const answer = await pc.createAnswer({
             offerToReceiveAudio: true,
@@ -670,7 +670,9 @@ async function manejarRespuesta(data) {
         console.log(`✅ Descripción remota establecida (respuesta) de ${from}`);
         conexionesEnProceso.delete(from);
         
-        enviarIceCandidatesPendientes(from);
+        setTimeout(() => {
+            enviarIceCandidatesPendientes(from);
+        }, 500);
         
     } catch (error) {
         console.error(`❌ Error al procesar respuesta de ${from}:`, error);
@@ -710,15 +712,18 @@ async function manejarIceCandidate(data) {
         console.log(`✅ ICE Candidate agregado de: ${from}`);
     } catch (error) {
         console.warn(`⚠️ Error al agregar ICE candidate de ${from}:`, error.message);
-        if (!iceCandidatesQueue[from]) {
-            iceCandidatesQueue[from] = [];
-        }
-        iceCandidatesQueue[from].push(candidate);
+        setTimeout(() => {
+            if (pc && pc.remoteDescription) {
+                pc.addIceCandidate(new RTCIceCandidate(candidate))
+                    .then(() => console.log(`✅ ICE agregado en reintento`))
+                    .catch(e => console.warn(`⚠️ Error en reintento: ${e.message}`));
+            }
+        }, 1000);
     }
 }
 
 // ============================================
-// 🔄 CONECTAR CON TODOS LOS CLIENTES
+// 🔄 CONECTAR CON TODOS LOS CLIENTES (CORREGIDO)
 // ============================================
 function conectarConTodos(clientes) {
     if (reconexionActiva) {
@@ -769,6 +774,9 @@ function conectarConTodos(clientes) {
         });
 
         otros.forEach(targetId => {
+            // 🔥 DECIDIR QUIEN OFERTA
+            const soyOferenteLocal = soyOferente(socket.id, targetId);
+            
             if (peers[targetId]) {
                 const pc = peers[targetId];
                 if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
@@ -797,9 +805,13 @@ function conectarConTodos(clientes) {
             }
             
             if (!conexionesEnProceso.has(targetId)) {
-                console.log(`🔗 Iniciando conexión con ${targetId}`);
-                const delay = Math.random() * 2000 + 1000;
-                setTimeout(() => iniciarOferta(targetId), delay);
+                if (soyOferenteLocal) {
+                    console.log(`🔗 Iniciando conexión COMO OFERENTE con ${targetId}`);
+                    const delay = Math.random() * 2000 + 1000;
+                    setTimeout(() => iniciarOferta(targetId), delay);
+                } else {
+                    console.log(`⏳ Esperando oferta de ${targetId} (soy respondedor)`);
+                }
             }
         });
         
@@ -821,9 +833,7 @@ socket.on("ice-candidate", manejarIceCandidate);
 
 socket.on("clientes-conectados", (listaClientes) => {
     console.log("📋 Lista de clientes recibida:", listaClientes);
-    if (typeof conectarConTodos === 'function') {
-        conectarConTodos(listaClientes);
-    }
+    conectarConTodos(listaClientes);
 });
 
 socket.on("connect", async () => {

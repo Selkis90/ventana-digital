@@ -1,223 +1,229 @@
 /* ============================================
-   ESTILOS GLOBALES - VENTANA DIGITAL
+   ESTILOS PRINCIPALES
    ============================================ */
 
-/* 🔥 RESET Y CONFIGURACIÓN BASE */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
-html, body {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
+body {
     background: #000;
-    font-family: Arial, Helvetica, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    font-family: Arial, sans-serif;
 }
 
 /* ============================================
-   🎬 VIDEO REMOTO (PANTALLA GRANDE - ESTILO PROFESIONAL)
-   🔥 Centrado con bordes redondeados y sombra
+   VIDEO REMOTO (PANTALLA GRANDE - FONDO)
    ============================================ */
 #video-remoto {
-    position: fixed !important;
-    top: 50% !important;
-    left: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    width: 92vw !important;
-    height: 88vh !important;
-    object-fit: cover !important;
-    background: #0a0a0a !important;
-    display: block !important;
-    border-radius: 20px !important;
-    border: 2px solid rgba(0, 212, 255, 0.15) !important;
-    box-shadow: 
-        0 0 60px rgba(0, 0, 0, 0.95),
-        0 0 120px rgba(0, 212, 255, 0.05) !important;
-    z-index: 1 !important;
-    transition: all 0.3s ease !important;
-}
-
-/* 🔥 Efecto hover sutil en el video remoto */
-#video-remoto:hover {
-    border-color: rgba(0, 212, 255, 0.4) !important;
-    box-shadow: 
-        0 0 80px rgba(0, 0, 0, 0.95),
-        0 0 160px rgba(0, 212, 255, 0.08) !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    background: #000;
+    z-index: 1;
 }
 
 /* ============================================
-   🎬 VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA INFERIOR DERECHA)
-   🔥 #video = PANTALLA PEQUEÑA
+   VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
    ============================================ */
 #video {
-    position: fixed !important;
-    bottom: 20px !important;
-    right: 20px !important;
-    width: 280px !important;
-    height: 210px !important;
-    border-radius: 12px !important;
-    border: 3px solid #00d4ff !important;
-    background: #000 !important;
-    z-index: 100 !important;
-    object-fit: cover !important;
-    box-shadow: 0 0 30px rgba(0, 212, 255, 0.5) !important;
-    cursor: pointer !important;
-    transition: all 0.3s ease !important;
-    display: block !important;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 200px;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 12px;
+    border: 3px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+    z-index: 10;
+    background: #1a1a1a;
+    cursor: pointer;
+    transition: all 0.3s ease;
 }
 
-/* 🔥 HOVER - AGRANDAR EL VIDEO LOCAL (PANTALLA PEQUEÑA) */
 #video:hover {
-    width: 320px !important;
-    height: 240px !important;
+    transform: scale(1.05);
+    border-color: #00aaff;
 }
 
 /* ============================================
-   📍 HEADER (BARRA SUPERIOR)
-   ============================================ */
-header {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    height: 60px !important;
-    background: rgba(0, 0, 0, 0.85) !important;
-    backdrop-filter: blur(10px) !important;
-    -webkit-backdrop-filter: blur(10px) !important;
-    color: white !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    font-size: 24px !important;
-    font-weight: bold !important;
-    z-index: 200 !important;
-    pointer-events: none !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
-    user-select: none !important;
-}
-
-/* ============================================
-   📍 FOOTER (BARRA INFERIOR)
-   ============================================ */
-footer {
-    position: fixed !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    height: 40px !important;
-    background: rgba(0, 0, 0, 0.85) !important;
-    backdrop-filter: blur(10px) !important;
-    -webkit-backdrop-filter: blur(10px) !important;
-    color: white !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 10px !important;
-    font-size: 14px !important;
-    z-index: 200 !important;
-    pointer-events: none !important;
-    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
-    user-select: none !important;
-}
-
-/* ============================================
-   🟢 ESTADO DE CONEXIÓN
+   ESTADO
    ============================================ */
 #estado {
-    font-weight: bold !important;
-    transition: all 0.3s ease !important;
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 24px;
+    border-radius: 30px;
+    font-size: 14px;
+    font-weight: 600;
+    z-index: 100;
+    color: white;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.3s ease;
+    text-align: center;
+    user-select: none;
 }
 
 #estado.inicializando {
-    color: #ffa500 !important;
+    background: rgba(255, 165, 0, 0.8);
 }
 
 #estado.conectado {
-    color: #00ff00 !important;
+    background: rgba(0, 200, 0, 0.8);
 }
 
 #estado.desconectado {
-    color: #ff0000 !important;
+    background: rgba(255, 0, 0, 0.8);
 }
 
 /* ============================================
-   📱 RESPONSIVE - MÓVILES
+   CONTROLES
    ============================================ */
-
-/* Tablets y móviles grandes */
-@media (max-width: 1024px) {
-    #video-remoto {
-        width: 94vw !important;
-        height: 90vh !important;
-        border-radius: 16px !important;
-    }
+#controles {
+    position: fixed;
+    bottom: 180px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(10px);
+    padding: 16px 24px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+    min-width: 300px;
 }
 
-/* Móviles */
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#controles label {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+#controles input[type="range"] {
+    width: 120px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: linear-gradient(to right, #4CAF50, #ff9800);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+#controles input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    border: 2px solid #00aaff;
+    box-shadow: 0 2px 8px rgba(0, 170, 255, 0.4);
+}
+
+#volumen-label {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    min-width: 40px;
+    text-align: center;
+}
+
+#controles button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+#controles button:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: scale(1.05);
+}
+
+#controles button:active {
+    transform: scale(0.95);
+}
+
+#btn-silenciar {
+    background: rgba(255, 100, 100, 0.3);
+    border-color: rgba(255, 100, 100, 0.4);
+}
+
+#btn-silenciar:hover {
+    background: rgba(255, 100, 100, 0.5);
+}
+
+#btn-reconectar {
+    background: rgba(100, 200, 255, 0.3);
+    border-color: rgba(100, 200, 255, 0.4);
+}
+
+#btn-reconectar:hover {
+    background: rgba(100, 200, 255, 0.5);
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
 @media (max-width: 768px) {
-    /* Video remoto más pequeño en móviles */
-    #video-remoto {
-        width: 96vw !important;
-        height: 90vh !important;
-        border-radius: 12px !important;
-        border-width: 1.5px !important;
-    }
-    
-    #video-remoto:hover {
-        border-color: rgba(0, 212, 255, 0.4) !important;
-    }
-    
-    /* Video local más pequeño en móviles */
     #video {
-        width: 180px !important;
-        height: 135px !important;
-        bottom: 60px !important;
-        right: 10px !important;
+        width: 120px;
+        height: 90px;
+        bottom: 10px;
+        right: 10px;
     }
-    
-    #video:hover {
-        width: 200px !important;
-        height: 150px !important;
-    }
-    
-    header {
-        height: 50px !important;
-        font-size: 18px !important;
-    }
-    
-    footer {
-        height: 50px !important;
-        font-size: 12px !important;
-        flex-wrap: wrap !important;
-        padding: 5px !important;
-    }
-}
 
-/* Móviles muy pequeños */
-@media (max-width: 480px) {
-    /* Video remoto aún más pequeño */
-    #video-remoto {
-        width: 98vw !important;
-        height: 92vh !important;
-        border-radius: 8px !important;
-        border-width: 1px !important;
+    #controles {
+        bottom: 120px;
+        padding: 12px 16px;
+        min-width: unset;
+        width: 90%;
+        gap: 12px;
+        flex-direction: column;
     }
-    
-    /* Video local aún más pequeño */
-    #video {
-        width: 140px !important;
-        height: 105px !important;
-        bottom: 55px !important;
-        right: 5px !important;
-        border-width: 2px !important;
-        border-radius: 8px !important;
+
+    .control-group {
+        width: 100%;
+        justify-content: center;
     }
-    
-    #video:hover {
-        width: 160px !important;
-        height: 120px !important;
+
+    #controles input[type="range"] {
+        width: 80px;
+    }
+
+    #estado {
+        font-size: 12px;
+        padding: 6px 16px;
+        top: 10px;
     }
 }

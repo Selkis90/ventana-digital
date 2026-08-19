@@ -1,41 +1,38 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ventana Digital</title>
     <link rel="stylesheet" href="css/estilos.css">
 </head>
-
 <body>
+    <!-- VIDEO REMOTO (PANTALLA GRANDE - FONDO) -->
+    <video id="video-remoto" autoplay playsinline></video>
+    
+    <!-- VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA) -->
+    <video id="video" autoplay playsinline muted></video>
+    
+    <!-- ESTADO -->
+    <div id="estado" class="inicializando">🔄 Inicializando...</div>
+    
+    <!-- CONTROLES DE VOLUMEN -->
+    <div id="controles">
+        <div class="control-group">
+            <label for="volumen">🔊 Volumen remoto:</label>
+            <input type="range" id="volumen" min="0" max="1" step="0.05" value="0.25">
+            <span id="volumen-label">25%</span>
+        </div>
+        <div class="control-group">
+            <button id="btn-silenciar">🔇 Silenciar</button>
+            <button id="btn-reconectar" onclick="forzarReconexion()">🔄 Reconectar</button>
+        </div>
+    </div>
 
-    <header>
-        🪟 TADINO
-    </header>
-
-    <main>
-        <!-- VIDEO REMOTO (PANTALLA GRANDE - FONDO) -->
-        <video id="video-remoto" autoplay playsinline></video>
-        
-        <!-- VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA) -->
-        <video id="video" autoplay playsinline muted></video>
-    </main>
-
-    <footer>
-        <span>📡 Estado:</span>
-        <span id="estado" class="inicializando">⏳ Inicializando...</span>
-        <span style="margin-left: 20px; font-size: 12px; opacity: 0.5;">
-            v1.5 | WebRTC
-        </span>
-    </footer>
-
-    <!-- Socket.IO desde el servidor -->
+    <!-- SOCKET.IO -->
     <script src="/socket.io/socket.io.js"></script>
-
-    <!-- Nuestros scripts -->
+    
+    <!-- CAMARA JS -->
     <script src="js/camara.js"></script>
-
 </body>
-
 </html>

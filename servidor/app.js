@@ -37,64 +37,21 @@ app.use(express.json());
 // 🔥 RUTAS TURN
 // ============================================
 
-// Ruta principal de TURN
-app.get('/turn', (req, res) => {
-    const turnConfig = {
-        iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" },
-            { urls: "stun:stun2.l.google.com:19302" },
-            { urls: "stun:stun3.l.google.com:19302" },
-            { urls: "stun:stun4.l.google.com:19302" },
-            { urls: "stun:stun.services.mozilla.com" },
-            {
-                urls: [
-                    "turn:openrelay.metered.ca:80",
-                    "turn:openrelay.metered.ca:443",
-                    "turn:openrelay.metered.ca:3478"
-                ],
-                username: "openrelayproject",
-                credential: "openrelayproject"
-            },
-            {
-                urls: [
-                    "turn:global.turn.metered.ca:80?transport=udp",
-                    "turn:global.turn.metered.ca:443?transport=tcp",
-                    "turn:global.turn.metered.ca:3478?transport=udp"
-                ],
-                username: "b4a446edd2810f74fb74b06d",
-                credential: "e025b9eb858a5142"
-            },
-            {
-                urls: "turn:turn.anyfirewall.com:443?transport=tcp",
-                username: "webrtc",
-                credential: "webrtc"
-            }
-        ],
-        iceCandidatePoolSize: 10,
-        bundlePolicy: "max-bundle",
-        rtcpMuxPolicy: "require"
-    };
-    
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
-    
-    res.json(turnConfig);
-});
-
-// Ruta específica de credenciales TURN
+// Ruta de credenciales TURN
 app.get('/turn-credentials', (req, res) => {
     console.log('📡 Solicitud de credenciales TURN');
     
     const turnConfig = {
         iceServers: [
+            // STUN - Para conexiones directas
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
             { urls: "stun:stun2.l.google.com:19302" },
             { urls: "stun:stun3.l.google.com:19302" },
             { urls: "stun:stun4.l.google.com:19302" },
             { urls: "stun:stun.services.mozilla.com" },
+            
+            // 🔥 TURN - OpenRelay (gratuito y confiable)
             {
                 urls: [
                     "turn:openrelay.metered.ca:80",
@@ -104,6 +61,8 @@ app.get('/turn-credentials', (req, res) => {
                 username: "openrelayproject",
                 credential: "openrelayproject"
             },
+            
+            // TURN - Metered.ca (más servidores)
             {
                 urls: [
                     "turn:global.turn.metered.ca:80?transport=udp",
@@ -113,6 +72,8 @@ app.get('/turn-credentials', (req, res) => {
                 username: "b4a446edd2810f74fb74b06d",
                 credential: "e025b9eb858a5142"
             },
+            
+            // TURN de respaldo
             {
                 urls: "turn:turn.anyfirewall.com:443?transport=tcp",
                 username: "webrtc",

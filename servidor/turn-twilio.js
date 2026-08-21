@@ -18,8 +18,8 @@ router.get('/turn-credentials', (req, res) => {
             iceServers: [
                 {
                     urls: [
-                        'stun:global.stun.twilio.com:3478?transport=udp',
-                        'stun:global.stun.twilio.com:3478?transport=tcp',
+                        'stun:global.stun.twilio.com:3478',
+                        'stun:global.stun.twilio.com:3478',
                     ],
                 },
                 {
@@ -28,7 +28,6 @@ router.get('/turn-credentials', (req, res) => {
                         'turn:global.turn.twilio.com:3478?transport=tcp',
                         'turn:global.turn.twilio.com:443?transport=tcp',
                     ],
-                    // 👇 ESTAS DOS LÍNEAS SON LAS QUE FALTAN
                     username: accountSid,
                     credential: authToken,
                 },

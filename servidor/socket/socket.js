@@ -44,6 +44,7 @@ module.exports = (io) => {
                     offer: data.offer,
                     timestamp: new Date().toISOString()
                 });
+                console.log(`✅ Oferta reenviada a ${data.target}`);
             } else {
                 console.warn(`⚠️ Target ${data.target} no conectado`);
             }
@@ -58,6 +59,7 @@ module.exports = (io) => {
                     answer: data.answer,
                     timestamp: new Date().toISOString()
                 });
+                console.log(`✅ Respuesta reenviada a ${data.target}`);
             } else {
                 console.warn(`⚠️ Target ${data.target} no conectado`);
             }
@@ -72,6 +74,7 @@ module.exports = (io) => {
                     candidate: data.candidate,
                     timestamp: new Date().toISOString()
                 });
+                console.log(`✅ ICE candidate reenviado a ${data.target}`);
             } else {
                 console.warn(`⚠️ Target ${data.target} no conectado`);
             }
@@ -110,6 +113,7 @@ module.exports = (io) => {
             // Enviar lista actualizada
             const lista = Array.from(clientes.keys());
             io.emit('clientes-conectados', lista);
+            console.log(`📋 Lista actualizada: ${lista.length} clientes`);
         });
 
         // ============================================
@@ -130,7 +134,6 @@ module.exports = (io) => {
     // 🔄 EVENTOS GLOBALES
     // ============================================
     
-    // Log cuando el servidor se inicia
     console.log('📡 Socket.IO configurado correctamente');
 
     // Retornar el mapa de clientes para uso externo

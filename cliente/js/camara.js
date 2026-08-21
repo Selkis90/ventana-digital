@@ -23,7 +23,7 @@ let streamLocal = null;
 let webRTCIniciado = false;
 const conexionesEnProceso = new Set();
 const iceCandidatesQueue = {};
-let turnServers = []; // ✅ CAMBIADO: const → let
+let turnServers = [];
 let audioContext = null;
 const ofertasEnviadas = new Set();
 const ofertasRecibidas = new Set();
@@ -39,10 +39,12 @@ let reconexionActiva = false;
 let videoRemotoActivo = false;
 
 // ============================================
-// 🔥 CONTROL DE OFERTAS DUPLICADAS
+// 🎬 CONFIGURAR VIDEOS
 // ============================================
-let ultimoIdOferta = null;
-let tiempoUltimaOferta = 0;
+video.style.display = "none";
+videoRemoto.style.display = "none";
+video.muted = true;
+video.volume = 0;
 
 // ============================================
 // 🔥 FUNCIÓN PARA DECIDIR QUIEN OFERTA
@@ -50,14 +52,6 @@ let tiempoUltimaOferta = 0;
 function soyOferente(miId, otroId) {
     return miId < otroId;
 }
-
-// ============================================
-// 🎬 CONFIGURAR VIDEOS
-// ============================================
-video.style.display = "none";
-videoRemoto.style.display = "none";
-video.muted = true;
-video.volume = 0;
 
 // ============================================
 // 🔥 OBTENER CREDENCIALES TURN
@@ -118,7 +112,7 @@ function actualizarEstado(mensaje, tipo) {
 }
 
 // ============================================
-// 🔥 MOSTRAR VIDEO REMOTO (AUDIO UNIFICADO)
+// 🔥 MOSTRAR VIDEO REMOTO
 // ============================================
 function mostrarVideoRemoto(stream, fromId) {
     console.log(`📹 ASIGNANDO VIDEO REMOTO DE: ${fromId}`);
@@ -220,7 +214,7 @@ function probarAudioLocal(stream) {
 }
 
 // ============================================
-// 🔗 CREAR PEER CONNECTION
+// 🔗 CREAR PEER CONNECTION (CORREGIDO - CON ICE CANDIDATES INMEDIATOS)
 // ============================================
 async function crearPeerConnection(targetId) {
     if (peers[targetId]) {
@@ -300,6 +294,7 @@ async function crearPeerConnection(targetId) {
         if (event.candidate) {
             console.log(`🧊 ICE candidate generado para ${targetId}`);
             
+            // 🔥 ENVIAR ICE CANDIDATE INMEDIATAMENTE SI remoteDescription EXISTE
             if (pc.remoteDescription) {
                 socket.emit("ice-candidate", {
                     target: targetId,
@@ -336,7 +331,29 @@ async function crearPeerConnection(targetId) {
             ofertasRecibidas.delete(targetId);
             webRTCIniciado = false;
             ocultarVideoRemoto();
-            manejarReconexion(targetId);
+            
+            // 🔥 RECONEXIÓN AUTOMÁTICA
+            if (!intentosReconexion[targetId]) {
+                intentosReconexion[targetId] = 0;
+            }
+            intentosReconexion[targetId]++;
+            
+            if (intentosReconexion[targetId] <= MAX_INTENTOS_POR_PEER) {
+                console.log(`🔄 Reintentando (${intentosReconexion[targetId]}/${MAX_INTENTOS_POR_PEER})`);
+                setTimeout(() => {
+                    if (!peers[targetId] && !conexionesEnProceso.has(targetId)) {
+                        const soyOferenteLocal = soyOferente(socket.id, targetId);
+                        if (soyOferenteLocal) {
+                            iniciarOferta(targetId);
+                        }
+                    }
+                }, 3000 * intentosReconexion[targetId]);
+            } else {
+                console.log(`🚫 Máximos intentos para ${targetId}`);
+                setTimeout(() => {
+                    intentosReconexion[targetId] = 0;
+                }, 60000);
+            }
         }
     };
 
@@ -358,39 +375,12 @@ async function crearPeerConnection(targetId) {
             ofertasEnviadas.delete(targetId);
             ofertasRecibidas.delete(targetId);
         }
-    }, 15000);
+    }, 20000);
 
     pc._timeoutId = timeoutId;
 
     peers[targetId] = pc;
     return pc;
-}
-
-// ============================================
-// 🔄 MANEJAR RECONEXIÓN
-// ============================================
-function manejarReconexion(targetId) {
-    if (!intentosReconexion[targetId]) {
-        intentosReconexion[targetId] = 0;
-    }
-    intentosReconexion[targetId]++;
-    
-    if (intentosReconexion[targetId] <= MAX_INTENTOS_POR_PEER) {
-        console.log(`🔄 Reintentando (${intentosReconexion[targetId]}/${MAX_INTENTOS_POR_PEER})`);
-        setTimeout(() => {
-            if (!peers[targetId] && !conexionesEnProceso.has(targetId)) {
-                const soyOferenteLocal = soyOferente(socket.id, targetId);
-                if (soyOferenteLocal) {
-                    iniciarOferta(targetId);
-                }
-            }
-        }, 5000 * intentosReconexion[targetId]);
-    } else {
-        console.log(`🚫 Máximos intentos para ${targetId}`);
-        setTimeout(() => {
-            intentosReconexion[targetId] = 0;
-        }, 60000);
-    }
 }
 
 // ============================================
@@ -403,22 +393,23 @@ function enviarIceCandidatesPendientes(targetId) {
         return;
     }
     
+    const pendientes = iceCandidatesQueue[targetId] || [];
+    if (pendientes.length === 0) return;
+    
+    // 🔥 ESPERAR A QUE remoteDescription ESTÉ DISPONIBLE
     let esperas = 0;
-    const maxEsperas = 20;
+    const maxEsperas = 30;
     
     function intentarEnviar() {
         if (pc.remoteDescription) {
-            const pendientes = iceCandidatesQueue[targetId] || [];
-            if (pendientes.length > 0) {
-                console.log(`📤 Enviando ${pendientes.length} ICE candidates a ${targetId}`);
-                pendientes.forEach(candidate => {
-                    socket.emit("ice-candidate", {
-                        target: targetId,
-                        candidate: candidate
-                    });
+            console.log(`📤 Enviando ${pendientes.length} ICE candidates a ${targetId}`);
+            pendientes.forEach(candidate => {
+                socket.emit("ice-candidate", {
+                    target: targetId,
+                    candidate: candidate
                 });
-                delete iceCandidatesQueue[targetId];
-            }
+            });
+            delete iceCandidatesQueue[targetId];
             return true;
         }
         return false;
@@ -434,11 +425,11 @@ function enviarIceCandidatesPendientes(targetId) {
                 console.log(`⚠️ Timeout esperando remoteDescription para ${targetId}`);
             }
         }
-    }, 250);
+    }, 200);
 }
 
 // ============================================
-// 📨 WEBRTC - OFERTA Y RESPUESTA (CORREGIDO)
+// 📨 WEBRTC - OFERTA Y RESPUESTA
 // ============================================
 async function iniciarOferta(targetId) {
     if (ofertasEnviadas.has(targetId)) {
@@ -490,9 +481,10 @@ async function iniciarOferta(targetId) {
         });
         console.log(`✅ Oferta enviada a: ${targetId}`);
         
+        // 🔥 ESPERAR UN POCO ANTES DE ENVIAR ICE CANDIDATES
         setTimeout(() => {
             enviarIceCandidatesPendientes(targetId);
-        }, 1000);
+        }, 1500);
         
     } catch (error) {
         console.error(`❌ Error en oferta:`, error);
@@ -503,28 +495,9 @@ async function iniciarOferta(targetId) {
     }
 }
 
-// ============================================
-// 📨 MANEJAR OFERTA (CORREGIDO - SIN DUPLICADOS)
-// ============================================
 async function manejarOferta(data) {
     const { from, offer } = data;
-    
-    // 🔥 PREVENIR OFERTAS DUPLICADAS EN BUCLE
-    const ahora = Date.now();
-    if (from === ultimoIdOferta && (ahora - tiempoUltimaOferta) < 5000) {
-        console.log(`⏳ Ignorando oferta duplicada de ${from} (${ahora - tiempoUltimaOferta}ms)`);
-        return;
-    }
-    ultimoIdOferta = from;
-    tiempoUltimaOferta = ahora;
-    
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
-
-    // Si ya estamos conectados, ignorar
-    if (peers[from] && peers[from].connectionState === "connected") {
-        console.log(`ℹ️ Ya conectado con ${from}, ignorando oferta`);
-        return;
-    }
 
     // Si ya somos oferentes, ignorar
     if (ofertasEnviadas.has(from)) {
@@ -558,6 +531,7 @@ async function manejarOferta(data) {
         console.log(`✅ Descripción remota establecida (oferta) de ${from}`);
         ofertasRecibidas.add(from);
         
+        // 🔥 ENVIAR ICE CANDIDATES PENDIENTES
         setTimeout(() => {
             enviarIceCandidatesPendientes(from);
         }, 500);
@@ -574,6 +548,7 @@ async function manejarOferta(data) {
         });
         console.log(`✅ Respuesta enviada a: ${from}`);
         
+        // 🔥 ENVIAR ICE CANDIDATES DESPUÉS DE LA RESPUESTA
         setTimeout(() => {
             enviarIceCandidatesPendientes(from);
         }, 1000);
@@ -603,6 +578,7 @@ async function manejarRespuesta(data) {
         console.log(`✅ Descripción remota establecida (respuesta) de ${from}`);
         conexionesEnProceso.delete(from);
         
+        // 🔥 ENVIAR ICE CANDIDATES PENDIENTES
         setTimeout(() => {
             enviarIceCandidatesPendientes(from);
         }, 500);
@@ -645,6 +621,7 @@ async function manejarIceCandidate(data) {
         console.log(`✅ ICE Candidate agregado de: ${from}`);
     } catch (error) {
         console.warn(`⚠️ Error ICE:`, error.message);
+        // 🔥 REINTENTAR DESPUÉS DE UN DELAY
         setTimeout(() => {
             if (pc && pc.remoteDescription) {
                 pc.addIceCandidate(new RTCIceCandidate(candidate))

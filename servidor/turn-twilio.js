@@ -12,6 +12,7 @@ router.get('/turn-credentials', (req, res) => {
         const authToken = process.env.TWILIO_AUTH_TOKEN;
         
         console.log('🔑 Account SID:', accountSid);
+        console.log('🔑 Auth Token:', authToken ? '✅ Configurado' : '❌ No configurado');
         
         const turnConfig = {
             iceServers: [

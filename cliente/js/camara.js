@@ -34,7 +34,7 @@ const ofertasRecibidas = new Set();
 let ultimoIntentoReconexion = 0;
 const INTERVALO_MINIMO_RECONEXION = 5000;
 const intentosReconexion = {};
-const MAX_INTENTOS_POR_PEER = 3;
+const MAX_INTENTOS_POR_PEER = 5;
 let reconexionActiva = false;
 let videoRemotoActivo = false;
 
@@ -80,21 +80,21 @@ async function obtenerTurnServers() {
         { urls: "stun:stun4.l.google.com:19302" },
         {
             urls: [
-                "turn:global.turn.metered.ca:80?transport=udp",
-                "turn:global.turn.metered.ca:443?transport=tcp",
-                "turn:global.turn.metered.ca:3478?transport=udp"
-            ],
-            username: "b4a446edd2810f74fb74b06d",
-            credential: "e025b9eb858a5142"
-        },
-        {
-            urls: [
                 "turn:openrelay.metered.ca:80",
                 "turn:openrelay.metered.ca:443",
                 "turn:openrelay.metered.ca:3478"
             ],
             username: "openrelayproject",
             credential: "openrelayproject"
+        },
+        {
+            urls: [
+                "turn:global.turn.metered.ca:80?transport=udp",
+                "turn:global.turn.metered.ca:443?transport=tcp",
+                "turn:global.turn.metered.ca:3478?transport=udp"
+            ],
+            username: "b4a446edd2810f74fb74b06d",
+            credential: "e025b9eb858a5142"
         }
     ];
     return turnServers;
@@ -153,7 +153,7 @@ function mostrarVideoRemoto(stream, fromId) {
         
         videoRemoto.play()
             .then(() => {
-                console.log("✅ Audio y Video remoto reproduciéndose al 30%");
+                console.log("✅ Audio y Video remoto reproduciéndose");
                 actualizarEstado("🟢 Conectado - Audio y Video en vivo", "conectado");
             })
             .catch(e => {
@@ -214,24 +214,23 @@ function probarAudioLocal(stream) {
 }
 
 // ============================================
-// 🔗 CREAR PEER CONNECTION (CORREGIDO - CON ICE CANDIDATES INMEDIATOS)
+// 🔗 CREAR PEER CONNECTION (VERSIÓN MEJORADA)
 // ============================================
 async function crearPeerConnection(targetId) {
+    // Limpiar conexiones existentes
     if (peers[targetId]) {
         const pc = peers[targetId];
         if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
             console.log(`⚠️ Ya existe conexión activa con ${targetId}`);
             return pc;
-        } else {
-            console.log(`🧹 Limpiando conexión muerta con ${targetId}`);
-            if (pc._timeoutId) clearTimeout(pc._timeoutId);
-            pc.close();
-            delete peers[targetId];
-            conexionesEnProceso.delete(targetId);
-            delete iceCandidatesQueue[targetId];
-            ofertasEnviadas.delete(targetId);
-            ofertasRecibidas.delete(targetId);
         }
+        if (pc._timeoutId) clearTimeout(pc._timeoutId);
+        pc.close();
+        delete peers[targetId];
+        conexionesEnProceso.delete(targetId);
+        delete iceCandidatesQueue[targetId];
+        ofertasEnviadas.delete(targetId);
+        ofertasRecibidas.delete(targetId);
     }
 
     if (conexionesEnProceso.has(targetId)) {
@@ -252,15 +251,18 @@ async function crearPeerConnection(targetId) {
         await obtenerTurnServers();
     }
 
+    // CONFIGURACIÓN MEJORADA
     const pc = new RTCPeerConnection({
         iceServers: turnServers.length > 0 ? turnServers : [
             { urls: "stun:stun.l.google.com:19302" }
         ],
         iceCandidatePoolSize: 10,
+        iceTransportPolicy: 'all',
         bundlePolicy: "max-bundle",
         rtcpMuxPolicy: "require"
     });
 
+    // Agregar tracks locales
     const audioTracks = streamLocal.getAudioTracks();
     const videoTracks = streamLocal.getVideoTracks();
     
@@ -280,83 +282,97 @@ async function crearPeerConnection(targetId) {
         pc.addTrack(track, streamLocal);
     });
 
+    // Manejar tracks remotos
     pc.ontrack = (event) => {
-        console.log(`📥 Track remoto recibido de: ${targetId}`);
-        console.log(`📥 Track kind: ${event.track.kind}`);
-        
+        console.log(`📥 Track remoto recibido de: ${targetId} - ${event.track.kind}`);
         if (event.streams && event.streams[0]) {
             const remoteStream = event.streams[0];
+            remoteStream.getTracks().forEach(t => t.enabled = true);
             mostrarVideoRemoto(remoteStream, targetId);
         }
     };
 
+    // Manejar ICE candidates - MEJORADO
     pc.onicecandidate = (event) => {
         if (event.candidate) {
             console.log(`🧊 ICE candidate generado para ${targetId}`);
             
-            // 🔥 ENVIAR ICE CANDIDATE INMEDIATAMENTE SI remoteDescription EXISTE
-            if (pc.remoteDescription) {
-                socket.emit("ice-candidate", {
-                    target: targetId,
-                    candidate: event.candidate
-                });
-                console.log(`📤 ICE candidate enviado a ${targetId}`);
-            } else {
-                if (!iceCandidatesQueue[targetId]) {
-                    iceCandidatesQueue[targetId] = [];
+            const enviarCandidate = () => {
+                if (pc.remoteDescription) {
+                    socket.emit("ice-candidate", {
+                        target: targetId,
+                        candidate: event.candidate
+                    });
+                    console.log(`📤 ICE candidate enviado a ${targetId}`);
+                } else {
+                    if (!iceCandidatesQueue[targetId]) {
+                        iceCandidatesQueue[targetId] = [];
+                    }
+                    iceCandidatesQueue[targetId].push(event.candidate);
+                    console.log(`📦 ICE candidate guardado en cola (${iceCandidatesQueue[targetId].length} pendientes)`);
+                    setTimeout(enviarCandidate, 500);
                 }
-                iceCandidatesQueue[targetId].push(event.candidate);
-                console.log(`📦 ICE candidate guardado en cola (${iceCandidatesQueue[targetId].length} pendientes)`);
-            }
+            };
+            
+            enviarCandidate();
+        } else {
+            console.log(`✅ ICE gathering completado para ${targetId}`);
         }
     };
 
+    // Manejar estado de conexión - MEJORADO
     pc.onconnectionstatechange = () => {
         console.log(`🔗 Estado con ${targetId}: ${pc.connectionState}`);
-        if (pc.connectionState === "connected") {
-            console.log("✅ CONEXIÓN WEBRTC ESTABLECIDA!");
-            actualizarEstado("🟢 Conectado", "conectado");
-            webRTCIniciado = true;
-            conexionesEnProceso.delete(targetId);
-            delete iceCandidatesQueue[targetId];
-            ofertasEnviadas.delete(targetId);
-            ofertasRecibidas.delete(targetId);
-            intentosReconexion[targetId] = 0;
-        } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-            console.log(`❌ Conexión perdida con ${targetId}`);
-            delete peers[targetId];
-            conexionesEnProceso.delete(targetId);
-            delete iceCandidatesQueue[targetId];
-            ofertasEnviadas.delete(targetId);
-            ofertasRecibidas.delete(targetId);
-            webRTCIniciado = false;
-            ocultarVideoRemoto();
-            
-            // 🔥 RECONEXIÓN AUTOMÁTICA
-            if (!intentosReconexion[targetId]) {
+        
+        switch (pc.connectionState) {
+            case "connected":
+                console.log("✅ CONEXIÓN WEBRTC ESTABLECIDA!");
+                actualizarEstado("🟢 Conectado", "conectado");
+                webRTCIniciado = true;
+                conexionesEnProceso.delete(targetId);
+                delete iceCandidatesQueue[targetId];
+                ofertasEnviadas.delete(targetId);
+                ofertasRecibidas.delete(targetId);
                 intentosReconexion[targetId] = 0;
-            }
-            intentosReconexion[targetId]++;
-            
-            if (intentosReconexion[targetId] <= MAX_INTENTOS_POR_PEER) {
-                console.log(`🔄 Reintentando (${intentosReconexion[targetId]}/${MAX_INTENTOS_POR_PEER})`);
-                setTimeout(() => {
-                    if (!peers[targetId] && !conexionesEnProceso.has(targetId)) {
-                        const soyOferenteLocal = soyOferente(socket.id, targetId);
-                        if (soyOferenteLocal) {
-                            iniciarOferta(targetId);
-                        }
-                    }
-                }, 3000 * intentosReconexion[targetId]);
-            } else {
-                console.log(`🚫 Máximos intentos para ${targetId}`);
-                setTimeout(() => {
+                break;
+                
+            case "failed":
+            case "disconnected":
+                console.log(`❌ Conexión perdida con ${targetId}`);
+                delete peers[targetId];
+                conexionesEnProceso.delete(targetId);
+                delete iceCandidatesQueue[targetId];
+                ofertasEnviadas.delete(targetId);
+                ofertasRecibidas.delete(targetId);
+                webRTCIniciado = false;
+                ocultarVideoRemoto();
+                
+                if (!intentosReconexion[targetId]) {
                     intentosReconexion[targetId] = 0;
-                }, 60000);
-            }
+                }
+                intentosReconexion[targetId]++;
+                
+                if (intentosReconexion[targetId] <= MAX_INTENTOS_POR_PEER) {
+                    console.log(`🔄 Reintentando (${intentosReconexion[targetId]}/${MAX_INTENTOS_POR_PEER})`);
+                    setTimeout(() => {
+                        if (!peers[targetId] && !conexionesEnProceso.has(targetId)) {
+                            const soyOferenteLocal = soyOferente(socket.id, targetId);
+                            if (soyOferenteLocal) {
+                                iniciarOferta(targetId);
+                            }
+                        }
+                    }, 3000 * intentosReconexion[targetId]);
+                } else {
+                    console.log(`🚫 Máximos intentos para ${targetId}`);
+                    setTimeout(() => {
+                        intentosReconexion[targetId] = 0;
+                    }, 60000);
+                }
+                break;
         }
     };
 
+    // Manejar ICE estado
     pc.oniceconnectionstatechange = () => {
         console.log(`🧊 ICE estado con ${targetId}: ${pc.iceConnectionState}`);
         if (pc.iceConnectionState === "failed") {
@@ -365,6 +381,7 @@ async function crearPeerConnection(targetId) {
         }
     };
 
+    // Timeout de conexión
     const timeoutId = setTimeout(() => {
         if (pc.connectionState !== "connected" && pc.connectionState !== "connecting") {
             console.log(`⏰ Timeout conectando con ${targetId}`);
@@ -375,10 +392,9 @@ async function crearPeerConnection(targetId) {
             ofertasEnviadas.delete(targetId);
             ofertasRecibidas.delete(targetId);
         }
-    }, 20000);
+    }, 30000);
 
     pc._timeoutId = timeoutId;
-
     peers[targetId] = pc;
     return pc;
 }
@@ -396,7 +412,6 @@ function enviarIceCandidatesPendientes(targetId) {
     const pendientes = iceCandidatesQueue[targetId] || [];
     if (pendientes.length === 0) return;
     
-    // 🔥 ESPERAR A QUE remoteDescription ESTÉ DISPONIBLE
     let esperas = 0;
     const maxEsperas = 30;
     
@@ -481,7 +496,6 @@ async function iniciarOferta(targetId) {
         });
         console.log(`✅ Oferta enviada a: ${targetId}`);
         
-        // 🔥 ESPERAR UN POCO ANTES DE ENVIAR ICE CANDIDATES
         setTimeout(() => {
             enviarIceCandidatesPendientes(targetId);
         }, 1500);
@@ -499,17 +513,16 @@ async function manejarOferta(data) {
     const { from, offer } = data;
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
 
-    // Si ya somos oferentes, ignorar
     if (ofertasEnviadas.has(from)) {
         console.log(`⚠️ Ya somos oferentes con ${from}, ignorando oferta`);
         return;
     }
 
-    // Limpiar ofertas duplicadas
     if (ofertasRecibidas.has(from)) {
         console.log(`⚠️ Oferta duplicada de ${from}, limpiando...`);
         ofertasRecibidas.delete(from);
         if (peers[from]) {
+            if (peers[from]._timeoutId) clearTimeout(peers[from]._timeoutId);
             peers[from].close();
             delete peers[from];
         }
@@ -531,7 +544,6 @@ async function manejarOferta(data) {
         console.log(`✅ Descripción remota establecida (oferta) de ${from}`);
         ofertasRecibidas.add(from);
         
-        // 🔥 ENVIAR ICE CANDIDATES PENDIENTES
         setTimeout(() => {
             enviarIceCandidatesPendientes(from);
         }, 500);
@@ -548,7 +560,6 @@ async function manejarOferta(data) {
         });
         console.log(`✅ Respuesta enviada a: ${from}`);
         
-        // 🔥 ENVIAR ICE CANDIDATES DESPUÉS DE LA RESPUESTA
         setTimeout(() => {
             enviarIceCandidatesPendientes(from);
         }, 1000);
@@ -578,7 +589,6 @@ async function manejarRespuesta(data) {
         console.log(`✅ Descripción remota establecida (respuesta) de ${from}`);
         conexionesEnProceso.delete(from);
         
-        // 🔥 ENVIAR ICE CANDIDATES PENDIENTES
         setTimeout(() => {
             enviarIceCandidatesPendientes(from);
         }, 500);
@@ -621,7 +631,6 @@ async function manejarIceCandidate(data) {
         console.log(`✅ ICE Candidate agregado de: ${from}`);
     } catch (error) {
         console.warn(`⚠️ Error ICE:`, error.message);
-        // 🔥 REINTENTAR DESPUÉS DE UN DELAY
         setTimeout(() => {
             if (pc && pc.remoteDescription) {
                 pc.addIceCandidate(new RTCIceCandidate(candidate))

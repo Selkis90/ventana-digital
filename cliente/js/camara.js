@@ -39,6 +39,12 @@ let reconexionActiva = false;
 let videoRemotoActivo = false;
 
 // ============================================
+// 🔥 CONTROL DE OFERTAS DUPLICADAS
+// ============================================
+let ultimoIdOferta = null;
+let tiempoUltimaOferta = 0;
+
+// ============================================
 // 🔥 FUNCIÓN PARA DECIDIR QUIEN OFERTA
 // ============================================
 function soyOferente(miId, otroId) {
@@ -432,7 +438,7 @@ function enviarIceCandidatesPendientes(targetId) {
 }
 
 // ============================================
-// 📨 WEBRTC - OFERTA Y RESPUESTA
+// 📨 WEBRTC - OFERTA Y RESPUESTA (CORREGIDO)
 // ============================================
 async function iniciarOferta(targetId) {
     if (ofertasEnviadas.has(targetId)) {
@@ -497,9 +503,28 @@ async function iniciarOferta(targetId) {
     }
 }
 
+// ============================================
+// 📨 MANEJAR OFERTA (CORREGIDO - SIN DUPLICADOS)
+// ============================================
 async function manejarOferta(data) {
     const { from, offer } = data;
+    
+    // 🔥 PREVENIR OFERTAS DUPLICADAS EN BUCLE
+    const ahora = Date.now();
+    if (from === ultimoIdOferta && (ahora - tiempoUltimaOferta) < 5000) {
+        console.log(`⏳ Ignorando oferta duplicada de ${from} (${ahora - tiempoUltimaOferta}ms)`);
+        return;
+    }
+    ultimoIdOferta = from;
+    tiempoUltimaOferta = ahora;
+    
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
+
+    // Si ya estamos conectados, ignorar
+    if (peers[from] && peers[from].connectionState === "connected") {
+        console.log(`ℹ️ Ya conectado con ${from}, ignorando oferta`);
+        return;
+    }
 
     // Si ya somos oferentes, ignorar
     if (ofertasEnviadas.has(from)) {

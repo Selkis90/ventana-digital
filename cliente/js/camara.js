@@ -29,7 +29,9 @@ const socket = io("https://ventana-digital.onrender.com", {
 let streamLocal = null;
 let turnServers = [];
 let peerIdRemoto = null;
-let connectedPeerId = null; // 🔥 Para trackear a quién estamos conectados
+let connectedPeerId = null;
+let isReconnecting = false;
+let reconnectTimer = null;
 
 // ============================================
 // 🖥️ UI State
@@ -47,6 +49,59 @@ if (isMobile) {
     videoRemoto.setAttribute('playsinline', '');
     video.setAttribute('autoplay', '');
     videoRemoto.setAttribute('autoplay', '');
+}
+
+// ============================================
+// 🔥 FUNCIÓN PARA LIMPIAR CONEXIONES ANTIGUAS
+// ============================================
+
+function limpiarTodasLasConexiones() {
+    console.log("🧹 Limpiando TODAS las conexiones...");
+    
+    // Limpiar timer de reconexión
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+    
+    // Cerrar conexión WebRTC existente
+    if (window.peerConnection) {
+        try {
+            const pc = window.peerConnection;
+            pc.onicecandidate = null;
+            pc.ontrack = null;
+            pc.onconnectionstatechange = null;
+            pc.oniceconnectionstatechange = null;
+            pc.onnegotiationneeded = null;
+            pc.close();
+        } catch (e) {
+            console.warn('⚠️ Error cerrando peerConnection:', e);
+        }
+        window.peerConnection = null;
+    }
+    
+    // Limpiar cualquier otra referencia
+    if (window.peers) {
+        Object.keys(window.peers).forEach(key => {
+            try {
+                window.peers[key].close();
+            } catch (e) {}
+        });
+        window.peers = {};
+    }
+    
+    // Ocultar video remoto
+    if (videoRemoto) {
+        videoRemoto.srcObject = null;
+        videoRemoto.style.display = "none";
+    }
+    
+    // Resetear estados
+    connectedPeerId = null;
+    peerIdRemoto = null;
+    isReconnecting = false;
+    
+    console.log("✅ Limpieza completada");
 }
 
 // ============================================
@@ -169,28 +224,6 @@ function ocultarVideoRemoto() {
     }
 }
 
-function limpiarTodasLasConexiones() {
-    console.log("🧹 Limpiando TODAS las conexiones...");
-    
-    // Cerrar todas las conexiones existentes
-    if (window.peerConnection) {
-        try {
-            const pc = window.peerConnection;
-            pc.onicecandidate = null;
-            pc.ontrack = null;
-            pc.onconnectionstatechange = null;
-            pc.oniceconnectionstatechange = null;
-            pc.onnegotiationneeded = null;
-            pc.close();
-        } catch (e) {}
-        window.peerConnection = null;
-    }
-    
-    ocultarVideoRemoto();
-    connectedPeerId = null;
-    peerIdRemoto = null;
-}
-
 function crearPeerConnection(targetId) {
     console.log(`🔗 Creando conexión con: ${targetId}`);
     
@@ -253,11 +286,16 @@ function crearPeerConnection(targetId) {
         console.log(`🔗 ICE con ${targetId}: ${pc.iceConnectionState}`);
         if (pc.iceConnectionState === "failed") {
             console.log(`❌ ICE falló, reiniciando en 3s...`);
-            setTimeout(() => {
-                if (connectedPeerId) {
-                    iniciarConexion(connectedPeerId);
-                }
-            }, 3000);
+            if (!isReconnecting && connectedPeerId) {
+                isReconnecting = true;
+                reconnectTimer = setTimeout(() => {
+                    if (connectedPeerId) {
+                        iniciarConexion(connectedPeerId);
+                    }
+                    isReconnecting = false;
+                    reconnectTimer = null;
+                }, 3000);
+            }
         }
     };
 
@@ -266,14 +304,24 @@ function crearPeerConnection(targetId) {
         if (pc.connectionState === "connected") {
             console.log(`✅ CONEXIÓN ESTABLECIDA con ${targetId}!`);
             connectedPeerId = targetId;
+            isReconnecting = false;
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
             actualizarEstado(`🟢 Conectado`, "conectado");
         } else if (pc.connectionState === "failed") {
             console.log(`❌ Conexión fallida con ${targetId}`);
             connectedPeerId = null;
             ocultarVideoRemoto();
-            setTimeout(() => {
-                socket.emit("clientes-conectados");
-            }, 5000);
+            if (!isReconnecting) {
+                isReconnecting = true;
+                reconnectTimer = setTimeout(() => {
+                    socket.emit("clientes-conectados");
+                    isReconnecting = false;
+                    reconnectTimer = null;
+                }, 5000);
+            }
         }
     };
 
@@ -298,6 +346,11 @@ function crearPeerConnection(targetId) {
 
 function iniciarConexion(targetId) {
     console.log(`🔄 Iniciando conexión con: ${targetId}`);
+    
+    if (isReconnecting) {
+        console.log(`⏳ Ya hay una reconexión en curso`);
+        return;
+    }
     
     if (targetId === connectedPeerId) {
         console.log(`ℹ️ Ya conectado con ${targetId}`);
@@ -329,6 +382,36 @@ function iniciarConexion(targetId) {
     }, 500);
 }
 
+function conectarConTodos(clientes) {
+    console.log("🔄 CLIENTES CONECTADOS:", clientes);
+    
+    // Filtrar nuestro propio ID
+    const otros = clientes.filter(id => id !== socket.id);
+    
+    if (otros.length === 0) {
+        actualizarEstado("🟢 Esperando otro equipo", "conectado");
+        return;
+    }
+
+    // 🔥 SOLO CONECTAR CON EL PRIMER CLIENTE DE LA LISTA
+    const targetId = otros[0];
+    console.log(`🎯 Conectando SOLO con: ${targetId}`);
+    
+    if (otros.length > 1) {
+        console.warn(`⚠️ IGNORANDO a otros ${otros.length - 1} clientes: ${otros.slice(1).join(', ')}`);
+        actualizarEstado(`⚠️ Solo conectando con ${targetId.substring(0, 6)}...`, "inicializando");
+    }
+    
+    // Si ya estamos conectados con este target, no hacer nada
+    if (connectedPeerId === targetId) {
+        console.log(`✅ Ya conectado con ${targetId}`);
+        return;
+    }
+    
+    // Iniciar conexión SOLO con targetId
+    iniciarConexion(targetId);
+}
+
 // ============================================
 // 📡 Eventos Socket.IO
 // ============================================
@@ -337,17 +420,27 @@ socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
     
-    // 🔥 Si ya estamos conectados con otro peer, ignorar
+    // 🔥 IGNORAR si ya estamos conectados con otro peer
     if (connectedPeerId && connectedPeerId !== from) {
-        console.log(`⚠️ Ya conectado con ${connectedPeerId}, ignorando oferta de ${from}`);
+        console.log(`⛔ YA CONECTADO con ${connectedPeerId}, IGNORANDO oferta de ${from}`);
         return;
     }
+    
+    // Si ya estamos procesando esta oferta, ignorar
+    if (window._processingOffer && window._processingOffer === from) {
+        console.log(`⏳ Ya procesando oferta de ${from}`);
+        return;
+    }
+    window._processingOffer = from;
     
     try {
         limpiarTodasLasConexiones();
         
         const pc = crearPeerConnection(from);
-        if (pc.signalingState === 'closed') return;
+        if (pc.signalingState === 'closed') {
+            window._processingOffer = null;
+            return;
+        }
         
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         console.log(`✅ Descripción remota establecida de ${from}`);
@@ -360,9 +453,11 @@ socket.on("offer", async (data) => {
 
         socket.emit("answer", { target: from, answer: pc.localDescription });
         console.log(`✅ Respuesta enviada a: ${from}`);
+        window._processingOffer = null;
     } catch (error) {
         console.error(`❌ Error manejando oferta:`, error);
         limpiarTodasLasConexiones();
+        window._processingOffer = null;
     }
 });
 
@@ -388,9 +483,14 @@ socket.on("answer", async (data) => {
     } catch (error) {
         console.error(`❌ Error procesando respuesta:`, error);
         limpiarTodasLasConexiones();
-        setTimeout(() => {
-            if (from) iniciarConexion(from);
-        }, 2000);
+        if (!isReconnecting) {
+            isReconnecting = true;
+            reconnectTimer = setTimeout(() => {
+                if (from) iniciarConexion(from);
+                isReconnecting = false;
+                reconnectTimer = null;
+            }, 2000);
+        }
     }
 });
 
@@ -413,43 +513,53 @@ socket.on("ice-candidate", async (data) => {
         }
     } catch (error) {
         console.warn(`⚠️ Error ICE:`, error.message);
+        // Si el error es "Unknown ufrag", reiniciar
+        if (error.message && error.message.includes('Unknown ufrag')) {
+            console.log(`🔄 Reiniciando por Unknown ufrag...`);
+            limpiarTodasLasConexiones();
+            if (!isReconnecting && from) {
+                isReconnecting = true;
+                reconnectTimer = setTimeout(() => {
+                    iniciarConexion(from);
+                    isReconnecting = false;
+                    reconnectTimer = null;
+                }, 2000);
+            }
+        }
     }
 });
 
-function conectarConTodos(clientes) {
-    console.log("🔄 CLIENTES CONECTADOS:", clientes);
-    const otros = clientes.filter(id => id !== socket.id);
-    
-    if (otros.length === 0) {
-        actualizarEstado("🟢 Esperando otro equipo", "conectado");
-        return;
-    }
-
-    // 🔥 SOLO EL PRIMERO
-    const targetId = otros[0];
-    console.log(`🎯 Conectando con: ${targetId}`);
-    
-    if (otros.length > 1) {
-        console.warn(`⚠️ Hay ${otros.length} clientes, solo conectando con ${targetId}`);
-    }
-    
-    iniciarConexion(targetId);
-}
-
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
+    
+    // 🔥 LIMPIAR TODO ANTES DE CONECTAR
+    limpiarTodasLasConexiones();
+    
     actualizarEstado("🟢 Conectado", "conectado");
     await obtenerTurnServers();
-    setTimeout(() => socket.emit("clientes-conectados"), 1000);
+    
+    // 🔥 ESPERAR 2 SEGUNDOS Y PEDIR LISTA DE CLIENTES
+    setTimeout(() => {
+        socket.emit("clientes-conectados");
+    }, 2000);
 });
 
 socket.on("clientes-conectados", (lista) => {
     console.log("📋 Lista de clientes recibida:", lista);
+    
+    // 🔥 Si hay más de 2 clientes, mostrar advertencia
+    if (lista.length > 2) {
+        console.warn(`⚠️ ATENCIÓN: Hay ${lista.length} clientes conectados. WebRTC solo funciona 1 a 1.`);
+        actualizarEstado(`⚠️ ${lista.length} clientes - cerrando extras`, "inicializando");
+    }
+    
+    // 🔥 SIEMPRE conectar con el primer cliente disponible
     conectarConTodos(lista);
 });
 
 socket.on("nuevo-cliente", (data) => {
     console.log("🆕 Nuevo cliente:", data.id);
+    // Esperar un momento y reconectar
     setTimeout(() => socket.emit("clientes-conectados"), 1500);
 });
 
@@ -519,7 +629,11 @@ async function iniciarCamara() {
         }
         
         await obtenerTurnServers();
-        socket.emit("clientes-conectados");
+        
+        // Esperar un momento y pedir clientes
+        setTimeout(() => {
+            socket.emit("clientes-conectados");
+        }, 1000);
     } catch (error) {
         console.error("❌ Error al acceder a cámara:", error);
         alert("⚠️ No se pudo acceder a la cámara/micrófono.");
@@ -609,11 +723,13 @@ document.addEventListener('DOMContentLoaded', () => {
         btnReconectar.addEventListener('click', () => {
             console.log("🔄 Forzando reconexión...");
             limpiarTodasLasConexiones();
+            actualizarEstado("🔄 Reconectando...", "inicializando");
+            
+            // Desconectar y reconectar socket
             socket.disconnect();
             setTimeout(() => {
                 socket.connect();
             }, 1000);
-            actualizarEstado("🔄 Reconectando...", "inicializando");
         });
     }
 });
@@ -624,6 +740,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.addEventListener("load", () => {
     console.log("🚀 Iniciando Ventana Digital...");
+    console.log(`📱 Modo: ${isMobile ? 'Móvil' : 'Desktop'}`);
+    console.log(`🌐 Navegador: ${isSafari ? 'Safari' : isiOS ? 'iOS' : 'Otro'}`);
     iniciarCamara();
 });
 

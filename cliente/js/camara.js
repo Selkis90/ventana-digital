@@ -28,10 +28,12 @@ const socket = io("https://ventana-digital.onrender.com", {
 
 let streamLocal = null;
 let turnServers = [];
-let peerConnection = null;  // 🔥 UNA SOLA CONEXIÓN
+let peerConnection = null;
 let connectedPeerId = null;
 let isReconnecting = false;
 let reconnectTimer = null;
+let connectionAttempts = 0;
+const MAX_ATTEMPTS = 10;
 
 // ============================================
 // 🖥️ UI State
@@ -258,6 +260,7 @@ function crearPeerConnection(targetId) {
             console.log(`✅ CONEXIÓN ESTABLECIDA con ${targetId}!`);
             connectedPeerId = targetId;
             isReconnecting = false;
+            connectionAttempts = 0;
             if (reconnectTimer) {
                 clearTimeout(reconnectTimer);
                 reconnectTimer = null;
@@ -267,7 +270,8 @@ function crearPeerConnection(targetId) {
             console.log(`❌ Conexión fallida con ${targetId}`);
             connectedPeerId = null;
             limpiarConexion();
-            if (!isReconnecting) {
+            if (!isReconnecting && connectionAttempts < MAX_ATTEMPTS) {
+                connectionAttempts++;
                 isReconnecting = true;
                 reconnectTimer = setTimeout(() => {
                     socket.emit("clientes-conectados");
@@ -358,7 +362,10 @@ function conectarConTodos(clientes) {
         return;
     }
     
-    iniciarConexion(targetId);
+    // 🔥 ESPERAR UN POCO ANTES DE CONECTAR PARA EVITAR CONFLICTOS
+    setTimeout(() => {
+        iniciarConexion(targetId);
+    }, 1000);
 }
 
 // ============================================
@@ -475,13 +482,23 @@ socket.on("ice-candidate", async (data) => {
 
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
+    connectionAttempts = 0;
     limpiarConexion();
     actualizarEstado("🟢 Conectado", "conectado");
     await obtenerTurnServers();
     
+    // 🔥 ESPERAR Y PEDIR CLIENTES VARIAS VECES
     setTimeout(() => {
         socket.emit("clientes-conectados");
-    }, 2000);
+    }, 1000);
+    
+    setTimeout(() => {
+        socket.emit("clientes-conectados");
+    }, 3000);
+    
+    setTimeout(() => {
+        socket.emit("clientes-conectados");
+    }, 5000);
 });
 
 socket.on("clientes-conectados", (lista) => {
@@ -491,7 +508,10 @@ socket.on("clientes-conectados", (lista) => {
 
 socket.on("nuevo-cliente", (data) => {
     console.log("🆕 Nuevo cliente:", data.id);
-    setTimeout(() => socket.emit("clientes-conectados"), 1500);
+    // 🔥 RESPONDER INMEDIATAMENTE CUANDO LLEGA UN NUEVO CLIENTE
+    setTimeout(() => {
+        socket.emit("clientes-conectados");
+    }, 500);
 });
 
 socket.on("cliente-desconectado", (data) => {
@@ -567,9 +587,14 @@ async function iniciarCamara() {
         
         await obtenerTurnServers();
         
+        // 🔥 PEDIR CLIENTES VARIAS VECES AL INICIAR
         setTimeout(() => {
             socket.emit("clientes-conectados");
         }, 1000);
+        
+        setTimeout(() => {
+            socket.emit("clientes-conectados");
+        }, 3000);
     } catch (error) {
         console.error("❌ Error al acceder a cámara:", error);
         alert("⚠️ No se pudo acceder a la cámara/micrófono.");
@@ -661,10 +686,14 @@ document.addEventListener('DOMContentLoaded', () => {
             limpiarConexion();
             actualizarEstado("🔄 Reconectando...", "inicializando");
             
-            // NO desconectar socket, solo pedir lista
+            // 🔥 PEDIR LISTA DE CLIENTES Y RECONECTAR
             setTimeout(() => {
                 socket.emit("clientes-conectados");
-            }, 1000);
+            }, 500);
+            
+            setTimeout(() => {
+                socket.emit("clientes-conectados");
+            }, 2000);
         });
     }
 });

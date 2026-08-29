@@ -5,7 +5,7 @@ module.exports = (io) => {
         console.log(`✅ Cliente conectado: ${socket.id}`);
         console.log(`📊 Total clientes en servidor: ${io.sockets.sockets.size}`);
         
-        // 🔥 SOLO limpiar si hay más de 2 conexiones del mismo IP
+        // Limpiar conexiones duplicadas solo si hay más de 2
         const clientIP = socket.handshake.address;
         const existingClients = Array.from(clientes.keys());
         let duplicateCount = 0;
@@ -35,12 +35,12 @@ module.exports = (io) => {
             ip: socket.handshake.address
         });
 
-        // Enviar lista actualizada SOLO a este cliente
+        // Enviar lista actualizada
         const listaClientes = Array.from(clientes.keys());
         socket.emit('clientes-conectados', listaClientes);
         console.log(`📋 Enviando lista de ${listaClientes.length} clientes a ${socket.id}`);
         
-        // Notificar a los demás que hay un nuevo cliente
+        // Notificar a los demás
         socket.broadcast.emit('nuevo-cliente', { 
             id: socket.id,
             timestamp: new Date().toISOString()
@@ -97,7 +97,7 @@ module.exports = (io) => {
         });
 
         socket.on('clientes-conectados', () => {
-            // Limpiar clientes que ya no están conectados
+            // Limpiar clientes inactivos
             const sockets = io.sockets.sockets;
             const toDelete = [];
             

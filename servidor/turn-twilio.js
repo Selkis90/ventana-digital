@@ -4,11 +4,12 @@ require('dotenv').config();
 
 console.log('🔑 Credenciales cargadas desde .env');
 
-// 🔥 MÁS SERVIDORES TURN PARA MEJOR CONECTIVIDAD
+// 🔥 CONFIGURACIÓN CON MÚLTIPLES SERVIDORES
 const getTurnConfig = () => {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     
+    // Si hay credenciales de Twilio, usarlas
     if (accountSid && authToken && accountSid !== 'tu_account_sid') {
         console.log('✅ Usando TURN de Twilio');
         return {
@@ -16,6 +17,8 @@ const getTurnConfig = () => {
                 {
                     urls: [
                         'stun:stun.l.google.com:19302',
+                        'stun:stun1.l.google.com:19302',
+                        'stun:stun2.l.google.com:19302',
                         'stun:global.stun.twilio.com:3478'
                     ],
                 },
@@ -24,6 +27,7 @@ const getTurnConfig = () => {
                         'turn:global.turn.twilio.com:3478?transport=udp',
                         'turn:global.turn.twilio.com:3478?transport=tcp',
                         'turn:global.turn.twilio.com:443?transport=tcp',
+                        'turn:global.turn.twilio.com:5349?transport=tcp'
                     ],
                     username: accountSid,
                     credential: authToken,
@@ -37,6 +41,14 @@ const getTurnConfig = () => {
                     ],
                     username: 'openrelayproject',
                     credential: 'openrelayproject'
+                },
+                {
+                    urls: [
+                        'turn:numb.viagenie.ca:3478',
+                        'turn:numb.viagenie.ca:443'
+                    ],
+                    username: 'webrtc@live.com',
+                    credential: 'muazkh'
                 }
             ],
             iceCandidatePoolSize: 10,
@@ -45,7 +57,7 @@ const getTurnConfig = () => {
         };
     }
     
-    // 🔥 MÚLTIPLES SERVIDORES DE RESPALDO
+    // 🔥 MULTIPLES SERVIDORES DE RESPALDO
     console.log('🔄 Usando TURN público de respaldo');
     return {
         iceServers: [
@@ -53,7 +65,9 @@ const getTurnConfig = () => {
                 urls: [
                     'stun:stun.l.google.com:19302',
                     'stun:stun1.l.google.com:19302',
-                    'stun:stun2.l.google.com:19302'
+                    'stun:stun2.l.google.com:19302',
+                    'stun:stun3.l.google.com:19302',
+                    'stun:stun4.l.google.com:19302'
                 ]
             },
             {
@@ -73,7 +87,6 @@ const getTurnConfig = () => {
                 username: 'webrtc@live.com',
                 credential: 'muazkh'
             },
-            // 🔥 TURN alternativo
             {
                 urls: [
                     'turn:turn.anyfirewall.com:443?transport=tcp'

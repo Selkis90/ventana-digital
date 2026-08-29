@@ -29,6 +29,7 @@ module.exports = (io) => {
         socket.on('offer', (data) => {
             console.log(`📤 Oferta de ${socket.id} para ${data.target}`);
             if (clientes.has(data.target)) {
+                // Verificar que el target esté conectado
                 io.to(data.target).emit('offer', {
                     from: socket.id,
                     offer: data.offer,
@@ -37,6 +38,11 @@ module.exports = (io) => {
                 console.log(`✅ Oferta reenviada a ${data.target}`);
             } else {
                 console.warn(`⚠️ Cliente ${data.target} no encontrado`);
+                // Notificar al emisor que el target no existe
+                socket.emit('cliente-desconectado', { 
+                    id: data.target,
+                    reason: 'target_not_found'
+                });
             }
         });
 
@@ -75,6 +81,11 @@ module.exports = (io) => {
             const lista = Array.from(clientes.keys());
             socket.emit('clientes-conectados', lista);
             console.log(`📋 Reenviando lista de ${lista.length} clientes a ${socket.id}`);
+        });
+
+        // Ping para mantener conexión
+        socket.on('ping', () => {
+            socket.emit('pong');
         });
 
         // Desconexión

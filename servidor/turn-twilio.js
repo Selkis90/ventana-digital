@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 require('dotenv').config();
 
-console.log('🔑 Configurando TURN de Twilio...');
+console.log('🔑 Configurando TURN de Twilio con puerto 443...');
 
 router.get('/turn-credentials', (req, res) => {
     console.log('📡 Solicitando credenciales TURN');
@@ -13,23 +13,24 @@ router.get('/turn-credentials', (req, res) => {
     console.log(`📋 Account SID: ${accountSid ? '✅ Configurado' : '❌ No configurado'}`);
     console.log(`📋 Auth Token: ${authToken ? '✅ Configurado' : '❌ No configurado'}`);
     
-    // 🔥 USAR TWILIO SI ESTÁ CONFIGURADO
+    // 🔥 USAR TWILIO CON PUERTO 443 (HTTPS - NO BLOQUEADO)
     if (accountSid && authToken && accountSid !== 'tu_account_sid') {
-        console.log('✅ Usando TURN de Twilio');
+        console.log('✅ Usando TURN de Twilio (puerto 443)');
         res.json({
             iceServers: [
                 {
                     urls: [
                         'stun:stun.l.google.com:19302',
+                        'stun:stun1.l.google.com:19302',
+                        'stun:stun2.l.google.com:19302',
                         'stun:global.stun.twilio.com:3478'
                     ]
                 },
                 {
+                    // 🔥 SOLO PUERTO 443 (HTTPS) - NO BLOQUEADO POR RENDER
                     urls: [
-                        'turn:global.turn.twilio.com:3478?transport=udp',
-                        'turn:global.turn.twilio.com:3478?transport=tcp',
                         'turn:global.turn.twilio.com:443?transport=tcp',
-                        'turn:global.turn.twilio.com:5349?transport=tcp'
+                        'turn:global.turn.twilio.com:443?transport=udp'
                     ],
                     username: accountSid,
                     credential: authToken
@@ -46,7 +47,8 @@ router.get('/turn-credentials', (req, res) => {
                 {
                     urls: [
                         'stun:stun.l.google.com:19302',
-                        'stun:stun1.l.google.com:19302'
+                        'stun:stun1.l.google.com:19302',
+                        'stun:stun2.l.google.com:19302'
                     ]
                 }
             ]
@@ -60,7 +62,7 @@ router.get('/test-turn', (req, res) => {
         status: 'ok',
         timestamp: new Date().toISOString(),
         twilioConfigured: !!(accountSid && accountSid !== 'tu_account_sid'),
-        message: accountSid ? '✅ Twilio configurado' : '❌ Twilio NO configurado'
+        message: accountSid ? '✅ Twilio configurado (puerto 443)' : '❌ Twilio NO configurado'
     });
 });
 

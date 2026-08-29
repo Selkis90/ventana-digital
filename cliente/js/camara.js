@@ -28,13 +28,10 @@ const socket = io("https://ventana-digital.onrender.com", {
 
 let streamLocal = null;
 let turnServers = [];
-let peerIdRemoto = null;
+let peerConnection = null;  // 🔥 UNA SOLA CONEXIÓN
 let connectedPeerId = null;
 let isReconnecting = false;
 let reconnectTimer = null;
-let connectionAttempts = 0;
-const MAX_ATTEMPTS = 5;
-let isManualReconnect = false;
 
 // ============================================
 // 🖥️ UI State
@@ -55,39 +52,29 @@ if (isMobile) {
 }
 
 // ============================================
-// 🔥 FUNCIÓN PARA LIMPIAR CONEXIONES ANTIGUAS
+// 🔥 FUNCIÓN PARA LIMPIAR CONEXIÓN
 // ============================================
 
-function limpiarTodasLasConexiones() {
-    console.log("🧹 Limpiando TODAS las conexiones...");
+function limpiarConexion() {
+    console.log("🧹 Limpiando conexión...");
     
     if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
     }
     
-    if (window.peerConnection) {
+    if (peerConnection) {
         try {
-            const pc = window.peerConnection;
-            pc.onicecandidate = null;
-            pc.ontrack = null;
-            pc.onconnectionstatechange = null;
-            pc.oniceconnectionstatechange = null;
-            pc.onnegotiationneeded = null;
-            pc.close();
+            peerConnection.onicecandidate = null;
+            peerConnection.ontrack = null;
+            peerConnection.onconnectionstatechange = null;
+            peerConnection.oniceconnectionstatechange = null;
+            peerConnection.onnegotiationneeded = null;
+            peerConnection.close();
         } catch (e) {
             console.warn('⚠️ Error cerrando peerConnection:', e);
         }
-        window.peerConnection = null;
-    }
-    
-    if (window.peers) {
-        Object.keys(window.peers).forEach(key => {
-            try {
-                window.peers[key].close();
-            } catch (e) {}
-        });
-        window.peers = {};
+        peerConnection = null;
     }
     
     if (videoRemoto) {
@@ -96,7 +83,6 @@ function limpiarTodasLasConexiones() {
     }
     
     connectedPeerId = null;
-    peerIdRemoto = null;
     isReconnecting = false;
     
     console.log("✅ Limpieza completada");
@@ -159,8 +145,6 @@ function mostrarVideoRemoto(stream, peerId) {
         return;
     }
     
-    peerIdRemoto = peerId;
-    
     const audioTracks = stream.getAudioTracks();
     const videoTracks = stream.getVideoTracks();
     console.log(`🎵 Audio remoto: ${audioTracks.length}, Video remoto: ${videoTracks.length}`);
@@ -168,7 +152,6 @@ function mostrarVideoRemoto(stream, peerId) {
     audioTracks.forEach(track => {
         if (!track.enabled) {
             track.enabled = true;
-            console.log(`🎵 Habilitando track de audio remoto: ${track.label}`);
         }
     });
     
@@ -206,23 +189,10 @@ function mostrarVideoRemoto(stream, peerId) {
     playVideo();
 }
 
-function ocultarVideoRemoto() {
-    videoRemoto.style.display = "none";
-    if (videoRemoto.srcObject) {
-        videoRemoto.srcObject = null;
-    }
-    if (peerIdRemoto) {
-        peerIdRemoto = null;
-    }
-    if (streamLocal) {
-        video.style.display = "block";
-    }
-}
-
 function crearPeerConnection(targetId) {
     console.log(`🔗 Creando conexión con: ${targetId}`);
     
-    limpiarTodasLasConexiones();
+    limpiarConexion();
     
     const pc = new RTCPeerConnection({
         iceServers: turnServers,
@@ -231,18 +201,9 @@ function crearPeerConnection(targetId) {
         rtcpMuxPolicy: "require"
     });
 
-    window.peerConnection = pc;
+    peerConnection = pc;
 
     if (streamLocal) {
-        const audioTracks = streamLocal.getAudioTracks();
-        const videoTracks = streamLocal.getVideoTracks();
-        
-        console.log(`📹 Tracks locales: Audio=${audioTracks.length}, Video=${videoTracks.length}`);
-        
-        audioTracks.forEach(track => {
-            track.enabled = true;
-        });
-        
         streamLocal.getTracks().forEach(track => {
             try {
                 pc.addTrack(track, streamLocal);
@@ -297,8 +258,6 @@ function crearPeerConnection(targetId) {
             console.log(`✅ CONEXIÓN ESTABLECIDA con ${targetId}!`);
             connectedPeerId = targetId;
             isReconnecting = false;
-            connectionAttempts = 0;
-            isManualReconnect = false;
             if (reconnectTimer) {
                 clearTimeout(reconnectTimer);
                 reconnectTimer = null;
@@ -307,9 +266,8 @@ function crearPeerConnection(targetId) {
         } else if (pc.connectionState === "failed") {
             console.log(`❌ Conexión fallida con ${targetId}`);
             connectedPeerId = null;
-            ocultarVideoRemoto();
-            if (!isReconnecting && !isManualReconnect && connectionAttempts < MAX_ATTEMPTS) {
-                connectionAttempts++;
+            limpiarConexion();
+            if (!isReconnecting) {
                 isReconnecting = true;
                 reconnectTimer = setTimeout(() => {
                     socket.emit("clientes-conectados");
@@ -352,7 +310,7 @@ function iniciarConexion(targetId) {
         return;
     }
     
-    limpiarTodasLasConexiones();
+    limpiarConexion();
     
     setTimeout(() => {
         const pc = crearPeerConnection(targetId);
@@ -382,8 +340,6 @@ function conectarConTodos(clientes) {
     
     const otros = clientes.filter(id => id !== socket.id);
     
-    console.log(`🔍 Otros clientes (excluyéndonos):`, otros);
-    
     if (otros.length === 0) {
         console.log(`ℹ️ Solo estamos nosotros conectados`);
         actualizarEstado("🟢 Esperando otro equipo", "conectado");
@@ -394,8 +350,7 @@ function conectarConTodos(clientes) {
     console.log(`🎯 Conectando SOLO con: ${targetId}`);
     
     if (otros.length > 1) {
-        console.warn(`⚠️ IGNORANDO a otros ${otros.length - 1} clientes: ${otros.slice(1).join(', ')}`);
-        actualizarEstado(`⚠️ Solo conectando con ${targetId.substring(0, 6)}...`, "inicializando");
+        console.warn(`⚠️ IGNORANDO a otros ${otros.length - 1} clientes`);
     }
     
     if (connectedPeerId === targetId) {
@@ -426,7 +381,7 @@ socket.on("offer", async (data) => {
     window._processingOffer = from;
     
     try {
-        limpiarTodasLasConexiones();
+        limpiarConexion();
         
         const pc = crearPeerConnection(from);
         if (pc.signalingState === 'closed') {
@@ -448,7 +403,7 @@ socket.on("offer", async (data) => {
         window._processingOffer = null;
     } catch (error) {
         console.error(`❌ Error manejando oferta:`, error);
-        limpiarTodasLasConexiones();
+        limpiarConexion();
         window._processingOffer = null;
     }
 });
@@ -457,24 +412,23 @@ socket.on("answer", async (data) => {
     const { from, answer } = data;
     console.log(`📩 RESPUESTA RECIBIDA DE: ${from}`);
     
-    const pc = window.peerConnection;
-    if (!pc) {
+    if (!peerConnection) {
         console.log(`⚠️ No hay peer connection`);
         return;
     }
 
-    if (pc.signalingState === 'closed') {
+    if (peerConnection.signalingState === 'closed') {
         console.log(`⚠️ PC cerrado`);
-        limpiarTodasLasConexiones();
+        limpiarConexion();
         return;
     }
 
     try {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         console.log(`✅ Descripción remota establecida de ${from}`);
     } catch (error) {
         console.error(`❌ Error procesando respuesta:`, error);
-        limpiarTodasLasConexiones();
+        limpiarConexion();
         if (!isReconnecting && from) {
             isReconnecting = true;
             reconnectTimer = setTimeout(() => {
@@ -488,26 +442,25 @@ socket.on("answer", async (data) => {
 
 socket.on("ice-candidate", async (data) => {
     const { from, candidate } = data;
-    const pc = window.peerConnection;
-    if (!pc) {
+    if (!peerConnection) {
         console.log(`⚠️ No hay peer connection para ICE`);
         return;
     }
 
     try {
-        if (pc.remoteDescription && pc.remoteDescription.type) {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
             console.log(`✅ ICE Candidate agregado de: ${from}`);
         } else {
             console.log(`⏳ Descripción remota no lista, guardando candidate`);
-            if (!pc._pendingCandidates) pc._pendingCandidates = [];
-            pc._pendingCandidates.push(candidate);
+            if (!peerConnection._pendingCandidates) peerConnection._pendingCandidates = [];
+            peerConnection._pendingCandidates.push(candidate);
         }
     } catch (error) {
         console.warn(`⚠️ Error ICE:`, error.message);
         if (error.message && error.message.includes('Unknown ufrag')) {
             console.log(`🔄 Reiniciando por Unknown ufrag...`);
-            limpiarTodasLasConexiones();
+            limpiarConexion();
             if (!isReconnecting && from) {
                 isReconnecting = true;
                 reconnectTimer = setTimeout(() => {
@@ -522,9 +475,7 @@ socket.on("ice-candidate", async (data) => {
 
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
-    connectionAttempts = 0;
-    isManualReconnect = false;
-    limpiarTodasLasConexiones();
+    limpiarConexion();
     actualizarEstado("🟢 Conectado", "conectado");
     await obtenerTurnServers();
     
@@ -535,12 +486,6 @@ socket.on("connect", async () => {
 
 socket.on("clientes-conectados", (lista) => {
     console.log("📋 Lista de clientes recibida:", lista);
-    
-    if (lista.length > 2) {
-        console.warn(`⚠️ ATENCIÓN: Hay ${lista.length} clientes conectados. WebRTC solo funciona 1 a 1.`);
-        actualizarEstado(`⚠️ ${lista.length} clientes - cerrando extras`, "inicializando");
-    }
-    
     conectarConTodos(lista);
 });
 
@@ -558,7 +503,7 @@ socket.on("cliente-desconectado", (data) => {
     }
     
     if (connectedPeerId === data.id) {
-        limpiarTodasLasConexiones();
+        limpiarConexion();
         actualizarEstado("🟢 Esperando otro equipo", "conectado");
     }
 });
@@ -566,7 +511,7 @@ socket.on("cliente-desconectado", (data) => {
 socket.on("disconnect", () => {
     console.log("❌ Desconectado del servidor");
     actualizarEstado("🔴 Reconectando...", "desconectado");
-    limpiarTodasLasConexiones();
+    limpiarConexion();
 });
 
 socket.on("connect_error", (error) => {
@@ -644,7 +589,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnToggleCamara = document.getElementById('btn-camara');
     const btnToggleMicrofono = document.getElementById('btn-microfono');
     const btnFullscreen = document.getElementById('btn-fullscreen');
-    const btnDiagnostico = document.getElementById('btn-diagnostico');
     
     if (controlVolumen) {
         controlVolumen.value = 0.3;
@@ -711,95 +655,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    if (btnDiagnostico) {
-        let diagnosticoVisible = false;
-        btnDiagnostico.addEventListener('click', () => {
-            diagnosticoVisible = !diagnosticoVisible;
-            if (diagnosticoVisible) {
-                mostrarDiagnostico();
-                btnDiagnostico.classList.add('activo');
-            } else {
-                ocultarDiagnostico();
-                btnDiagnostico.classList.remove('activo');
-            }
-        });
-    }
-    
     if (btnReconectar) {
         btnReconectar.addEventListener('click', () => {
             console.log("🔄 Forzando reconexión...");
-            
-            // 🔥 IMPORTANTE: Marcar como reconexión manual
-            isManualReconnect = true;
-            isReconnecting = false;
-            
-            // Limpiar todo
-            limpiarTodasLasConexiones();
+            limpiarConexion();
             actualizarEstado("🔄 Reconectando...", "inicializando");
             
-            // 🔥 NO desconectar el socket, solo pedir lista de clientes
+            // NO desconectar socket, solo pedir lista
             setTimeout(() => {
                 socket.emit("clientes-conectados");
-                // Después de 5 segundos, permitir reconexión automática si falla
-                setTimeout(() => {
-                    isManualReconnect = false;
-                }, 5000);
             }, 1000);
         });
     }
 });
-
-// ============================================
-// 📊 Diagnóstico
-// ============================================
-
-function mostrarDiagnostico() {
-    let badge = document.querySelector('.diagnostico-badge');
-    if (!badge) {
-        badge = document.createElement('div');
-        badge.className = 'diagnostico-badge';
-        document.body.appendChild(badge);
-    }
-    
-    const tieneAudioLocal = streamLocal && streamLocal.getAudioTracks().some(t => t.enabled);
-    const tieneVideoLocal = streamLocal && streamLocal.getVideoTracks().some(t => t.enabled);
-    const tieneVideoRemoto = videoRemoto.srcObject !== null;
-    
-    badge.innerHTML = `
-        <div class="info-line">
-            <span class="label">🔗 Socket ID:</span>
-            <span class="value">${socket.id ? socket.id.substring(0, 8) : 'N/A'}</span>
-        </div>
-        <div class="info-line">
-            <span class="label">📡 Conectado a:</span>
-            <span class="value ${!connectedPeerId ? 'warning' : ''}">${connectedPeerId ? connectedPeerId.substring(0, 8) : 'Ninguno'}</span>
-        </div>
-        <div class="info-line">
-            <span class="label">🎤 Micrófono LOCAL:</span>
-            <span class="value ${!tieneAudioLocal ? 'error' : ''}">${tieneAudioLocal ? '✅ Activo' : '❌ Silenciado'}</span>
-        </div>
-        <div class="info-line">
-            <span class="label">📹 Cámara LOCAL:</span>
-            <span class="value ${!tieneVideoLocal ? 'error' : ''}">${tieneVideoLocal ? '✅ Activa' : '❌ Apagada'}</span>
-        </div>
-        <div class="info-line">
-            <span class="label">📹 Video REMOTO:</span>
-            <span class="value ${!tieneVideoRemoto ? 'warning' : ''}">${tieneVideoRemoto ? '✅ Recibiendo' : '⏳ Esperando'}</span>
-        </div>
-        <div class="info-line" style="border-bottom: none;">
-            <span class="label">📱 Dispositivo:</span>
-            <span class="value">${isMobile ? 'Móvil' : 'Desktop'}</span>
-        </div>
-    `;
-    badge.classList.add('visible');
-}
-
-function ocultarDiagnostico() {
-    const badge = document.querySelector('.diagnostico-badge');
-    if (badge) {
-        badge.classList.remove('visible');
-    }
-}
 
 // ============================================
 // 🚀 Inicialización
@@ -807,12 +675,10 @@ function ocultarDiagnostico() {
 
 window.addEventListener("load", () => {
     console.log("🚀 Iniciando Ventana Digital...");
-    console.log(`📱 Modo: ${isMobile ? 'Móvil' : 'Desktop'}`);
-    console.log(`🌐 Navegador: ${isSafari ? 'Safari' : isiOS ? 'iOS' : 'Otro'}`);
     iniciarCamara();
 });
 
 window.addEventListener("beforeunload", () => {
-    limpiarTodasLasConexiones();
+    limpiarConexion();
     if (streamLocal) streamLocal.getTracks().forEach(track => track.stop());
 });

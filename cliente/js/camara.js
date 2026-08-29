@@ -32,6 +32,8 @@ let peerIdRemoto = null;
 let connectedPeerId = null;
 let isReconnecting = false;
 let reconnectTimer = null;
+let connectionAttempts = 0;
+const MAX_ATTEMPTS = 5;
 
 // ============================================
 // 🖥️ UI State
@@ -58,13 +60,11 @@ if (isMobile) {
 function limpiarTodasLasConexiones() {
     console.log("🧹 Limpiando TODAS las conexiones...");
     
-    // Limpiar timer de reconexión
     if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
     }
     
-    // Cerrar conexión WebRTC existente
     if (window.peerConnection) {
         try {
             const pc = window.peerConnection;
@@ -80,7 +80,6 @@ function limpiarTodasLasConexiones() {
         window.peerConnection = null;
     }
     
-    // Limpiar cualquier otra referencia
     if (window.peers) {
         Object.keys(window.peers).forEach(key => {
             try {
@@ -90,16 +89,15 @@ function limpiarTodasLasConexiones() {
         window.peers = {};
     }
     
-    // Ocultar video remoto
     if (videoRemoto) {
         videoRemoto.srcObject = null;
         videoRemoto.style.display = "none";
     }
     
-    // Resetear estados
     connectedPeerId = null;
     peerIdRemoto = null;
     isReconnecting = false;
+    connectionAttempts = 0;
     
     console.log("✅ Limpieza completada");
 }
@@ -156,7 +154,6 @@ function mostrarVideoRemoto(stream, peerId) {
         return;
     }
     
-    // Si ya está asignado el mismo stream, no hacer nada
     if (videoRemoto.srcObject === stream) {
         console.log(`ℹ️ Stream ya asignado a video-remoto`);
         return;
@@ -175,7 +172,6 @@ function mostrarVideoRemoto(stream, peerId) {
         }
     });
     
-    // Limpiar stream anterior
     if (videoRemoto.srcObject) {
         videoRemoto.srcObject = null;
     }
@@ -199,7 +195,6 @@ function mostrarVideoRemoto(stream, peerId) {
             actualizarEstado(`🟢 Conectado`, "conectado");
         } catch (error) {
             console.warn(`⚠️ Error al reproducir video remoto:`, error.message);
-            // Reintentar después de un momento
             setTimeout(() => {
                 videoRemoto.play()
                     .then(() => console.log(`✅ Video remoto reproducido en reintento`))
@@ -227,7 +222,6 @@ function ocultarVideoRemoto() {
 function crearPeerConnection(targetId) {
     console.log(`🔗 Creando conexión con: ${targetId}`);
     
-    // Limpiar conexión existente
     limpiarTodasLasConexiones();
     
     const pc = new RTCPeerConnection({
@@ -237,10 +231,8 @@ function crearPeerConnection(targetId) {
         rtcpMuxPolicy: "require"
     });
 
-    // Guardar referencia GLOBAL
     window.peerConnection = pc;
 
-    // Agregar tracks locales
     if (streamLocal) {
         const audioTracks = streamLocal.getAudioTracks();
         const videoTracks = streamLocal.getVideoTracks();
@@ -305,6 +297,7 @@ function crearPeerConnection(targetId) {
             console.log(`✅ CONEXIÓN ESTABLECIDA con ${targetId}!`);
             connectedPeerId = targetId;
             isReconnecting = false;
+            connectionAttempts = 0;
             if (reconnectTimer) {
                 clearTimeout(reconnectTimer);
                 reconnectTimer = null;
@@ -314,7 +307,8 @@ function crearPeerConnection(targetId) {
             console.log(`❌ Conexión fallida con ${targetId}`);
             connectedPeerId = null;
             ocultarVideoRemoto();
-            if (!isReconnecting) {
+            if (!isReconnecting && connectionAttempts < MAX_ATTEMPTS) {
+                connectionAttempts++;
                 isReconnecting = true;
                 reconnectTimer = setTimeout(() => {
                     socket.emit("clientes-conectados");
@@ -385,15 +379,16 @@ function iniciarConexion(targetId) {
 function conectarConTodos(clientes) {
     console.log("🔄 CLIENTES CONECTADOS:", clientes);
     
-    // Filtrar nuestro propio ID
     const otros = clientes.filter(id => id !== socket.id);
     
+    console.log(`🔍 Otros clientes (excluyéndonos):`, otros);
+    
     if (otros.length === 0) {
+        console.log(`ℹ️ Solo estamos nosotros conectados`);
         actualizarEstado("🟢 Esperando otro equipo", "conectado");
         return;
     }
 
-    // 🔥 SOLO CONECTAR CON EL PRIMER CLIENTE DE LA LISTA
     const targetId = otros[0];
     console.log(`🎯 Conectando SOLO con: ${targetId}`);
     
@@ -402,13 +397,11 @@ function conectarConTodos(clientes) {
         actualizarEstado(`⚠️ Solo conectando con ${targetId.substring(0, 6)}...`, "inicializando");
     }
     
-    // Si ya estamos conectados con este target, no hacer nada
     if (connectedPeerId === targetId) {
         console.log(`✅ Ya conectado con ${targetId}`);
         return;
     }
     
-    // Iniciar conexión SOLO con targetId
     iniciarConexion(targetId);
 }
 
@@ -420,13 +413,11 @@ socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
     
-    // 🔥 IGNORAR si ya estamos conectados con otro peer
     if (connectedPeerId && connectedPeerId !== from) {
         console.log(`⛔ YA CONECTADO con ${connectedPeerId}, IGNORANDO oferta de ${from}`);
         return;
     }
     
-    // Si ya estamos procesando esta oferta, ignorar
     if (window._processingOffer && window._processingOffer === from) {
         console.log(`⏳ Ya procesando oferta de ${from}`);
         return;
@@ -483,10 +474,10 @@ socket.on("answer", async (data) => {
     } catch (error) {
         console.error(`❌ Error procesando respuesta:`, error);
         limpiarTodasLasConexiones();
-        if (!isReconnecting) {
+        if (!isReconnecting && from) {
             isReconnecting = true;
             reconnectTimer = setTimeout(() => {
-                if (from) iniciarConexion(from);
+                iniciarConexion(from);
                 isReconnecting = false;
                 reconnectTimer = null;
             }, 2000);
@@ -513,7 +504,6 @@ socket.on("ice-candidate", async (data) => {
         }
     } catch (error) {
         console.warn(`⚠️ Error ICE:`, error.message);
-        // Si el error es "Unknown ufrag", reiniciar
         if (error.message && error.message.includes('Unknown ufrag')) {
             console.log(`🔄 Reiniciando por Unknown ufrag...`);
             limpiarTodasLasConexiones();
@@ -531,14 +521,11 @@ socket.on("ice-candidate", async (data) => {
 
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
-    
-    // 🔥 LIMPIAR TODO ANTES DE CONECTAR
+    connectionAttempts = 0;
     limpiarTodasLasConexiones();
-    
     actualizarEstado("🟢 Conectado", "conectado");
     await obtenerTurnServers();
     
-    // 🔥 ESPERAR 2 SEGUNDOS Y PEDIR LISTA DE CLIENTES
     setTimeout(() => {
         socket.emit("clientes-conectados");
     }, 2000);
@@ -547,24 +534,27 @@ socket.on("connect", async () => {
 socket.on("clientes-conectados", (lista) => {
     console.log("📋 Lista de clientes recibida:", lista);
     
-    // 🔥 Si hay más de 2 clientes, mostrar advertencia
     if (lista.length > 2) {
         console.warn(`⚠️ ATENCIÓN: Hay ${lista.length} clientes conectados. WebRTC solo funciona 1 a 1.`);
         actualizarEstado(`⚠️ ${lista.length} clientes - cerrando extras`, "inicializando");
     }
     
-    // 🔥 SIEMPRE conectar con el primer cliente disponible
     conectarConTodos(lista);
 });
 
 socket.on("nuevo-cliente", (data) => {
     console.log("🆕 Nuevo cliente:", data.id);
-    // Esperar un momento y reconectar
     setTimeout(() => socket.emit("clientes-conectados"), 1500);
 });
 
 socket.on("cliente-desconectado", (data) => {
     console.log("🔴 Cliente desconectado:", data.id);
+    
+    if (data.id === socket.id) {
+        console.log(`ℹ️ Ignorando nuestra propia desconexión`);
+        return;
+    }
+    
     if (connectedPeerId === data.id) {
         limpiarTodasLasConexiones();
         actualizarEstado("🟢 Esperando otro equipo", "conectado");
@@ -630,7 +620,6 @@ async function iniciarCamara() {
         
         await obtenerTurnServers();
         
-        // Esperar un momento y pedir clientes
         setTimeout(() => {
             socket.emit("clientes-conectados");
         }, 1000);
@@ -653,6 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnToggleCamara = document.getElementById('btn-camara');
     const btnToggleMicrofono = document.getElementById('btn-microfono');
     const btnFullscreen = document.getElementById('btn-fullscreen');
+    const btnDiagnostico = document.getElementById('btn-diagnostico');
     
     if (controlVolumen) {
         controlVolumen.value = 0.3;
@@ -719,13 +709,26 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    if (btnDiagnostico) {
+        let diagnosticoVisible = false;
+        btnDiagnostico.addEventListener('click', () => {
+            diagnosticoVisible = !diagnosticoVisible;
+            if (diagnosticoVisible) {
+                mostrarDiagnostico();
+                btnDiagnostico.classList.add('activo');
+            } else {
+                ocultarDiagnostico();
+                btnDiagnostico.classList.remove('activo');
+            }
+        });
+    }
+    
     if (btnReconectar) {
         btnReconectar.addEventListener('click', () => {
             console.log("🔄 Forzando reconexión...");
             limpiarTodasLasConexiones();
             actualizarEstado("🔄 Reconectando...", "inicializando");
             
-            // Desconectar y reconectar socket
             socket.disconnect();
             setTimeout(() => {
                 socket.connect();
@@ -733,6 +736,58 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// ============================================
+// 📊 Diagnóstico
+// ============================================
+
+function mostrarDiagnostico() {
+    let badge = document.querySelector('.diagnostico-badge');
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'diagnostico-badge';
+        document.body.appendChild(badge);
+    }
+    
+    const tieneAudioLocal = streamLocal && streamLocal.getAudioTracks().some(t => t.enabled);
+    const tieneVideoLocal = streamLocal && streamLocal.getVideoTracks().some(t => t.enabled);
+    const tieneVideoRemoto = videoRemoto.srcObject !== null;
+    
+    badge.innerHTML = `
+        <div class="info-line">
+            <span class="label">🔗 Socket ID:</span>
+            <span class="value">${socket.id ? socket.id.substring(0, 8) : 'N/A'}</span>
+        </div>
+        <div class="info-line">
+            <span class="label">📡 Conectado a:</span>
+            <span class="value ${!connectedPeerId ? 'warning' : ''}">${connectedPeerId ? connectedPeerId.substring(0, 8) : 'Ninguno'}</span>
+        </div>
+        <div class="info-line">
+            <span class="label">🎤 Micrófono LOCAL:</span>
+            <span class="value ${!tieneAudioLocal ? 'error' : ''}">${tieneAudioLocal ? '✅ Activo' : '❌ Silenciado'}</span>
+        </div>
+        <div class="info-line">
+            <span class="label">📹 Cámara LOCAL:</span>
+            <span class="value ${!tieneVideoLocal ? 'error' : ''}">${tieneVideoLocal ? '✅ Activa' : '❌ Apagada'}</span>
+        </div>
+        <div class="info-line">
+            <span class="label">📹 Video REMOTO:</span>
+            <span class="value ${!tieneVideoRemoto ? 'warning' : ''}">${tieneVideoRemoto ? '✅ Recibiendo' : '⏳ Esperando'}</span>
+        </div>
+        <div class="info-line" style="border-bottom: none;">
+            <span class="label">📱 Dispositivo:</span>
+            <span class="value">${isMobile ? 'Móvil' : 'Desktop'}</span>
+        </div>
+    `;
+    badge.classList.add('visible');
+}
+
+function ocultarDiagnostico() {
+    const badge = document.querySelector('.diagnostico-badge');
+    if (badge) {
+        badge.classList.remove('visible');
+    }
+}
 
 // ============================================
 // 🚀 Inicialización

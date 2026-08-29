@@ -3,30 +3,7 @@ module.exports = (io) => {
 
     io.on('connection', (socket) => {
         console.log(`✅ Cliente conectado: ${socket.id}`);
-        console.log(`📊 Total clientes en servidor: ${io.sockets.sockets.size}`);
-        
-        // Limpiar conexiones duplicadas solo si hay más de 2
-        const clientIP = socket.handshake.address;
-        const existingClients = Array.from(clientes.keys());
-        let duplicateCount = 0;
-        
-        existingClients.forEach(id => {
-            const client = clientes.get(id);
-            if (client && client.ip === clientIP && id !== socket.id) {
-                duplicateCount++;
-                console.log(`🧹 Eliminando conexión duplicada de IP ${clientIP}: ${id}`);
-                io.to(id).emit('cliente-desconectado', { id: id, reason: 'duplicate' });
-                const oldSocket = io.sockets.sockets.get(id);
-                if (oldSocket) {
-                    oldSocket.disconnect(true);
-                }
-                clientes.delete(id);
-            }
-        });
-        
-        if (duplicateCount > 0) {
-            console.log(`✅ Eliminados ${duplicateCount} clientes duplicados`);
-        }
+        console.log(`📊 Total sockets en servidor: ${io.sockets.sockets.size}`);
         
         // Guardar cliente
         clientes.set(socket.id, {
@@ -35,12 +12,14 @@ module.exports = (io) => {
             ip: socket.handshake.address
         });
 
-        // Enviar lista actualizada
+        // 🔥 ENVIAR LISTA COMPLETA A TODOS LOS CLIENTES
         const listaClientes = Array.from(clientes.keys());
-        socket.emit('clientes-conectados', listaClientes);
-        console.log(`📋 Enviando lista de ${listaClientes.length} clientes a ${socket.id}`);
+        console.log(`📋 Enviando lista de ${listaClientes.length} clientes a TODOS`);
         
-        // Notificar a los demás
+        // Enviar a TODOS los clientes conectados
+        io.emit('clientes-conectados', listaClientes);
+        
+        // Notificar a los demás que hay un nuevo cliente
         socket.broadcast.emit('nuevo-cliente', { 
             id: socket.id,
             timestamp: new Date().toISOString()
@@ -52,6 +31,8 @@ module.exports = (io) => {
         
         socket.on('offer', (data) => {
             console.log(`📤 Oferta de ${socket.id} para ${data.target}`);
+            console.log(`📊 Clientes disponibles: ${Array.from(clientes.keys()).join(', ')}`);
+            
             if (clientes.has(data.target)) {
                 io.to(data.target).emit('offer', {
                     from: socket.id,
@@ -112,13 +93,10 @@ module.exports = (io) => {
                 clientes.delete(id);
             });
             
-            if (toDelete.length > 0) {
-                console.log(`✅ Eliminados ${toDelete.length} clientes inactivos`);
-            }
-            
+            // 🔥 ENVIAR LISTA A TODOS LOS CLIENTES
             const lista = Array.from(clientes.keys());
-            socket.emit('clientes-conectados', lista);
-            console.log(`📋 Reenviando lista de ${lista.length} clientes a ${socket.id}`);
+            console.log(`📋 Enviando lista de ${lista.length} clientes a TODOS`);
+            io.emit('clientes-conectados', lista);
         });
 
         socket.on('ping', () => {
@@ -129,16 +107,16 @@ module.exports = (io) => {
             console.log(`❌ Cliente desconectado: ${socket.id}`);
             clientes.delete(socket.id);
             
-            // Notificar a los demás
+            // 🔥 ENVIAR LISTA ACTUALIZADA A TODOS
+            const lista = Array.from(clientes.keys());
+            console.log(`📋 Lista actualizada: ${lista.length} clientes`);
+            
             io.emit('cliente-desconectado', { 
                 id: socket.id,
                 timestamp: new Date().toISOString()
             });
             
-            // Enviar lista actualizada a todos
-            const lista = Array.from(clientes.keys());
             io.emit('clientes-conectados', lista);
-            console.log(`📋 Lista actualizada: ${lista.length} clientes`);
         });
     });
 

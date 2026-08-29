@@ -1,87 +1,133 @@
 const video = document.getElementById("video");
 const videoRemoto = document.getElementById("video-remoto");
 
-// URL de Render
+// ============================================
+// 📱 DETECCIÓN DE DISPOSITIVO
+// ============================================
+const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent);
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+console.log(`📱 Dispositivo: ${isMobile ? 'Móvil' : 'Desktop'}`);
+console.log(`🌐 Navegador: ${isSafari ? 'Safari' : 'Otro'}`);
+console.log(`🍎 iOS: ${isiOS}`);
+
+// ============================================
+// 🔌 CONFIGURACIÓN DE SOCKET OPTIMIZADA
+// ============================================
 const socket = io("https://ventana-digital.onrender.com", {
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionAttempts: 20,
-    reconnectionDelay: 1000,
-    timeout: 30000
+    reconnectionAttempts: 50,
+    reconnectionDelay: isMobile ? 2000 : 1000,
+    reconnectionDelayMax: 10000,
+    timeout: isMobile ? 60000 : 30000,
+    forceNew: true,
+    autoConnect: true,
+    upgrade: true,
+    rememberUpgrade: true
 });
 
 const peers = {};
 let streamLocal = null;
 let turnServers = [];
 let isProcessingAnswer = {};
+let isAudioInitialized = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
 
 // ============================================
-// 🔊 CONTROL DE AUDIO POR CONEXIÓN
+// 🔊 CONTROL DE AUDIO MEJORADO PARA MÓVILES
 // ============================================
 class AudioController {
     constructor() {
-        this.audioContexts = new Map(); // Por peerId
+        this.audioContexts = new Map();
         this.gainNodes = new Map();
-        this.analyzers = new Map();
-        this.isAudioInitialized = false;
+        this.isInitialized = false;
+        this.isIOS = isiOS;
+        this.isSafari = isSafari;
     }
 
     async init() {
-        if (!this.isAudioInitialized) {
-            try {
-                // Crear AudioContext global
+        if (this.isInitialized) return true;
+        
+        try {
+            // En iOS, el AudioContext debe crearse con un gesto del usuario
+            if (this.isIOS) {
+                console.log('🍎 Inicializando AudioContext para iOS...');
+                // Usar el contexto existente o crear uno nuevo
+                if (!window._iosAudioContext) {
+                    window._iosAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (window._iosAudioContext.state === 'suspended') {
+                    await window._iosAudioContext.resume();
+                }
+                this.globalContext = window._iosAudioContext;
+            } else {
                 this.globalContext = new (window.AudioContext || window.webkitAudioContext)();
-                // Resumir si está suspendido
                 if (this.globalContext.state === 'suspended') {
                     await this.globalContext.resume();
                 }
-                this.isAudioInitialized = true;
-                console.log('✅ AudioController inicializado');
-            } catch (error) {
-                console.warn('⚠️ Error inicializando AudioContext:', error);
             }
+            
+            this.isInitialized = true;
+            console.log('✅ AudioController inicializado');
+            return true;
+        } catch (error) {
+            console.warn('⚠️ Error inicializando AudioContext:', error);
+            return false;
         }
     }
 
     createAudioForPeer(peerId, stream) {
         try {
-            // Verificar si ya existe para este peer
+            // En iOS, reutilizar el contexto global
+            if (this.isIOS && window._iosAudioContext) {
+                this.globalContext = window._iosAudioContext;
+            }
+            
+            if (!this.globalContext || this.globalContext.state === 'closed') {
+                console.warn('⚠️ AudioContext no disponible');
+                return false;
+            }
+
+            // Verificar si el stream tiene audio
+            const audioTracks = stream.getAudioTracks();
+            if (audioTracks.length === 0) {
+                console.log('ℹ️ No hay audio en este stream');
+                return false;
+            }
+
+            // Si ya existe audio para este peer, destruirlo
             if (this.audioContexts.has(peerId)) {
-                console.log(`🔄 Reemplazando audio para ${peerId}`);
                 this.destroyAudioForPeer(peerId);
             }
 
-            // Crear AudioContext para este peer
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            
             // Crear fuente de audio
-            const source = audioContext.createMediaStreamSource(stream);
+            const source = this.globalContext.createMediaStreamSource(stream);
             
-            // Analizador para monitorear
-            const analyzer = audioContext.createAnalyser();
-            analyzer.fftSize = 256;
+            // Ganancia (volumen)
+            const gainNode = this.globalContext.createGain();
+            gainNode.gain.value = 0.3;
             
-            // Ganancia (volumen controlado)
-            const gainNode = audioContext.createGain();
-            gainNode.gain.value = 0.3; // Volumen inicial
-            
-            // Filtro para reducir ruido
-            const filter = audioContext.createBiquadFilter();
+            // Filtro para mejorar calidad de voz
+            const filter = this.globalContext.createBiquadFilter();
             filter.type = 'lowpass';
-            filter.frequency.value = 8000; // Frecuencia para voz humana
+            filter.frequency.value = 8000;
             
-            // Conectar: fuente -> filtro -> ganancia -> analizador -> destino
+            // En móviles, menos procesamiento para evitar lag
+            if (isMobile) {
+                filter.frequency.value = 6000; // Menos procesamiento en móviles
+            }
+            
+            // Conectar
             source.connect(filter);
             filter.connect(gainNode);
-            gainNode.connect(analyzer);
-            analyzer.connect(audioContext.destination);
+            gainNode.connect(this.globalContext.destination);
             
-            // Guardar referencias
             this.audioContexts.set(peerId, {
-                context: audioContext,
                 source: source,
                 gainNode: gainNode,
-                analyzer: analyzer,
                 filter: filter
             });
             
@@ -116,7 +162,6 @@ class AudioController {
         if (audioData) {
             try {
                 audioData.source.disconnect();
-                audioData.context.close();
             } catch (e) {}
             this.audioContexts.delete(peerId);
             console.log(`🗑️ Audio destruido para peer ${peerId}`);
@@ -127,23 +172,20 @@ class AudioController {
         for (const [peerId, audioData] of this.audioContexts) {
             try {
                 audioData.source.disconnect();
-                audioData.context.close();
             } catch (e) {}
         }
         this.audioContexts.clear();
-        this.gainNodes.clear();
-        this.analyzers.clear();
-        if (this.globalContext) {
-            try {
-                this.globalContext.close();
-            } catch (e) {}
-        }
-        this.isAudioInitialized = false;
         console.log('🗑️ Todos los audios destruidos');
+    }
+
+    // Para iOS: resumir el contexto después de interacción del usuario
+    resumeContext() {
+        if (this.isIOS && this.globalContext && this.globalContext.state === 'suspended') {
+            this.globalContext.resume().catch(e => console.warn('⚠️ No se pudo reanudar AudioContext'));
+        }
     }
 }
 
-// Instancia global del controlador de audio
 const audioController = new AudioController();
 
 // ============================================
@@ -154,7 +196,15 @@ videoRemoto.style.display = "none";
 video.muted = true;
 video.volume = 0;
 
-let peerIdRemoto = null; // Para saber qué peer está mostrando
+// En móviles, desactivar autoplay en video local
+if (isMobile) {
+    video.setAttribute('playsinline', '');
+    videoRemoto.setAttribute('playsinline', '');
+    video.setAttribute('autoplay', '');
+    videoRemoto.setAttribute('autoplay', '');
+}
+
+let peerIdRemoto = null;
 
 // ============================================
 // 🔧 Funciones Core
@@ -177,7 +227,7 @@ async function obtenerTurnServers() {
     
     console.log('🔄 Usando TURN de respaldo');
     turnServers = [
-        { urls: "stun:stun.l.google.com:19302" },
+        { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
         {
             urls: [
                 "turn:openrelay.metered.ca:80",
@@ -203,66 +253,70 @@ function mostrarVideoRemoto(stream, peerId) {
     console.log(`📹 ASIGNANDO VIDEO REMOTO de ${peerId}`);
     if (!stream) return;
     
-    // Guardar el peerId actual
     peerIdRemoto = peerId;
     
     // Verificar tracks
     const audioTracks = stream.getAudioTracks();
     const videoTracks = stream.getVideoTracks();
-    console.log(`🎵 Audio tracks: ${audioTracks.length}, Video tracks: ${videoTracks.length}`);
-    
-    if (audioTracks.length > 0) {
-        console.log('🎵 Audio track:', audioTracks[0].label, 'enabled:', audioTracks[0].enabled);
-        // Asegurar que el audio esté habilitado
-        audioTracks[0].enabled = true;
-    }
+    console.log(`🎵 Audio: ${audioTracks.length}, Video: ${videoTracks.length}`);
     
     // Detener stream anterior
     if (videoRemoto.srcObject) {
         const oldStream = videoRemoto.srcObject;
-        // No detener los tracks del stream anterior si es el mismo peer
         if (oldStream !== stream) {
             oldStream.getTracks().forEach(track => track.stop());
         }
         videoRemoto.srcObject = null;
     }
     
-    // Asignar nuevo stream
+    // Configurar video remoto para móviles
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     video.style.display = "block";
     
-    // Configurar audio
+    // Configuración específica para móviles
+    if (isMobile) {
+        videoRemoto.setAttribute('playsinline', 'true');
+        videoRemoto.setAttribute('webkit-playsinline', 'true');
+    }
+    
     videoRemoto.muted = false;
     videoRemoto.volume = 0.3;
     
-    // Reproducir
+    // Reproducir con manejo para móviles
     const playVideo = async () => {
         try {
             await videoRemoto.play();
             console.log(`✅ Video remoto de ${peerId} reproduciendo`);
             
-            // Crear AudioContext específico para este peer
+            // Inicializar audio
             await audioController.init();
             const audioCreated = audioController.createAudioForPeer(peerId, stream);
             
             if (audioCreated) {
-                console.log(`✅ Audio configurado para ${peerId}`);
-                // Ajustar volumen inicial
                 audioController.setVolume(peerId, 0.3);
             }
             
-            actualizarEstado(`🟢 Conectado a ${peerId}`, "conectado");
+            actualizarEstado(`🟢 Conectado`, "conectado");
         } catch (error) {
-            console.warn(`⚠️ Error al reproducir video de ${peerId}:`, error.message);
-            setTimeout(() => {
-                videoRemoto.play()
-                    .then(() => {
-                        console.log(`✅ Video remoto de ${peerId} reproducido en reintento`);
-                        audioController.createAudioForPeer(peerId, stream);
-                    })
-                    .catch(e => console.warn(`⚠️ Error en reintento:`, e.message));
-            }, 500);
+            console.warn(`⚠️ Error al reproducir video:`, error.message);
+            // En iOS, esperar interacción del usuario
+            if (isiOS) {
+                console.log('🍎 iOS requiere interacción del usuario para reproducir');
+                // Intentar de nuevo después de un toque
+                document.addEventListener('touchstart', () => {
+                    videoRemoto.play().catch(e => console.warn('⚠️ Error en play de iOS:', e));
+                }, { once: true });
+            } else {
+                setTimeout(() => {
+                    videoRemoto.play()
+                        .then(() => {
+                            console.log(`✅ Video remoto reproducido en reintento`);
+                            audioController.createAudioForPeer(peerId, stream);
+                        })
+                        .catch(e => console.warn(`⚠️ Error en reintento:`, e.message));
+                }, 1000);
+            }
         }
     };
     
@@ -279,85 +333,71 @@ function ocultarVideoRemoto() {
         audioController.destroyAudioForPeer(peerIdRemoto);
         peerIdRemoto = null;
     }
-    // No destruir el AudioContext global, solo desconectar
 }
 
 function crearPeerConnection(targetId) {
     console.log(`🔗 Creando conexión con: ${targetId}`);
     
-    // Limpiar conexión existente
     if (peers[targetId]) {
         try {
             peers[targetId].close();
         } catch (e) {}
         delete peers[targetId];
-        // Limpiar audio de este peer
         audioController.destroyAudioForPeer(targetId);
     }
     
+    // Configuración optimizada para todos los dispositivos
     const pc = new RTCPeerConnection({
         iceServers: turnServers,
-        iceCandidatePoolSize: 10,
+        iceCandidatePoolSize: isMobile ? 5 : 10,
         bundlePolicy: "max-bundle",
-        rtcpMuxPolicy: "require"
+        rtcpMuxPolicy: "require",
+        // En móviles, usar menos recursos
+        iceTransportPolicy: isMobile ? 'all' : 'all'
     });
 
-    // Agregar tracks locales (Siempre habilitados)
     if (streamLocal) {
         streamLocal.getTracks().forEach(track => {
-            console.log(`✅ Agregando track local: ${track.kind} (${track.label})`);
+            console.log(`✅ Agregando track local: ${track.kind}`);
             pc.addTrack(track, streamLocal);
         });
     }
 
-    // Evento cuando llegan tracks remotos
     pc.ontrack = (event) => {
-        console.log(`📥 Track remoto recibido de ${targetId}: ${event.track.kind}`);
-        console.log(`   Label: ${event.track.label}, Enabled: ${event.track.enabled}`);
+        console.log(`📥 Track remoto recibido: ${event.track.kind}`);
         
         if (event.streams && event.streams[0]) {
             const stream = event.streams[0];
-            console.log(`📦 Stream de ${targetId} tiene ${stream.getTracks().length} tracks`);
-            
-            // Solo mostrar si es el primer track de video o si no hay otro mostrando
+            // Solo mostrar video cuando llegue el track de video
             if (event.track.kind === 'video' || !videoRemoto.srcObject) {
                 mostrarVideoRemoto(stream, targetId);
             }
         }
     };
 
-    // ICE Candidates
     pc.onicecandidate = (event) => {
         if (event.candidate) {
-            console.log(`🧊 ICE candidate enviado a ${targetId}`);
             socket.emit("ice-candidate", { target: targetId, candidate: event.candidate });
         }
     };
 
-    // Estados ICE
     pc.oniceconnectionstatechange = () => {
-        console.log(`🔗 Estado ICE con ${targetId}: ${pc.iceConnectionState}`);
+        console.log(`🔗 ICE con ${targetId}: ${pc.iceConnectionState}`);
         if (pc.iceConnectionState === "failed") {
-            console.log(`❌ ICE falló con ${targetId}, reiniciando...`);
             setTimeout(() => {
                 if (peers[targetId]) {
                     reiniciarConexion(targetId);
                 }
-            }, 3000);
-        }
-        if (pc.iceConnectionState === "connected") {
-            console.log(`✅ ICE conectado con ${targetId}`);
+            }, 5000);
         }
     };
 
-    // Estado de la conexión
     pc.onconnectionstatechange = () => {
-        console.log(`🔗 Estado conexión con ${targetId}: ${pc.connectionState}`);
+        console.log(`🔗 Estado con ${targetId}: ${pc.connectionState}`);
         if (pc.connectionState === "connected") {
-            console.log(`✅ ¡CONEXIÓN WEBRTC ESTABLECIDA con ${targetId}!`);
-            actualizarEstado(`🟢 Conectado a ${targetId}`, "conectado");
+            console.log(`✅ CONEXIÓN ESTABLECIDA con ${targetId}!`);
+            actualizarEstado(`🟢 Conectado`, "conectado");
         } else if (pc.connectionState === "failed") {
-            console.log(`❌ Conexión fallida con ${targetId}`);
             if (peerIdRemoto === targetId) {
                 ocultarVideoRemoto();
             }
@@ -368,14 +408,11 @@ function crearPeerConnection(targetId) {
             setTimeout(() => {
                 socket.emit("clientes-conectados");
             }, 5000);
-        } else if (pc.connectionState === "disconnected") {
-            console.log(`🔴 Conexión desconectada con ${targetId}`);
         }
     };
 
-    // Negociación necesaria
     pc.onnegotiationneeded = async () => {
-        console.log(`🤝 Negociación necesaria con ${targetId}`);
+        console.log(`🤝 Negociación con ${targetId}`);
         try {
             const offer = await pc.createOffer({
                 offerToReceiveAudio: true,
@@ -383,9 +420,8 @@ function crearPeerConnection(targetId) {
             });
             await pc.setLocalDescription(offer);
             socket.emit("offer", { target: targetId, offer: pc.localDescription });
-            console.log(`✅ Oferta enviada a ${targetId}`);
         } catch (error) {
-            console.error(`❌ Error en negociación con ${targetId}:`, error);
+            console.error(`❌ Error en negociación:`, error);
         }
     };
 
@@ -408,7 +444,6 @@ function reiniciarConexion(targetId) {
     
     setTimeout(() => {
         const pc = crearPeerConnection(targetId);
-        // Esperar a que se agreguen los tracks
         setTimeout(() => {
             pc.createOffer({
                 offerToReceiveAudio: true,
@@ -417,14 +452,13 @@ function reiniciarConexion(targetId) {
             .then(offer => pc.setLocalDescription(offer))
             .then(() => {
                 socket.emit("offer", { target: targetId, offer: pc.localDescription });
-                console.log(`✅ Oferta de reconexión enviada a: ${targetId}`);
             })
             .catch(error => {
-                console.error(`❌ Error en reconexión para ${targetId}:`, error);
+                console.error(`❌ Error en reconexión:`, error);
                 delete peers[targetId];
             });
-        }, 500);
-    }, 1000);
+        }, isMobile ? 1000 : 500);
+    }, isMobile ? 2000 : 1000);
 }
 
 // ============================================
@@ -436,7 +470,6 @@ socket.on("offer", async (data) => {
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
     
     try {
-        // Limpiar conexión existente con este peer
         if (peers[from]) {
             try {
                 peers[from].close();
@@ -447,7 +480,6 @@ socket.on("offer", async (data) => {
         
         const pc = crearPeerConnection(from);
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        console.log(`✅ Descripción remota establecida (oferta) de ${from}`);
 
         const answer = await pc.createAnswer({
             offerToReceiveAudio: true,
@@ -458,7 +490,7 @@ socket.on("offer", async (data) => {
         socket.emit("answer", { target: from, answer: pc.localDescription });
         console.log(`✅ Respuesta enviada a: ${from}`);
     } catch (error) {
-        console.error(`❌ Error manejando oferta de ${from}:`, error);
+        console.error(`❌ Error manejando oferta:`, error);
         if (peers[from]) {
             peers[from].close();
             delete peers[from];
@@ -471,23 +503,20 @@ socket.on("answer", async (data) => {
     console.log(`📩 RESPUESTA RECIBIDA DE: ${from}`);
     
     if (isProcessingAnswer[from]) {
-        console.log(`⏳ Ya procesando respuesta de ${from}, ignorando...`);
+        console.log(`⏳ Ya procesando respuesta de ${from}`);
         return;
     }
     
     const pc = peers[from];
-    if (!pc) {
-        console.log(`⚠️ No hay peer para ${from}, ignorando respuesta`);
-        return;
-    }
+    if (!pc) return;
 
     if (pc.signalingState === 'stable') {
-        console.log(`⚠️ Estado stable para ${from}, ignorando respuesta`);
+        console.log(`⚠️ Estado stable para ${from}`);
         return;
     }
 
     if (pc.signalingState !== 'have-local-offer') {
-        console.log(`⚠️ Estado incorrecto para setRemoteDescription: ${pc.signalingState}`);
+        console.log(`⚠️ Estado incorrecto: ${pc.signalingState}`);
         reiniciarConexion(from);
         return;
     }
@@ -496,9 +525,9 @@ socket.on("answer", async (data) => {
 
     try {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        console.log(`✅ Descripción remota establecida (respuesta) de ${from}`);
+        console.log(`✅ Descripción remota establecida de ${from}`);
     } catch (error) {
-        console.error(`❌ Error procesando respuesta de ${from}:`, error);
+        console.error(`❌ Error procesando respuesta:`, error);
         reiniciarConexion(from);
     } finally {
         delete isProcessingAnswer[from];
@@ -507,7 +536,6 @@ socket.on("answer", async (data) => {
 
 socket.on("ice-candidate", async (data) => {
     const { from, candidate } = data;
-    console.log(`🧊 ICE candidate RECIBIDO de: ${from}`);
     const pc = peers[from];
     if (!pc) return;
 
@@ -523,24 +551,17 @@ function conectarConTodos(clientes) {
     console.log("🔄 CONECTANDO CON TODOS...");
     const otros = clientes.filter(id => id !== socket.id);
     if (otros.length === 0) {
-        console.log("⏳ No hay otros clientes");
         actualizarEstado("🟢 Esperando otro equipo", "conectado");
         return;
     }
 
     otros.forEach(targetId => {
-        // Si ya existe conexión y está conectada, no reconectar
         if (peers[targetId]) {
             const state = peers[targetId].connectionState;
-            if (state === "connected") {
-                console.log(`✅ Ya conectado con ${targetId}`);
+            if (state === "connected" || state === "connecting") {
+                console.log(`⏳ Ya conectado/conectando con ${targetId}`);
                 return;
             }
-            if (state === "connecting") {
-                console.log(`⏳ Conectando con ${targetId}...`);
-                return;
-            }
-            // Si está en otro estado, cerrar y recrear
             try {
                 peers[targetId].close();
             } catch (e) {}
@@ -548,9 +569,7 @@ function conectarConTodos(clientes) {
             audioController.destroyAudioForPeer(targetId);
         }
         
-        console.log(`📤 Iniciando oferta para ${targetId}`);
         const pc = crearPeerConnection(targetId);
-        
         setTimeout(() => {
             pc.createOffer({
                 offerToReceiveAudio: true,
@@ -562,18 +581,16 @@ function conectarConTodos(clientes) {
                 console.log(`✅ Oferta enviada a: ${targetId}`);
             })
             .catch(error => {
-                console.error(`❌ Error en oferta para ${targetId}:`, error);
-                if (peers[targetId]) {
-                    peers[targetId].close();
-                    delete peers[targetId];
-                }
+                console.error(`❌ Error en oferta:`, error);
+                delete peers[targetId];
             });
-        }, 500);
+        }, isMobile ? 1000 : 500);
     });
 }
 
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
+    reconnectAttempts = 0;
     actualizarEstado("🟢 Conectado", "conectado");
     await obtenerTurnServers();
     setTimeout(() => socket.emit("clientes-conectados"), 1000);
@@ -581,11 +598,9 @@ socket.on("connect", async () => {
 
 socket.on("clientes-conectados", (lista) => {
     console.log("📋 Lista de clientes recibida:", lista);
-    // Limpiar peers que ya no existen
     const clientesActuales = new Set(lista);
     Object.keys(peers).forEach(id => {
         if (!clientesActuales.has(id) && id !== socket.id) {
-            console.log(`🧹 Limpiando peer antiguo: ${id}`);
             try {
                 peers[id].close();
             } catch (e) {}
@@ -597,8 +612,8 @@ socket.on("clientes-conectados", (lista) => {
 });
 
 socket.on("nuevo-cliente", (data) => {
-    console.log("🆕 Nuevo cliente detectado:", data.id);
-    setTimeout(() => socket.emit("clientes-conectados"), 1000);
+    console.log("🆕 Nuevo cliente:", data.id);
+    setTimeout(() => socket.emit("clientes-conectados"), 1500);
 });
 
 socket.on("cliente-desconectado", (data) => {
@@ -619,7 +634,8 @@ socket.on("cliente-desconectado", (data) => {
 
 socket.on("disconnect", () => {
     console.log("❌ Desconectado del servidor");
-    actualizarEstado("🔴 Desconectado", "desconectado");
+    reconnectAttempts++;
+    actualizarEstado(`🔴 Reconectando... (${reconnectAttempts})`, "desconectado");
     ocultarVideoRemoto();
     Object.keys(peers).forEach(key => {
         try {
@@ -627,7 +643,11 @@ socket.on("disconnect", () => {
         } catch (e) {}
         delete peers[key];
     });
-    audioController.destroyAll();
+});
+
+socket.on("connect_error", (error) => {
+    console.error("❌ Error de conexión:", error);
+    actualizarEstado("🔴 Error de conexión", "desconectado");
 });
 
 // ============================================
@@ -637,53 +657,58 @@ socket.on("disconnect", () => {
 async function iniciarCamara() {
     try {
         console.log("📷 Solicitando cámara...");
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-                width: { ideal: 640 }, 
-                height: { ideal: 480 },
+        
+        // Configuración optimizada para cada dispositivo
+        const constraints = {
+            video: {
+                width: { ideal: isMobile ? 480 : 640 },
+                height: { ideal: isMobile ? 360 : 480 },
                 facingMode: 'user'
             },
-            audio: { 
-                echoCancellation: true,
+            audio: {
+                echoCancellation: !isiOS, // iOS tiene problemas con echoCancellation
                 noiseSuppression: true,
                 autoGainControl: true,
-                sampleRate: 16000,
-                sampleSize: 16
+                sampleRate: isMobile ? 16000 : 44100
             }
-        });
+        };
         
+        // En iOS, usar configuración más simple
+        if (isiOS) {
+            constraints.video = { facingMode: 'user' };
+            constraints.audio = { echoCancellation: false };
+        }
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         streamLocal = stream;
         
-        // Verificar tracks
-        const audioTracks = stream.getAudioTracks();
-        const videoTracks = stream.getVideoTracks();
-        console.log(`🎤 Tracks locales: Audio=${audioTracks.length}, Video=${videoTracks.length}`);
-        
-        if (audioTracks.length > 0) {
-            audioTracks[0].enabled = true;
-            console.log('🎤 Audio local habilitado');
-        }
-        
-        if (videoTracks.length > 0) {
-            videoTracks[0].enabled = true;
-            console.log('📹 Video local habilitado');
-        }
-        
-        // Mostrar video local
+        // Configurar video local
         video.srcObject = stream;
         video.style.display = "block";
         video.muted = true;
+        
+        // En móviles, usar playsinline
+        if (isMobile) {
+            video.setAttribute('playsinline', 'true');
+            video.setAttribute('webkit-playsinline', 'true');
+        }
+        
         try {
             await video.play();
-            console.log("📹 Video local iniciado");
+            console.log("📹 Cámara iniciada");
         } catch (e) {
             console.warn("⚠️ Error al iniciar video local:", e.message);
+            if (isiOS) {
+                document.addEventListener('touchstart', () => {
+                    video.play().catch(e => console.warn('⚠️ Error en play de iOS:', e));
+                }, { once: true });
+            }
         }
         
         await obtenerTurnServers();
         socket.emit("clientes-conectados");
     } catch (error) {
-        console.error("❌ Error:", error);
+        console.error("❌ Error al acceder a cámara:", error);
         alert("⚠️ No se pudo acceder a la cámara/micrófono.");
         actualizarEstado("🔴 Error", "desconectado");
     }
@@ -700,8 +725,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnReconectar = document.getElementById('btn-reconectar');
     const btnToggleCamara = document.getElementById('btn-camara');
     const btnToggleMicrofono = document.getElementById('btn-microfono');
+    const btnPantallaCompleta = document.getElementById('btn-fullscreen');
     
-    // Control de volumen
+    // Volumen
     if (controlVolumen) {
         controlVolumen.value = 0.3;
         controlVolumen.addEventListener('input', (e) => {
@@ -758,6 +784,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    // Pantalla completa (móviles y desktop)
+    if (btnPantallaCompleta) {
+        btnPantallaCompleta.addEventListener('click', () => {
+            const videoElement = document.getElementById('video-remoto');
+            if (videoElement.requestFullscreen) {
+                videoElement.requestFullscreen();
+            } else if (videoElement.webkitRequestFullscreen) {
+                videoElement.webkitRequestFullscreen();
+            } else if (videoElement.msRequestFullscreen) {
+                videoElement.msRequestFullscreen();
+            }
+        });
+    }
+    
     // Reconectar
     if (btnReconectar) {
         btnReconectar.addEventListener('click', () => {
@@ -770,15 +810,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 delete peers[key];
             });
             audioController.destroyAll();
-            socket.emit("clientes-conectados");
-            actualizarEstado("🔄 Reconectando...", "inicializando");
+            socket.disconnect();
             setTimeout(() => {
-                if (streamLocal) {
-                    streamLocal.getAudioTracks().forEach(t => t.enabled = true);
-                    streamLocal.getVideoTracks().forEach(t => t.enabled = true);
-                }
-            }, 500);
+                socket.connect();
+            }, 1000);
+            actualizarEstado("🔄 Reconectando...", "inicializando");
         });
+    }
+    
+    // Para iOS: interacción de usuario para audio
+    if (isiOS) {
+        document.addEventListener('touchstart', () => {
+            audioController.resumeContext();
+        }, { once: true });
     }
 });
 
@@ -788,6 +832,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.addEventListener("load", () => {
     console.log("🚀 Iniciando Ventana Digital...");
+    console.log(`📱 Modo: ${isMobile ? 'Móvil' : 'Desktop'}`);
+    console.log(`🌐 Navegador: ${isSafari ? 'Safari' : isiOS ? 'iOS' : 'Otro'}`);
     iniciarCamara();
 });
 

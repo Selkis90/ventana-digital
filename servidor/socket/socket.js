@@ -3,6 +3,21 @@ module.exports = (io) => {
 
     io.on('connection', (socket) => {
         console.log(`✅ Cliente conectado: ${socket.id}`);
+        console.log(`📊 Total clientes: ${io.sockets.sockets.size}`);
+        
+        // 🔥 LIMPIAR conexiones duplicadas del mismo IP
+        const clientIP = socket.handshake.address;
+        const existingClients = Array.from(clientes.keys());
+        
+        existingClients.forEach(id => {
+            const client = clientes.get(id);
+            if (client && client.ip === clientIP && id !== socket.id) {
+                console.log(`🧹 Eliminando conexión duplicada de IP ${clientIP}: ${id}`);
+                io.to(id).emit('cliente-desconectado', { id: id, reason: 'duplicate' });
+                io.sockets.sockets.get(id)?.disconnect(true);
+                clientes.delete(id);
+            }
+        });
         
         clientes.set(socket.id, {
             id: socket.id,
@@ -10,12 +25,12 @@ module.exports = (io) => {
             ip: socket.handshake.address
         });
 
-        // Enviar lista de clientes actual al nuevo cliente
+        // Enviar lista actualizada
         const listaClientes = Array.from(clientes.keys());
         socket.emit('clientes-conectados', listaClientes);
         console.log(`📋 Enviando lista de ${listaClientes.length} clientes a ${socket.id}`);
-
-        // Notificar a los demás que hay un nuevo cliente
+        
+        // Notificar a los demás
         socket.broadcast.emit('nuevo-cliente', { 
             id: socket.id,
             timestamp: new Date().toISOString()
@@ -25,11 +40,9 @@ module.exports = (io) => {
         // 🔥 EVENTOS WEBRTC
         // ============================================
         
-        // Oferta: un cliente envía una oferta a otro
         socket.on('offer', (data) => {
             console.log(`📤 Oferta de ${socket.id} para ${data.target}`);
             if (clientes.has(data.target)) {
-                // Verificar que el target esté conectado
                 io.to(data.target).emit('offer', {
                     from: socket.id,
                     offer: data.offer,
@@ -38,7 +51,6 @@ module.exports = (io) => {
                 console.log(`✅ Oferta reenviada a ${data.target}`);
             } else {
                 console.warn(`⚠️ Cliente ${data.target} no encontrado`);
-                // Notificar al emisor que el target no existe
                 socket.emit('cliente-desconectado', { 
                     id: data.target,
                     reason: 'target_not_found'
@@ -46,7 +58,6 @@ module.exports = (io) => {
             }
         });
 
-        // Respuesta: un cliente responde a una oferta
         socket.on('answer', (data) => {
             console.log(`📤 Respuesta de ${socket.id} para ${data.target}`);
             if (clientes.has(data.target)) {
@@ -61,7 +72,6 @@ module.exports = (io) => {
             }
         });
 
-        // ICE Candidate: intercambio de candidatos
         socket.on('ice-candidate', (data) => {
             console.log(`🧊 ICE candidate de ${socket.id} para ${data.target}`);
             if (clientes.has(data.target)) {
@@ -76,30 +86,36 @@ module.exports = (io) => {
             }
         });
 
-        // Solicitar lista actualizada de clientes
         socket.on('clientes-conectados', () => {
+            // 🔥 LIMPIAR CLIENTES INACTIVOS
+            const sockets = io.sockets.sockets;
+            clientes.forEach((client, id) => {
+                if (!sockets.has(id)) {
+                    console.log(`🧹 Eliminando cliente inactivo: ${id}`);
+                    clientes.delete(id);
+                }
+            });
+            
             const lista = Array.from(clientes.keys());
             socket.emit('clientes-conectados', lista);
             console.log(`📋 Reenviando lista de ${lista.length} clientes a ${socket.id}`);
         });
 
-        // Ping para mantener conexión
         socket.on('ping', () => {
             socket.emit('pong');
         });
 
-        // Desconexión
         socket.on('disconnect', () => {
             console.log(`❌ Cliente desconectado: ${socket.id}`);
             clientes.delete(socket.id);
             
-            // Notificar a los demás que un cliente se fue
+            // Notificar a los demás
             io.emit('cliente-desconectado', { 
                 id: socket.id,
                 timestamp: new Date().toISOString()
             });
             
-            // Enviar lista actualizada a todos
+            // Enviar lista actualizada
             const lista = Array.from(clientes.keys());
             io.emit('clientes-conectados', lista);
             console.log(`📋 Lista actualizada: ${lista.length} clientes`);

@@ -33,10 +33,11 @@ let isProcessingAnswer = {};
 let peerIdRemoto = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
-let isReconnecting = false; // Prevenir reconexiones en bucle
+let isReconnecting = false;
+let reconnectTimeout = null;
 
 // ============================================
-// 🔊 CONTROL DE AUDIO - SOLO PARA REMOTO
+// 🔊 CONTROL DE AUDIO
 // ============================================
 class AudioController {
     constructor() {
@@ -112,11 +113,8 @@ class AudioController {
                 return false;
             }
 
-            // 🔥 IMPORTANTE: Solo crear audio si NO hay video reproduciendo el mismo stream
-            // Si videoRemoto ya tiene el stream, no duplicar audio
             if (videoRemoto.srcObject === stream) {
                 console.log(`ℹ️ Stream ya está en video-remoto, no duplicar audio`);
-                // Asegurar que el video no esté muteado
                 videoRemoto.muted = false;
                 videoRemoto.volume = 0.3;
                 return true;
@@ -155,7 +153,6 @@ class AudioController {
             audioData.gainNode.gain.value = Math.max(0, Math.min(1, volume));
             return true;
         }
-        // Si no hay audioContext, controlar el video
         if (peerId === peerIdRemoto && videoRemoto.srcObject) {
             videoRemoto.volume = Math.max(0, Math.min(1, volume));
             return true;
@@ -219,7 +216,6 @@ videoRemoto.style.display = "none";
 video.muted = true;
 video.volume = 0;
 
-// REMOTO: NO muteado por defecto
 videoRemoto.muted = false;
 videoRemoto.volume = 0.3;
 
@@ -282,6 +278,12 @@ function mostrarVideoRemoto(stream, peerId) {
         return;
     }
     
+    // Si ya está asignado el mismo stream, no hacer nada
+    if (videoRemoto.srcObject === stream) {
+        console.log(`ℹ️ Stream ya asignado a video-remoto`);
+        return;
+    }
+    
     peerIdRemoto = peerId;
     
     const audioTracks = stream.getAudioTracks();
@@ -295,18 +297,13 @@ function mostrarVideoRemoto(stream, peerId) {
         }
     });
     
-    // 🔥 Si ya hay un stream asignado y es el mismo, no hacer nada
-    if (videoRemoto.srcObject === stream) {
-        console.log(`ℹ️ Stream ya asignado, no duplicar`);
-        return;
-    }
-    
     // Limpiar stream anterior
     if (videoRemoto.srcObject) {
+        const oldStream = videoRemoto.srcObject;
         videoRemoto.srcObject = null;
+        // No detener tracks, solo remover referencia
     }
     
-    // Asignar el stream al video remoto
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     video.style.display = "block";
@@ -323,15 +320,15 @@ function mostrarVideoRemoto(stream, peerId) {
         try {
             await videoRemoto.play();
             console.log(`✅ Video remoto de ${peerId} reproduciendo correctamente`);
-            
-            // 🔥 NO crear AudioContext si el video ya reproduce el audio
-            // El video remoto ya tiene audio, no duplicar con AudioContext
-            // Solo usar AudioContext si hay problemas con el audio del video
-            
             actualizarEstado(`🟢 Conectado`, "conectado");
         } catch (error) {
             console.warn(`⚠️ Error al reproducir video remoto:`, error.message);
-            if (isiOS) {
+            if (error.name === 'NotAllowedError') {
+                // El usuario debe interactuar primero
+                document.addEventListener('click', () => {
+                    videoRemoto.play().catch(e => console.warn('⚠️ Error en play:', e));
+                }, { once: true });
+            } else if (isiOS) {
                 document.addEventListener('touchstart', () => {
                     videoRemoto.play().catch(e => console.warn('⚠️ Error en play de iOS:', e));
                 }, { once: true });
@@ -340,6 +337,7 @@ function mostrarVideoRemoto(stream, peerId) {
                     videoRemoto.play()
                         .then(() => {
                             console.log(`✅ Video remoto reproducido en reintento`);
+                            actualizarEstado(`🟢 Conectado`, "conectado");
                         })
                         .catch(e => console.warn(`⚠️ Error en reintento:`, e.message));
                 }, 1000);
@@ -353,7 +351,9 @@ function mostrarVideoRemoto(stream, peerId) {
 function ocultarVideoRemoto() {
     videoRemoto.style.display = "none";
     if (videoRemoto.srcObject) {
+        const stream = videoRemoto.srcObject;
         videoRemoto.srcObject = null;
+        // No detener tracks
     }
     if (peerIdRemoto) {
         audioController.destroyAudioForPeer(peerIdRemoto);
@@ -364,7 +364,6 @@ function ocultarVideoRemoto() {
     }
 }
 
-// 🔥 NUEVA FUNCIÓN: Aplicar candidatos pendientes
 function aplicarCandidatosPendientes(pc) {
     if (pc._pendingCandidates && pc._pendingCandidates.length > 0) {
         console.log(`📦 Aplicando ${pc._pendingCandidates.length} candidatos pendientes`);
@@ -380,7 +379,11 @@ function aplicarCandidatosPendientes(pc) {
 function crearPeerConnection(targetId, iceRestart = false) {
     console.log(`🔗 Creando conexión con: ${targetId} (iceRestart: ${iceRestart})`);
     
-    // Resetear flag de reconexión
+    // Limpiar timeout de reconexión
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+    }
     isReconnecting = false;
     
     // Cerrar conexión existente
@@ -407,8 +410,8 @@ function crearPeerConnection(targetId, iceRestart = false) {
         rtcpMuxPolicy: "require"
     });
 
-    // Inicializar candidatos pendientes
     pc._pendingCandidates = [];
+    pc._iceRestart = iceRestart;
 
     // Agregar tracks locales
     if (streamLocal) {
@@ -472,12 +475,14 @@ function crearPeerConnection(targetId, iceRestart = false) {
         console.log(`🔗 ICE con ${targetId}: ${pc.iceConnectionState}`);
         if (pc.iceConnectionState === "failed") {
             console.log(`❌ ICE falló con ${targetId}, reiniciando...`);
-            if (!isReconnecting) {
+            if (!isReconnecting && pc.connectionState !== 'connected') {
                 isReconnecting = true;
-                setTimeout(() => {
-                    if (peers[targetId]) {
-                        reiniciarConexion(targetId, true); // Forzar ICE restart
+                reconnectTimeout = setTimeout(() => {
+                    if (peers[targetId] && peers[targetId].connectionState !== 'connected') {
+                        reiniciarConexion(targetId, true);
                     }
+                    isReconnecting = false;
+                    reconnectTimeout = null;
                 }, 3000);
             }
         }
@@ -489,6 +494,10 @@ function crearPeerConnection(targetId, iceRestart = false) {
             console.log(`✅ CONEXIÓN ESTABLECIDA con ${targetId}!`);
             actualizarEstado(`🟢 Conectado`, "conectado");
             isReconnecting = false;
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
         } else if (pc.connectionState === "failed") {
             console.log(`❌ Conexión fallida con ${targetId}`);
             if (peerIdRemoto === targetId) {
@@ -502,8 +511,10 @@ function crearPeerConnection(targetId, iceRestart = false) {
             }
             if (!isReconnecting) {
                 isReconnecting = true;
-                setTimeout(() => {
+                reconnectTimeout = setTimeout(() => {
                     socket.emit("clientes-conectados");
+                    isReconnecting = false;
+                    reconnectTimeout = null;
                 }, 5000);
             }
         }
@@ -516,11 +527,10 @@ function crearPeerConnection(targetId, iceRestart = false) {
                 console.warn(`⚠️ PC cerrado, no se puede negociar con ${targetId}`);
                 return;
             }
-            // 🔥 Forzar ICE restart si es necesario
             const offer = await pc.createOffer({
                 offerToReceiveAudio: true,
                 offerToReceiveVideo: true,
-                iceRestart: iceRestart // ¡CRÍTICO!
+                iceRestart: iceRestart
             });
             await pc.setLocalDescription(offer);
             socket.emit("offer", { target: targetId, offer: pc.localDescription });
@@ -534,7 +544,7 @@ function crearPeerConnection(targetId, iceRestart = false) {
     return pc;
 }
 
-function reiniciarConexion(targetId, forceIceRestart = false) {
+function reiniciarConexion(targetId, forceIceRestart = true) {
     console.log(`🔄 Reiniciando conexión con ${targetId} (forceIceRestart: ${forceIceRestart})`);
     
     if (isReconnecting) {
@@ -543,9 +553,20 @@ function reiniciarConexion(targetId, forceIceRestart = false) {
     }
     isReconnecting = true;
     
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+    }
+    
     if (peers[targetId]) {
         try {
-            peers[targetId].close();
+            const pc = peers[targetId];
+            pc.onicecandidate = null;
+            pc.ontrack = null;
+            pc.onconnectionstatechange = null;
+            pc.oniceconnectionstatechange = null;
+            pc.onnegotiationneeded = null;
+            pc.close();
         } catch (e) {}
         delete peers[targetId];
     }
@@ -555,36 +576,40 @@ function reiniciarConexion(targetId, forceIceRestart = false) {
     audioController.destroyAudioForPeer(targetId);
     
     const delay = isMobile ? 3000 : 1500;
-    setTimeout(() => {
+    reconnectTimeout = setTimeout(() => {
         if (peers[targetId]) {
             console.log(`⏳ Ya hay una conexión para ${targetId}, omitiendo reinicio`);
             isReconnecting = false;
+            reconnectTimeout = null;
             return;
         }
-        // 🔥 CREAR CONEXIÓN CON ICE RESTART
-        const pc = crearPeerConnection(targetId, forceIceRestart || true);
-        setTimeout(() => {
+        
+        const pc = crearPeerConnection(targetId, forceIceRestart);
+        reconnectTimeout = setTimeout(() => {
             if (pc.signalingState === 'closed') {
                 console.warn(`⚠️ PC cerrado, no se puede crear oferta para ${targetId}`);
                 delete peers[targetId];
                 isReconnecting = false;
+                reconnectTimeout = null;
                 return;
             }
             pc.createOffer({
                 offerToReceiveAudio: true,
                 offerToReceiveVideo: true,
-                iceRestart: true // 🔥 SIEMPRE FORZAR ICE RESTART EN RECONEXIÓN
+                iceRestart: forceIceRestart
             })
             .then(offer => pc.setLocalDescription(offer))
             .then(() => {
                 socket.emit("offer", { target: targetId, offer: pc.localDescription });
                 console.log(`✅ Oferta de reconexión enviada a: ${targetId} (con ICE restart)`);
                 isReconnecting = false;
+                reconnectTimeout = null;
             })
             .catch(error => {
                 console.error(`❌ Error en reconexión para ${targetId}:`, error);
                 delete peers[targetId];
                 isReconnecting = false;
+                reconnectTimeout = null;
             });
         }, isMobile ? 1000 : 500);
     }, delay);
@@ -627,7 +652,6 @@ socket.on("offer", async (data) => {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         console.log(`✅ Descripción remota establecida (oferta) de ${from}`);
         
-        // Aplicar candidatos pendientes
         aplicarCandidatosPendientes(pc);
 
         const answer = await pc.createAnswer({
@@ -670,19 +694,19 @@ socket.on("answer", async (data) => {
         return;
     }
 
-    // 🔥 CORREGIDO: Permitir respuesta en estado 'have-local-offer' o 'stable' (para ICE restart)
+    // Si estamos en stable y la respuesta tiene ICE restart, reiniciar
     if (pc.signalingState === 'stable') {
-        console.log(`⚠️ Estado stable para ${from}, verificando si es ICE restart...`);
-        // Si la respuesta tiene ICE restart, puede ser válida
-        const isIceRestart = answer.sdp && answer.sdp.includes('a=ice-options:ice-restart');
-        if (!isIceRestart) {
-            console.log(`⚠️ No es ICE restart, ignorando respuesta`);
+        const hasIceRestart = answer.sdp && answer.sdp.includes('a=ice-options:ice-restart');
+        if (hasIceRestart) {
+            console.log(`🔄 Respuesta con ICE restart en estado stable, reiniciando...`);
+            reiniciarConexion(from, true);
             return;
         }
-        console.log(`🔄 Respuesta con ICE restart aceptada en estado stable`);
+        console.log(`ℹ️ Respuesta normal en estado stable, ignorando`);
+        return;
     }
 
-    if (pc.signalingState !== 'have-local-offer' && pc.signalingState !== 'stable') {
+    if (pc.signalingState !== 'have-local-offer') {
         console.log(`⚠️ Estado incorrecto: ${pc.signalingState} para ${from}`);
         reiniciarConexion(from, true);
         return;
@@ -691,31 +715,15 @@ socket.on("answer", async (data) => {
     isProcessingAnswer[from] = true;
 
     try {
-        // 🔥 Verificar si es ICE restart y manejar apropiadamente
-        const isIceRestart = answer.sdp && answer.sdp.includes('a=ice-options:ice-restart');
-        if (isIceRestart && pc.signalingState === 'stable') {
-            // Si estamos en stable y recibimos ICE restart, reiniciar
-            console.log(`🔄 ICE restart detectado en respuesta, reiniciando...`);
-            await reiniciarConexion(from, true);
-            return;
-        }
-        
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
         console.log(`✅ Descripción remota establecida de ${from}`);
         
-        // Aplicar candidatos pendientes
         aplicarCandidatosPendientes(pc);
-        
-        // Si la conexión ya está conectada, no hacer nada más
-        if (pc.connectionState === 'connected') {
-            console.log(`✅ Conexión ya establecida con ${from}`);
-        }
     } catch (error) {
         console.error(`❌ Error procesando respuesta de ${from}:`, error);
-        // Si el error es de ICE restart, reiniciar con flag
         if (error.message && error.message.includes('ICE restart')) {
-            console.log(`🔄 Reiniciando por error de ICE restart...`);
-            await reiniciarConexion(from, true);
+            console.log(`🔄 Reiniciando por ICE restart...`);
+            reiniciarConexion(from, true);
         } else {
             reiniciarConexion(from, true);
         }
@@ -743,7 +751,6 @@ socket.on("ice-candidate", async (data) => {
         }
     } catch (error) {
         console.warn(`⚠️ Error ICE para ${from}:`, error.message);
-        // Si el error es "Unknown ufrag", es un ICE restart, reiniciar
         if (error.message && error.message.includes('Unknown ufrag')) {
             console.log(`🔄 Reiniciando por Unknown ufrag (ICE restart)...`);
             reiniciarConexion(from, true);
@@ -759,19 +766,16 @@ function conectarConTodos(clientes) {
         return;
     }
 
-    otros.forEach(targetId => {
-        if (peers[targetId]) {
-            const state = peers[targetId].connectionState;
-            if (state === "connected") {
-                console.log(`✅ Ya conectado con ${targetId}`);
-                return;
-            }
-            if (state === "connecting") {
-                console.log(`⏳ Conectando con ${targetId}...`);
-                return;
-            }
+    // 🔥 SOLO CONECTAR CON EL PRIMER CLIENTE
+    const targetId = otros[0];
+    console.log(`🎯 Conectando solo con: ${targetId}`);
+    
+    // Limpiar peers extras
+    Object.keys(peers).forEach(id => {
+        if (id !== targetId) {
+            console.log(`🧹 Limpiando peer extra: ${id}`);
             try {
-                const oldPc = peers[targetId];
+                const oldPc = peers[id];
                 oldPc.onicecandidate = null;
                 oldPc.ontrack = null;
                 oldPc.onconnectionstatechange = null;
@@ -779,43 +783,71 @@ function conectarConTodos(clientes) {
                 oldPc.onnegotiationneeded = null;
                 oldPc.close();
             } catch (e) {}
-            delete peers[targetId];
-            audioController.destroyAudioForPeer(targetId);
+            delete peers[id];
+            audioController.destroyAudioForPeer(id);
         }
-        
-        const pc = crearPeerConnection(targetId, false);
-        setTimeout(() => {
-            if (pc.signalingState === 'closed') {
-                console.warn(`⚠️ PC cerrado, no se puede crear oferta para ${targetId}`);
-                delete peers[targetId];
-                return;
-            }
-            pc.createOffer({
-                offerToReceiveAudio: true,
-                offerToReceiveVideo: true
-            })
-            .then(offer => pc.setLocalDescription(offer))
-            .then(() => {
-                socket.emit("offer", { target: targetId, offer: pc.localDescription });
-                console.log(`✅ Oferta enviada a: ${targetId}`);
-            })
-            .catch(error => {
-                console.error(`❌ Error en oferta para ${targetId}:`, error);
-                if (peers[targetId]) {
-                    try {
-                        peers[targetId].close();
-                    } catch (e) {}
-                    delete peers[targetId];
-                }
-            });
-        }, isMobile ? 1000 : 500);
     });
+
+    if (peers[targetId]) {
+        const state = peers[targetId].connectionState;
+        if (state === "connected") {
+            console.log(`✅ Ya conectado con ${targetId}`);
+            return;
+        }
+        if (state === "connecting" || state === "new") {
+            console.log(`⏳ Conectando con ${targetId}...`);
+            return;
+        }
+        try {
+            const oldPc = peers[targetId];
+            oldPc.onicecandidate = null;
+            oldPc.ontrack = null;
+            oldPc.onconnectionstatechange = null;
+            oldPc.oniceconnectionstatechange = null;
+            oldPc.onnegotiationneeded = null;
+            oldPc.close();
+        } catch (e) {}
+        delete peers[targetId];
+        audioController.destroyAudioForPeer(targetId);
+    }
+    
+    const pc = crearPeerConnection(targetId, false);
+    setTimeout(() => {
+        if (pc.signalingState === 'closed') {
+            console.warn(`⚠️ PC cerrado, no se puede crear oferta para ${targetId}`);
+            delete peers[targetId];
+            return;
+        }
+        pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true,
+            iceRestart: false
+        })
+        .then(offer => pc.setLocalDescription(offer))
+        .then(() => {
+            socket.emit("offer", { target: targetId, offer: pc.localDescription });
+            console.log(`✅ Oferta enviada a: ${targetId}`);
+        })
+        .catch(error => {
+            console.error(`❌ Error en oferta para ${targetId}:`, error);
+            if (peers[targetId]) {
+                try {
+                    peers[targetId].close();
+                } catch (e) {}
+                delete peers[targetId];
+            }
+        });
+    }, isMobile ? 1000 : 500);
 }
 
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
     reconnectAttempts = 0;
     isReconnecting = false;
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+    }
     actualizarEstado("🟢 Conectado", "conectado");
     await obtenerTurnServers();
     await audioController.init();
@@ -824,6 +856,12 @@ socket.on("connect", async () => {
 
 socket.on("clientes-conectados", (lista) => {
     console.log("📋 Lista de clientes recibida:", lista);
+    
+    if (lista.length > 2) {
+        console.warn(`⚠️ Hay ${lista.length} clientes conectados. WebRTC solo soporta 1 a 1.`);
+        actualizarEstado(`⚠️ ${lista.length} clientes conectados`, "inicializando");
+    }
+    
     const clientesActuales = new Set(lista);
     Object.keys(peers).forEach(id => {
         if (!clientesActuales.has(id) && id !== socket.id) {
@@ -876,6 +914,10 @@ socket.on("disconnect", () => {
     reconnectAttempts++;
     actualizarEstado(`🔴 Reconectando... (${reconnectAttempts})`, "desconectado");
     ocultarVideoRemoto();
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+    }
     Object.keys(peers).forEach(key => {
         try {
             const oldPc = peers[key];
@@ -1063,6 +1105,10 @@ document.addEventListener('DOMContentLoaded', () => {
         btnReconectar.addEventListener('click', () => {
             console.log("🔄 Forzando reconexión...");
             isReconnecting = false;
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
             ocultarVideoRemoto();
             Object.keys(peers).forEach(key => {
                 try {
@@ -1162,6 +1208,10 @@ window.addEventListener("load", () => {
 });
 
 window.addEventListener("beforeunload", () => {
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+    }
     Object.keys(peers).forEach(key => {
         try {
             const oldPc = peers[key];

@@ -4,22 +4,20 @@ require('dotenv').config();
 
 console.log('🔑 Credenciales cargadas desde .env');
 
-router.get('/turn-credentials', (req, res) => {
-    console.log('📡 Solicitando credenciales TURN de Twilio');
+// Configuración de TURN con múltiples opciones
+const getTurnConfig = () => {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
     
-    try {
-        const accountSid = process.env.TWILIO_ACCOUNT_SID;
-        const authToken = process.env.TWILIO_AUTH_TOKEN;
-        
-        console.log('🔑 Account SID:', accountSid);
-        console.log('🔑 Auth Token:', authToken ? '✅ Configurado' : '❌ No configurado');
-        
-        const turnConfig = {
+    // Si hay credenciales de Twilio, usarlas
+    if (accountSid && authToken && accountSid !== 'tu_account_sid') {
+        console.log('✅ Usando TURN de Twilio');
+        return {
             iceServers: [
                 {
                     urls: [
-                        'stun:global.stun.twilio.com:3478',
-                        'stun:global.stun.twilio.com:3478',
+                        'stun:stun.l.google.com:19302',
+                        'stun:global.stun.twilio.com:3478'
                     ],
                 },
                 {
@@ -36,25 +34,71 @@ router.get('/turn-credentials', (req, res) => {
             bundlePolicy: 'max-bundle',
             rtcpMuxPolicy: 'require',
         };
-        
-        console.log('✅ TURN config generada con credenciales estáticas');
-        res.json(turnConfig);
-        
+    }
+    
+    // Si no hay Twilio, usar servidores públicos de respaldo
+    console.log('🔄 Usando TURN público de respaldo');
+    return {
+        iceServers: [
+            {
+                urls: [
+                    'stun:stun.l.google.com:19302',
+                    'stun:stun1.l.google.com:19302',
+                    'stun:stun2.l.google.com:19302'
+                ]
+            },
+            {
+                urls: [
+                    'turn:openrelay.metered.ca:80',
+                    'turn:openrelay.metered.ca:443',
+                    'turn:openrelay.metered.ca:3478'
+                ],
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: [
+                    'turn:numb.viagenie.ca:3478',
+                    'turn:numb.viagenie.ca:443'
+                ],
+                username: 'webrtc@live.com',
+                credential: 'muazkh'
+            }
+        ],
+        iceCandidatePoolSize: 10,
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
+    };
+};
+
+router.get('/turn-credentials', (req, res) => {
+    console.log('📡 Solicitando credenciales TURN');
+    
+    try {
+        const config = getTurnConfig();
+        console.log('✅ Configuración TURN generada exitosamente');
+        res.json(config);
     } catch (error) {
         console.error('❌ Error generando TURN:', error.message);
         res.status(500).json({
             error: 'Error generando credenciales TURN',
-            message: error.message
+            message: error.message,
+            // Enviar config de respaldo en caso de error
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
         });
     }
 });
 
 router.get('/test-turn', (req, res) => {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
     res.json({
         status: 'ok',
-        message: 'Servidor TURN de Twilio configurado',
+        message: 'Servidor TURN configurado',
         timestamp: new Date().toISOString(),
-        accountSid: process.env.TWILIO_ACCOUNT_SID,
+        twilioConfigured: !!(accountSid && accountSid !== 'tu_account_sid'),
+        publicTurnEnabled: true
     });
 });
 

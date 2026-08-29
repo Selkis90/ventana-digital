@@ -4,12 +4,11 @@ require('dotenv').config();
 
 console.log('🔑 Credenciales cargadas desde .env');
 
-// Configuración de TURN con múltiples opciones
+// 🔥 MÁS SERVIDORES TURN PARA MEJOR CONECTIVIDAD
 const getTurnConfig = () => {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     
-    // Si hay credenciales de Twilio, usarlas
     if (accountSid && authToken && accountSid !== 'tu_account_sid') {
         console.log('✅ Usando TURN de Twilio');
         return {
@@ -29,6 +28,16 @@ const getTurnConfig = () => {
                     username: accountSid,
                     credential: authToken,
                 },
+                // 🔥 TURN de respaldo
+                {
+                    urls: [
+                        'turn:openrelay.metered.ca:80',
+                        'turn:openrelay.metered.ca:443',
+                        'turn:openrelay.metered.ca:3478'
+                    ],
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
             ],
             iceCandidatePoolSize: 10,
             bundlePolicy: 'max-bundle',
@@ -36,7 +45,7 @@ const getTurnConfig = () => {
         };
     }
     
-    // Si no hay Twilio, usar servidores públicos de respaldo
+    // 🔥 MÚLTIPLES SERVIDORES DE RESPALDO
     console.log('🔄 Usando TURN público de respaldo');
     return {
         iceServers: [
@@ -63,6 +72,14 @@ const getTurnConfig = () => {
                 ],
                 username: 'webrtc@live.com',
                 credential: 'muazkh'
+            },
+            // 🔥 TURN alternativo
+            {
+                urls: [
+                    'turn:turn.anyfirewall.com:443?transport=tcp'
+                ],
+                username: 'webrtc',
+                credential: 'webrtc'
             }
         ],
         iceCandidatePoolSize: 10,
@@ -83,9 +100,13 @@ router.get('/turn-credentials', (req, res) => {
         res.status(500).json({
             error: 'Error generando credenciales TURN',
             message: error.message,
-            // Enviar config de respaldo en caso de error
             iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' }
+                { urls: 'stun:stun.l.google.com:19302' },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
             ]
         });
     }

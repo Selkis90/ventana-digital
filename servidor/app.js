@@ -78,6 +78,71 @@ app.get('/status', (req, res) => {
 });
 
 // ============================================
+// 🔥 RUTAS DE DIAGNÓSTICO (NUEVAS)
+// ============================================
+
+// 🔥 VER CLIENTES CONECTADOS
+app.get('/clientes', (req, res) => {
+    const sockets = io.sockets.sockets;
+    const clientesInfo = [];
+    
+    sockets.forEach((socket, id) => {
+        clientesInfo.push({
+            id: id,
+            ip: socket.handshake.address,
+            connected: socket.connected,
+            rooms: Array.from(socket.rooms)
+        });
+    });
+    
+    res.json({
+        total: clientesInfo.length,
+        clientes: clientesInfo,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// 🔥 FORZAR ACTUALIZACIÓN DE CLIENTES
+app.post('/refresh-clients', (req, res) => {
+    const lista = Array.from(io.sockets.sockets.keys());
+    console.log(`🔄 Forzando actualización: ${lista.length} clientes`);
+    
+    // Enviar a TODOS los clientes
+    io.emit('clientes-conectados', lista);
+    
+    res.json({
+        status: 'ok',
+        message: `Lista de ${lista.length} clientes actualizada`,
+        clientes: lista,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// 🔥 LIMPIAR CLIENTES INACTIVOS
+app.post('/cleanup-clients', (req, res) => {
+    const sockets = io.sockets.sockets;
+    let cleaned = 0;
+    
+    // Obtener todos los sockets activos
+    const activeSockets = new Set();
+    sockets.forEach((socket, id) => {
+        activeSockets.add(id);
+    });
+    
+    // No podemos eliminar directamente, pero podemos forzar actualización
+    const lista = Array.from(activeSockets);
+    io.emit('clientes-conectados', lista);
+    
+    res.json({
+        status: 'ok',
+        message: 'Limpieza forzada',
+        clientesActivos: lista.length,
+        clientes: lista,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// ============================================
 // 🔥 SOCKET.IO
 // ============================================
 require('./socket/socket')(io);
@@ -91,6 +156,7 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`🔑 TURN Twilio: http://localhost:${PORT}/turn-credentials`);
     console.log(`🧪 Test: http://localhost:${PORT}/test-turn`);
     console.log(`💚 Health: http://localhost:${PORT}/health`);
+    console.log(`📋 Clientes: http://localhost:${PORT}/clientes`);
     console.log('=========================================');
 });
 

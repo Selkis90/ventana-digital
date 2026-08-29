@@ -32,11 +32,8 @@ let peerConnection = null;
 let connectedPeerId = null;
 let isReconnecting = false;
 let reconnectTimer = null;
-let connectionAttempts = 0;
-const MAX_ATTEMPTS = 10;
 let isProcessingOffer = false;
 let pendingCandidates = [];
-let connectionInProgress = false;
 let isConnecting = false;
 
 // ============================================
@@ -90,7 +87,6 @@ function limpiarConexion() {
     
     connectedPeerId = null;
     isReconnecting = false;
-    connectionInProgress = false;
     isConnecting = false;
     pendingCandidates = [];
     
@@ -201,6 +197,7 @@ function mostrarVideoRemoto(stream, peerId) {
 function crearPeerConnection(targetId) {
     console.log(`🔗 Creando conexión con: ${targetId}`);
     
+    // 🔥 IMPORTANTE: SIEMPRE limpiar antes de crear una nueva
     limpiarConexion();
     
     const pc = new RTCPeerConnection({
@@ -212,7 +209,6 @@ function crearPeerConnection(targetId) {
 
     peerConnection = pc;
     pendingCandidates = [];
-    connectionInProgress = true;
     isConnecting = true;
 
     if (streamLocal) {
@@ -249,23 +245,20 @@ function crearPeerConnection(targetId) {
 
     pc.oniceconnectionstatechange = () => {
         console.log(`🔗 ICE con ${targetId}: ${pc.iceConnectionState}`);
-        if (pc.iceConnectionState === "failed") {
+        if (pc.iceConnectionState === "connected") {
+            console.log(`✅ ICE conectado con ${targetId}`);
+            isConnecting = false;
+        } else if (pc.iceConnectionState === "failed") {
             console.log(`❌ ICE falló`);
-            if (!isReconnecting) {
+            isConnecting = false;
+            if (!isReconnecting && connectedPeerId) {
                 isReconnecting = true;
-                reconnectTimer = setTimeout(() => {
+                setTimeout(() => {
                     limpiarConexion();
                     socket.emit("clientes-conectados");
                     isReconnecting = false;
-                    reconnectTimer = null;
                 }, 3000);
             }
-        } else if (pc.iceConnectionState === "connected") {
-            console.log(`✅ ICE conectado con ${targetId}`);
-            connectionInProgress = false;
-            isConnecting = false;
-        } else if (pc.iceConnectionState === "disconnected") {
-            console.log(`⚠️ ICE desconectado, intentando reconectar...`);
         }
     };
 
@@ -275,18 +268,15 @@ function crearPeerConnection(targetId) {
             console.log(`✅ CONEXIÓN ESTABLECIDA con ${targetId}!`);
             connectedPeerId = targetId;
             isReconnecting = false;
-            connectionAttempts = 0;
-            connectionInProgress = false;
             isConnecting = false;
             if (reconnectTimer) {
                 clearTimeout(reconnectTimer);
                 reconnectTimer = null;
             }
             actualizarEstado(`🟢 Conectado`, "conectado");
-        } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+        } else if (pc.connectionState === "failed") {
             console.log(`❌ Conexión fallida con ${targetId}`);
             connectedPeerId = null;
-            connectionInProgress = false;
             isConnecting = false;
             limpiarConexion();
         }
@@ -305,6 +295,7 @@ function crearPeerConnection(targetId) {
             console.log(`✅ Oferta enviada a ${targetId}`);
         } catch (error) {
             console.error(`❌ Error en negociación:`, error);
+            isConnecting = false;
         }
     };
 
@@ -314,6 +305,7 @@ function crearPeerConnection(targetId) {
 function iniciarConexion(targetId) {
     console.log(`🔄 Iniciando conexión con: ${targetId}`);
     
+    // 🔥 EVITAR CONEXIONES DUPLICADAS
     if (isReconnecting) {
         console.log(`⏳ Ya hay una reconexión en curso`);
         return;
@@ -324,11 +316,12 @@ function iniciarConexion(targetId) {
         return;
     }
     
-    if (connectionInProgress || isConnecting) {
+    if (isConnecting) {
         console.log(`⏳ Ya hay una conexión en progreso`);
         return;
     }
     
+    // 🔥 LIMPIAR ANTES DE CONECTAR
     limpiarConexion();
     
     setTimeout(() => {
@@ -336,7 +329,6 @@ function iniciarConexion(targetId) {
         setTimeout(() => {
             if (pc.signalingState === 'closed') {
                 console.warn(`⚠️ PC cerrado`);
-                connectionInProgress = false;
                 isConnecting = false;
                 return;
             }
@@ -351,7 +343,6 @@ function iniciarConexion(targetId) {
             })
             .catch(error => {
                 console.error(`❌ Error creando oferta:`, error);
-                connectionInProgress = false;
                 isConnecting = false;
             });
         }, 500);
@@ -381,7 +372,7 @@ function conectarConTodos(clientes) {
         return;
     }
     
-    if (connectionInProgress || isConnecting) {
+    if (isConnecting) {
         console.log(`⏳ Conexión en progreso, esperando...`);
         return;
     }
@@ -399,12 +390,14 @@ socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
     
+    // 🔥 IGNORAR SI YA ESTAMOS CONECTADOS
     if (connectedPeerId && connectedPeerId !== from) {
         console.log(`⛔ YA CONECTADO con ${connectedPeerId}, IGNORANDO`);
         return;
     }
     
-    if (connectionInProgress || isConnecting) {
+    // 🔥 IGNORAR SI YA ESTAMOS EN UNA CONEXIÓN
+    if (isConnecting) {
         console.log(`⏳ Conexión en progreso, ignorando oferta de ${from}`);
         return;
     }
@@ -415,7 +408,6 @@ socket.on("offer", async (data) => {
     }
     
     isProcessingOffer = true;
-    connectionInProgress = true;
     isConnecting = true;
     
     try {
@@ -424,7 +416,6 @@ socket.on("offer", async (data) => {
         const pc = crearPeerConnection(from);
         if (pc.signalingState === 'closed') {
             isProcessingOffer = false;
-            connectionInProgress = false;
             isConnecting = false;
             return;
         }
@@ -454,13 +445,11 @@ socket.on("offer", async (data) => {
         socket.emit("answer", { target: from, answer: pc.localDescription });
         console.log(`✅ Respuesta enviada a: ${from}`);
         isProcessingOffer = false;
-        connectionInProgress = false;
         isConnecting = false;
     } catch (error) {
         console.error(`❌ Error:`, error);
         limpiarConexion();
         isProcessingOffer = false;
-        connectionInProgress = false;
         isConnecting = false;
     }
 });
@@ -527,9 +516,7 @@ socket.on("ice-candidate", async (data) => {
 
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
-    connectionAttempts = 0;
     limpiarConexion();
-    connectionInProgress = false;
     isConnecting = false;
     actualizarEstado("🟢 Conectado", "conectado");
     await obtenerTurnServers();
@@ -565,7 +552,6 @@ socket.on("disconnect", () => {
     console.log("❌ Desconectado del servidor");
     actualizarEstado("🔴 Reconectando...", "desconectado");
     limpiarConexion();
-    connectionInProgress = false;
     isConnecting = false;
 });
 
@@ -714,7 +700,6 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("🔄 Forzando reconexión...");
             limpiarConexion();
             isProcessingOffer = false;
-            connectionInProgress = false;
             isConnecting = false;
             actualizarEstado("🔄 Reconectando...", "inicializando");
             

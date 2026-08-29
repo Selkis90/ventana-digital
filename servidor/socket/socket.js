@@ -3,34 +3,44 @@ module.exports = (io) => {
 
     io.on('connection', (socket) => {
         console.log(`✅ Cliente conectado: ${socket.id}`);
-        console.log(`📊 Total clientes: ${io.sockets.sockets.size}`);
+        console.log(`📊 Total clientes en servidor: ${io.sockets.sockets.size}`);
         
-        // 🔥 LIMPIAR conexiones duplicadas del mismo IP
+        // 🔥 SOLO limpiar si hay más de 2 conexiones del mismo IP
         const clientIP = socket.handshake.address;
         const existingClients = Array.from(clientes.keys());
+        let duplicateCount = 0;
         
         existingClients.forEach(id => {
             const client = clientes.get(id);
             if (client && client.ip === clientIP && id !== socket.id) {
+                duplicateCount++;
                 console.log(`🧹 Eliminando conexión duplicada de IP ${clientIP}: ${id}`);
                 io.to(id).emit('cliente-desconectado', { id: id, reason: 'duplicate' });
-                io.sockets.sockets.get(id)?.disconnect(true);
+                const oldSocket = io.sockets.sockets.get(id);
+                if (oldSocket) {
+                    oldSocket.disconnect(true);
+                }
                 clientes.delete(id);
             }
         });
         
+        if (duplicateCount > 0) {
+            console.log(`✅ Eliminados ${duplicateCount} clientes duplicados`);
+        }
+        
+        // Guardar cliente
         clientes.set(socket.id, {
             id: socket.id,
             connectedAt: new Date().toISOString(),
             ip: socket.handshake.address
         });
 
-        // Enviar lista actualizada
+        // Enviar lista actualizada SOLO a este cliente
         const listaClientes = Array.from(clientes.keys());
         socket.emit('clientes-conectados', listaClientes);
         console.log(`📋 Enviando lista de ${listaClientes.length} clientes a ${socket.id}`);
         
-        // Notificar a los demás
+        // Notificar a los demás que hay un nuevo cliente
         socket.broadcast.emit('nuevo-cliente', { 
             id: socket.id,
             timestamp: new Date().toISOString()
@@ -87,14 +97,24 @@ module.exports = (io) => {
         });
 
         socket.on('clientes-conectados', () => {
-            // 🔥 LIMPIAR CLIENTES INACTIVOS
+            // Limpiar clientes que ya no están conectados
             const sockets = io.sockets.sockets;
+            const toDelete = [];
+            
             clientes.forEach((client, id) => {
                 if (!sockets.has(id)) {
-                    console.log(`🧹 Eliminando cliente inactivo: ${id}`);
-                    clientes.delete(id);
+                    toDelete.push(id);
                 }
             });
+            
+            toDelete.forEach(id => {
+                console.log(`🧹 Eliminando cliente inactivo: ${id}`);
+                clientes.delete(id);
+            });
+            
+            if (toDelete.length > 0) {
+                console.log(`✅ Eliminados ${toDelete.length} clientes inactivos`);
+            }
             
             const lista = Array.from(clientes.keys());
             socket.emit('clientes-conectados', lista);
@@ -115,7 +135,7 @@ module.exports = (io) => {
                 timestamp: new Date().toISOString()
             });
             
-            // Enviar lista actualizada
+            // Enviar lista actualizada a todos
             const lista = Array.from(clientes.keys());
             io.emit('clientes-conectados', lista);
             console.log(`📋 Lista actualizada: ${lista.length} clientes`);

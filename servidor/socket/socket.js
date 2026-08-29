@@ -5,33 +5,24 @@ module.exports = (io) => {
         console.log(`✅ Cliente conectado: ${socket.id}`);
         console.log(`📊 Total sockets en servidor: ${io.sockets.sockets.size}`);
         
-        // Guardar cliente
         clientes.set(socket.id, {
             id: socket.id,
             connectedAt: new Date().toISOString(),
             ip: socket.handshake.address
         });
 
-        // 🔥 ENVIAR LISTA COMPLETA A TODOS LOS CLIENTES
         const listaClientes = Array.from(clientes.keys());
         console.log(`📋 Enviando lista de ${listaClientes.length} clientes a TODOS`);
         
-        // 🔥 ENVIAR A TODOS LOS CLIENTES (incluyendo el nuevo)
         io.emit('clientes-conectados', listaClientes);
         
-        // 🔥 NOTIFICAR A TODOS que hay un nuevo cliente
-        io.emit('nuevo-cliente', { 
+        socket.broadcast.emit('nuevo-cliente', { 
             id: socket.id,
             timestamp: new Date().toISOString()
         });
 
-        // ============================================
-        // 🔥 EVENTOS WEBRTC
-        // ============================================
-        
         socket.on('offer', (data) => {
             console.log(`📤 Oferta de ${socket.id} para ${data.target}`);
-            console.log(`📊 Clientes disponibles: ${Array.from(clientes.keys()).join(', ')}`);
             
             if (clientes.has(data.target)) {
                 io.to(data.target).emit('offer', {
@@ -78,7 +69,6 @@ module.exports = (io) => {
         });
 
         socket.on('clientes-conectados', () => {
-            // Limpiar clientes inactivos
             const sockets = io.sockets.sockets;
             const toDelete = [];
             
@@ -93,7 +83,6 @@ module.exports = (io) => {
                 clientes.delete(id);
             });
             
-            // 🔥 ENVIAR LISTA A TODOS LOS CLIENTES
             const lista = Array.from(clientes.keys());
             console.log(`📋 Enviando lista de ${lista.length} clientes a TODOS`);
             io.emit('clientes-conectados', lista);
@@ -107,7 +96,6 @@ module.exports = (io) => {
             console.log(`❌ Cliente desconectado: ${socket.id}`);
             clientes.delete(socket.id);
             
-            // 🔥 ENVIAR LISTA ACTUALIZADA A TODOS
             const lista = Array.from(clientes.keys());
             console.log(`📋 Lista actualizada: ${lista.length} clientes`);
             

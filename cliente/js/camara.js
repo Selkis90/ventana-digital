@@ -34,6 +34,7 @@ let isReconnecting = false;
 let reconnectTimer = null;
 let connectionAttempts = 0;
 const MAX_ATTEMPTS = 5;
+let isManualReconnect = false;
 
 // ============================================
 // 🖥️ UI State
@@ -97,7 +98,6 @@ function limpiarTodasLasConexiones() {
     connectedPeerId = null;
     peerIdRemoto = null;
     isReconnecting = false;
-    connectionAttempts = 0;
     
     console.log("✅ Limpieza completada");
 }
@@ -298,6 +298,7 @@ function crearPeerConnection(targetId) {
             connectedPeerId = targetId;
             isReconnecting = false;
             connectionAttempts = 0;
+            isManualReconnect = false;
             if (reconnectTimer) {
                 clearTimeout(reconnectTimer);
                 reconnectTimer = null;
@@ -307,7 +308,7 @@ function crearPeerConnection(targetId) {
             console.log(`❌ Conexión fallida con ${targetId}`);
             connectedPeerId = null;
             ocultarVideoRemoto();
-            if (!isReconnecting && connectionAttempts < MAX_ATTEMPTS) {
+            if (!isReconnecting && !isManualReconnect && connectionAttempts < MAX_ATTEMPTS) {
                 connectionAttempts++;
                 isReconnecting = true;
                 reconnectTimer = setTimeout(() => {
@@ -522,6 +523,7 @@ socket.on("ice-candidate", async (data) => {
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
     connectionAttempts = 0;
+    isManualReconnect = false;
     limpiarTodasLasConexiones();
     actualizarEstado("🟢 Conectado", "conectado");
     await obtenerTurnServers();
@@ -726,12 +728,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnReconectar) {
         btnReconectar.addEventListener('click', () => {
             console.log("🔄 Forzando reconexión...");
+            
+            // 🔥 IMPORTANTE: Marcar como reconexión manual
+            isManualReconnect = true;
+            isReconnecting = false;
+            
+            // Limpiar todo
             limpiarTodasLasConexiones();
             actualizarEstado("🔄 Reconectando...", "inicializando");
             
-            socket.disconnect();
+            // 🔥 NO desconectar el socket, solo pedir lista de clientes
             setTimeout(() => {
-                socket.connect();
+                socket.emit("clientes-conectados");
+                // Después de 5 segundos, permitir reconexión automática si falla
+                setTimeout(() => {
+                    isManualReconnect = false;
+                }, 5000);
             }, 1000);
         });
     }

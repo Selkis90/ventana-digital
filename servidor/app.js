@@ -12,10 +12,15 @@ const server = http.createServer(app);
 // 🔥 CONFIGURACIÓN DE SOCKET.IO
 // ============================================
 const io = new Server(server, {
-    cors: { origin: '*', methods: ['GET', 'POST'] },
+    cors: { 
+        origin: '*', 
+        methods: ['GET', 'POST'] 
+    },
     transports: ['websocket', 'polling'],
     pingTimeout: 60000,
     pingInterval: 25000,
+    connectTimeout: 45000,
+    allowEIO3: true,
 });
 
 const PORT = process.env.PORT || 3000;
@@ -23,7 +28,11 @@ const PORT = process.env.PORT || 3000;
 // ============================================
 // 🔥 MIDDLEWARE
 // ============================================
-app.use(cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'] }));
+app.use(cors({ 
+    origin: '*', 
+    methods: ['GET', 'POST', 'OPTIONS'],
+    credentials: true 
+}));
 app.use(express.json());
 
 // ============================================
@@ -53,6 +62,7 @@ app.get('/health', (req, res) => {
         status: 'ok',
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
+        clients: io.sockets.sockets.size
     });
 });
 
@@ -63,6 +73,7 @@ app.get('/status', (req, res) => {
         timestamp: new Date().toISOString(),
         connectedClients: io.sockets.sockets.size,
         uptime: process.uptime(),
+        memory: process.memoryUsage()
     });
 });
 
@@ -81,6 +92,15 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`🧪 Test: http://localhost:${PORT}/test-turn`);
     console.log(`💚 Health: http://localhost:${PORT}/health`);
     console.log('=========================================');
+});
+
+// Manejar errores del servidor
+server.on('error', (error) => {
+    console.error('❌ Error en el servidor:', error);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('❌ Error no capturado:', error);
 });
 
 module.exports = { app, server, io };

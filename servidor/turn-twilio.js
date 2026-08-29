@@ -1,17 +1,16 @@
 const express = require('express');
 const router = express.Router();
-require('dotenv').config();
 
-console.log('🔑 Configurando TURN servers que FUNCIONAN...');
+console.log('🔑 Configurando TURN con Metered.ca (GRATUITO)...');
 
 router.get('/turn-credentials', (req, res) => {
     console.log('📡 Solicitando credenciales TURN');
     
     try {
-        // 🔥 USAR SOLO SERVIDORES QUE SABEMOS QUE FUNCIONAN
+        // 🔥 METERED.CA - TURN GRATUITO QUE SÍ FUNCIONA
         const config = {
             iceServers: [
-                // STUN de Google (siempre funciona para conexiones directas)
+                // STUN de Google (para conexiones directas)
                 {
                     urls: [
                         'stun:stun.l.google.com:19302',
@@ -19,7 +18,7 @@ router.get('/turn-credentials', (req, res) => {
                         'stun:stun2.l.google.com:19302'
                     ]
                 },
-                // 🔥 TURN de Metered.ca (EL MÁS CONFIABLE PARA PRODUCCIÓN)
+                // 🔥 TURN de Metered.ca (GRATUITO Y CONFIABLE)
                 {
                     urls: [
                         'turn:openrelay.metered.ca:80',
@@ -28,15 +27,6 @@ router.get('/turn-credentials', (req, res) => {
                     ],
                     username: 'openrelayproject',
                     credential: 'openrelayproject'
-                },
-                // TURN de Twilio (respaldo)
-                {
-                    urls: [
-                        'turn:global.turn.twilio.com:3478?transport=udp',
-                        'turn:global.turn.twilio.com:3478?transport=tcp'
-                    ],
-                    username: 'ffa1d2a4b7c14f5f9e8d3c6b1a2e3f4d',
-                    credential: 'f4e3d2c1b6a5f4e3d2c1b6a5f4e3d2c1'
                 }
             ],
             iceCandidatePoolSize: 10,
@@ -44,19 +34,13 @@ router.get('/turn-credentials', (req, res) => {
             rtcpMuxPolicy: 'require'
         };
         
-        console.log('✅ Configuración TURN generada');
+        console.log('✅ Configuración TURN con Metered.ca generada');
         res.json(config);
     } catch (error) {
         console.error('❌ Error:', error.message);
-        // Configuración de emergencia
         res.json({
             iceServers: [
-                { urls: ['stun:stun.l.google.com:19302'] },
-                {
-                    urls: ['turn:openrelay.metered.ca:443'],
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
-                }
+                { urls: ['stun:stun.l.google.com:19302'] }
             ]
         });
     }
@@ -66,7 +50,7 @@ router.get('/test-turn', (req, res) => {
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
-        message: 'Servidor TURN configurado con Metered.ca + Twilio'
+        message: 'TURN con Metered.ca (gratuito)'
     });
 });
 

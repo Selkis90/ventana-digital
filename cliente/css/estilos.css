@@ -1,5 +1,5 @@
 /* ============================================
-   ESTILOS PRINCIPALES
+   RESET Y CONFIGURACIÓN BASE
    ============================================ */
 * {
     margin: 0;
@@ -7,12 +7,15 @@
     box-sizing: border-box;
 }
 
-body {
-    background: #000;
+html, body {
+    width: 100%;
+    height: 100%;
     overflow: hidden;
-    height: 100vh;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    background: #0a0a0a;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    touch-action: none;
     user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 /* ============================================
@@ -34,24 +37,60 @@ body {
    ============================================ */
 #video {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 200px;
-    height: 150px;
+    bottom: 100px;
+    right: 15px;
+    width: 140px;
+    height: 105px;
     object-fit: cover;
     border-radius: 12px;
-    border: 3px solid rgba(255, 255, 255, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.3);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
     z-index: 10;
     background: #1a1a1a;
-    cursor: pointer;
     transition: all 0.3s ease;
 }
 
-#video:hover {
-    transform: scale(1.05);
-    border-color: #00aaff;
-    box-shadow: 0 8px 40px rgba(0, 170, 255, 0.3);
+/* En móviles, video local más pequeño */
+@media (max-width: 480px) {
+    #video {
+        width: 80px;
+        height: 60px;
+        bottom: 85px;
+        right: 8px;
+        border-radius: 8px;
+        border-width: 2px;
+    }
+}
+
+/* En tablets, video local mediano */
+@media (min-width: 481px) and (max-width: 768px) {
+    #video {
+        width: 100px;
+        height: 75px;
+        bottom: 120px;
+        right: 10px;
+        border-radius: 10px;
+    }
+}
+
+/* En desktop, video local más grande */
+@media (min-width: 769px) {
+    #video {
+        width: 180px;
+        height: 135px;
+        bottom: 110px;
+        right: 20px;
+        border-radius: 14px;
+    }
+}
+
+/* Hover solo en desktop */
+@media (hover: hover) {
+    #video:hover {
+        transform: scale(1.05);
+        border-color: #00aaff;
+        box-shadow: 0 8px 40px rgba(0, 170, 255, 0.3);
+    }
 }
 
 /* ============================================
@@ -59,36 +98,69 @@ body {
    ============================================ */
 #estado {
     position: fixed;
-    top: 20px;
+    top: 15px;
     left: 50%;
     transform: translateX(-50%);
-    padding: 10px 28px;
-    border-radius: 30px;
-    font-size: 14px;
-    font-weight: 600;
     z-index: 100;
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
     color: white;
     background: rgba(0, 0, 0, 0.75);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    transition: all 0.3s ease;
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     text-align: center;
+    white-space: nowrap;
+    transition: all 0.3s ease;
+    pointer-events: none;
     letter-spacing: 0.3px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
-#estado.inicializando {
+/* Estados */
+#estado.inicializando { 
     background: rgba(255, 165, 0, 0.85);
-    border-color: rgba(255, 165, 0, 0.4);
+    border-color: rgba(255, 165, 0, 0.3);
 }
-
-#estado.conectado {
+#estado.conectado { 
     background: rgba(0, 200, 80, 0.85);
-    border-color: rgba(0, 200, 80, 0.4);
+    border-color: rgba(0, 200, 80, 0.3);
+}
+#estado.desconectado { 
+    background: rgba(255, 50, 50, 0.85);
+    border-color: rgba(255, 50, 50, 0.3);
+}
+#estado.error { 
+    background: rgba(255, 0, 0, 0.85);
+    border-color: rgba(255, 0, 0, 0.3);
+    animation: parpadeo 0.5s infinite alternate;
 }
 
-#estado.desconectado {
-    background: rgba(255, 50, 50, 0.85);
-    border-color: rgba(255, 50, 50, 0.4);
+@keyframes parpadeo {
+    from { opacity: 1; }
+    to { opacity: 0.5; }
+}
+
+/* Responsive estado */
+@media (max-width: 480px) {
+    #estado {
+        font-size: 10px;
+        padding: 5px 12px;
+        top: 8px;
+        white-space: normal;
+        max-width: 90%;
+        border-radius: 15px;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+    #estado {
+        font-size: 11px;
+        padding: 6px 16px;
+        top: 10px;
+    }
 }
 
 /* ============================================
@@ -96,184 +168,418 @@ body {
    ============================================ */
 #controles {
     position: fixed;
-    bottom: 180px;
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 0;
+    left: 0;
+    right: 0;
     z-index: 20;
-    background: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(12px);
-    padding: 16px 24px;
-    border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
+    padding: 15px 12px 20px 12px;
     display: flex;
-    gap: 20px;
+    flex-direction: column;
+    gap: 8px;
     align-items: center;
-    flex-wrap: wrap;
-    justify-content: center;
-    min-width: 280px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    transition: all 0.3s ease;
 }
 
 .control-group {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    width: 100%;
+    max-width: 500px;
 }
 
-#controles label {
-    color: #ccc;
-    font-size: 13px;
-    font-weight: 500;
-    letter-spacing: 0.2px;
+/* ============================================
+   BOTONES DE CONTROL
+   ============================================ */
+.btn-control {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 25px;
+    font-size: 12px;
+    font-weight: 600;
+    color: white;
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    touch-action: manipulation;
+    min-height: 40px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
 }
 
-#controles input[type="range"] {
-    width: 100px;
-    height: 4px;
+.btn-control:active {
+    transform: scale(0.92);
+}
+
+/* Hover solo en desktop */
+@media (hover: hover) {
+    .btn-control:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+}
+
+/* Colores específicos por botón */
+#btn-microfono { background: rgba(52, 152, 219, 0.5); }
+#btn-microfono.activo { background: rgba(52, 152, 219, 0.8); }
+#btn-microfono.inactivo { background: rgba(255, 50, 50, 0.5); }
+#btn-microfono.inactivo { background: rgba(255, 50, 50, 0.7); }
+
+#btn-camara { background: rgba(46, 204, 113, 0.5); }
+#btn-camara.activo { background: rgba(46, 204, 113, 0.8); }
+#btn-camara.inactivo { background: rgba(255, 50, 50, 0.5); }
+#btn-camara.inactivo { background: rgba(255, 50, 50, 0.7); }
+
+#btn-silenciar { background: rgba(241, 196, 15, 0.4); }
+#btn-silenciar.silenciado { background: rgba(255, 50, 50, 0.6); }
+
+#btn-fullscreen { background: rgba(155, 89, 182, 0.4); }
+#btn-reconectar { background: rgba(255, 165, 0, 0.4); }
+#btn-reconectar:active { background: rgba(255, 165, 0, 0.7); }
+
+#btn-diagnostico { background: rgba(52, 73, 94, 0.4); }
+#btn-diagnostico.activo { background: rgba(52, 73, 94, 0.8); }
+
+/* ============================================
+   VOLUMEN
+   ============================================ */
+.label-volumen {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+    padding: 0 4px;
+}
+
+#volumen {
     -webkit-appearance: none;
     appearance: none;
-    background: linear-gradient(to right, #4CAF50, #ff9800);
+    width: 80px;
+    height: 4px;
     border-radius: 2px;
+    background: rgba(255, 255, 255, 0.2);
     outline: none;
-    cursor: pointer;
+    transition: all 0.2s ease;
 }
 
-#controles input[type="range"]::-webkit-slider-thumb {
+#volumen::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #fff;
+    background: linear-gradient(135deg, #4CAF50, #2196F3);
     cursor: pointer;
-    border: 2px solid #00aaff;
-    box-shadow: 0 2px 12px rgba(0, 170, 255, 0.4);
+    border: 2px solid white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     transition: all 0.2s ease;
 }
 
-#controles input[type="range"]::-webkit-slider-thumb:hover {
-    transform: scale(1.15);
+#volumen::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
 }
 
-#volumen-label {
-    color: #fff;
-    font-size: 13px;
+#volumen::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #4CAF50, #2196F3);
+    cursor: pointer;
+    border: 2px solid white;
+}
+
+.volumen-text {
+    color: white;
+    font-size: 11px;
     font-weight: 600;
-    min-width: 40px;
+    min-width: 32px;
     text-align: center;
-    background: rgba(255, 255, 255, 0.1);
-    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 2px 6px;
     border-radius: 4px;
 }
 
-#controles button {
-    padding: 8px 16px;
-    border: none;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    letter-spacing: 0.3px;
+/* ============================================
+   INFO DE CONEXIÓN
+   ============================================ */
+.info-conexion {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.4);
+    background: rgba(0, 0, 0, 0.4);
+    padding: 4px 12px;
+    border-radius: 10px;
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    margin-top: 2px;
+    max-width: 95%;
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-#controles button:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: translateY(-1px);
+.info-conexion span {
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    color: rgba(255, 255, 255, 0.5);
 }
 
-#controles button:active {
-    transform: scale(0.95);
-}
-
-#btn-silenciar {
-    background: rgba(255, 100, 100, 0.2);
-    border-color: rgba(255, 100, 100, 0.3);
-}
-
-#btn-silenciar:hover {
-    background: rgba(255, 100, 100, 0.35);
-}
-
-#btn-reconectar {
-    background: rgba(100, 200, 255, 0.2);
-    border-color: rgba(100, 200, 255, 0.3);
-}
-
-#btn-reconectar:hover {
-    background: rgba(100, 200, 255, 0.35);
-}
-
-#btn-diagnostico {
-    background: rgba(200, 200, 100, 0.2);
-    border-color: rgba(200, 200, 100, 0.3);
-}
-
-#btn-diagnostico:hover {
-    background: rgba(200, 200, 100, 0.35);
+.info-conexion .id-destacado {
+    color: rgba(100, 200, 255, 0.7);
 }
 
 /* ============================================
-   RESPONSIVE
+   DIAGNÓSTICO BADGE
    ============================================ */
-@media (max-width: 768px) {
-    #video {
-        width: 120px;
-        height: 90px;
-        bottom: 10px;
-        right: 10px;
-        border-radius: 8px;
+.diagnostico-badge {
+    position: fixed;
+    top: 60px;
+    right: 10px;
+    z-index: 50;
+    background: rgba(0, 0, 0, 0.9);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 255, 136, 0.2);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: #00ff88;
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    max-width: 260px;
+    display: none;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    line-height: 1.6;
+}
+
+.diagnostico-badge.visible {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+.diagnostico-badge .info-line {
+    padding: 2px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.diagnostico-badge .info-line:last-child {
+    border-bottom: none;
+}
+
+.diagnostico-badge .label {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.diagnostico-badge .value {
+    color: #00ff88;
+    font-weight: bold;
+    float: right;
+    margin-left: 10px;
+}
+
+.diagnostico-badge .value.error {
+    color: #ff4444;
+}
+
+.diagnostico-badge .value.warning {
+    color: #ffaa00;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ============================================
+   RESPONSIVE COMPLETO
+   ============================================ */
+
+/* MÓVILES PEQUEÑOS (menos de 480px) */
+@media (max-width: 480px) {
+    .btn-control {
+        padding: 6px 10px;
+        font-size: 10px;
+        min-height: 34px;
+        min-width: 36px;
+        border-radius: 20px;
     }
 
     #controles {
-        bottom: 110px;
-        padding: 12px 16px;
-        min-width: unset;
-        width: 92%;
-        gap: 10px;
-        flex-direction: column;
-        border-radius: 12px;
+        padding: 10px 8px 12px 8px;
+        gap: 5px;
     }
 
     .control-group {
-        width: 100%;
-        justify-content: center;
+        gap: 5px;
     }
 
-    #controles input[type="range"] {
-        width: 80px;
+    #volumen {
+        width: 60px;
     }
 
-    #estado {
-        font-size: 11px;
-        padding: 6px 16px;
-        top: 10px;
-        max-width: 90%;
+    .volumen-text {
+        font-size: 10px;
+        min-width: 28px;
     }
 
-    #controles button {
-        padding: 6px 12px;
-        font-size: 11px;
+    .info-conexion {
+        font-size: 8px;
+        padding: 3px 8px;
+        gap: 8px;
+    }
+
+    .info-conexion span {
+        font-size: 8px;
+    }
+
+    .diagnostico-badge {
+        top: 50px;
+        right: 5px;
+        max-width: 200px;
+        font-size: 9px;
+        padding: 8px 12px;
     }
 }
 
-@media (max-width: 480px) {
-    #video {
-        width: 90px;
-        height: 68px;
-        bottom: 70px;
-        right: 8px;
+/* MÓVILES GRANDES Y TABLETS PEQUEÑAS (481-768px) */
+@media (min-width: 481px) and (max-width: 768px) {
+    .btn-control {
+        padding: 7px 12px;
+        font-size: 11px;
+        min-height: 38px;
     }
 
     #controles {
-        bottom: 90px;
-        padding: 10px 12px;
+        padding: 12px 10px 15px 10px;
     }
 
-    #controles input[type="range"] {
-        width: 60px;
+    .control-group {
+        gap: 6px;
     }
+
+    #volumen {
+        width: 70px;
+    }
+
+    .info-conexion {
+        font-size: 9px;
+        padding: 4px 10px;
+    }
+}
+
+/* TABLETS GRANDES Y DESKTOP PEQUEÑO (769-1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .btn-control {
+        padding: 9px 18px;
+        font-size: 13px;
+        min-height: 42px;
+    }
+
+    #controles {
+        padding: 18px 20px 20px 20px;
+    }
+
+    .control-group {
+        gap: 10px;
+    }
+
+    #volumen {
+        width: 100px;
+    }
+
+    .info-conexion {
+        font-size: 10px;
+        padding: 5px 14px;
+    }
+}
+
+/* DESKTOP GRANDE (1025px+) */
+@media (min-width: 1025px) {
+    .btn-control {
+        padding: 10px 22px;
+        font-size: 14px;
+        min-height: 46px;
+        border-radius: 30px;
+    }
+
+    #controles {
+        padding: 20px 30px 22px 30px;
+        gap: 10px;
+    }
+
+    .control-group {
+        gap: 12px;
+    }
+
+    #volumen {
+        width: 140px;
+    }
+
+    .volumen-text {
+        font-size: 12px;
+        min-width: 36px;
+    }
+
+    .info-conexion {
+        font-size: 11px;
+        padding: 6px 16px;
+        gap: 16px;
+    }
+
+    .info-conexion span {
+        font-size: 10px;
+    }
+
+    .diagnostico-badge {
+        top: 70px;
+        right: 20px;
+        max-width: 300px;
+        font-size: 11px;
+        padding: 14px 18px;
+    }
+}
+
+/* ============================================
+   PANTALLA COMPLETA
+   ============================================ */
+#video-remoto:-webkit-full-screen {
+    object-fit: contain;
+    background: #000;
+}
+
+#video-remoto:fullscreen {
+    object-fit: contain;
+    background: #000;
+}
+
+/* ============================================
+   UTILIDADES
+   ============================================ */
+.oculto {
+    display: none !important;
+}
+
+.visible {
+    display: block !important;
+}
+
+/* ============================================
+   ANIMACIONES EXTRA
+   ============================================ */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.pulse {
+    animation: pulse 1.5s ease-in-out infinite;
 }

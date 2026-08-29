@@ -16,11 +16,11 @@ module.exports = (io) => {
         const listaClientes = Array.from(clientes.keys());
         console.log(`📋 Enviando lista de ${listaClientes.length} clientes a TODOS`);
         
-        // Enviar a TODOS los clientes conectados
+        // 🔥 ENVIAR A TODOS LOS CLIENTES (incluyendo el nuevo)
         io.emit('clientes-conectados', listaClientes);
         
-        // Notificar a los demás que hay un nuevo cliente
-        socket.broadcast.emit('nuevo-cliente', { 
+        // 🔥 NOTIFICAR A TODOS que hay un nuevo cliente
+        io.emit('nuevo-cliente', { 
             id: socket.id,
             timestamp: new Date().toISOString()
         });

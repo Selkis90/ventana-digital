@@ -45,7 +45,7 @@ const socket = io("https://ventana-digital.onrender.com", {
 });
 
 // ============================================
-// 📦 VARIABLES GLOBALES
+// 📦 VARIABLES GLOBALES - SIMPLIFICADAS
 // ============================================
 let streamLocal = null;
 let turnServers = [];
@@ -53,7 +53,8 @@ let isConnecting = false;
 let isOfferSent = false;
 let soyOfertante = false;
 let rolAsignado = false;
-let pc = null; // SOLO UNA CONEXIÓN
+let pc = null;
+let targetPeerId = null;
 
 // ============================================
 // 🔊 CONTROL DE AUDIO
@@ -293,6 +294,7 @@ function mostrarVideoRemoto(stream) {
     
     if (!stream || stream === streamLocal) return;
     
+    // Si ya está reproduciendo, no hacer nada
     if (videoRemoto.srcObject === stream && !videoRemoto.paused) {
         console.log('ℹ️ Video ya está reproduciendo');
         return;
@@ -302,6 +304,7 @@ function mostrarVideoRemoto(stream) {
     const videoTracks = stream.getVideoTracks();
     console.log(`🎵 Audio: ${audioTracks.length}, Video: ${videoTracks.length}`);
     
+    // Limpiar si hay otro stream
     if (videoRemoto.srcObject && videoRemoto.srcObject !== stream) {
         try { videoRemoto.pause(); } catch(e) {}
         videoRemoto.srcObject = null;
@@ -311,6 +314,7 @@ function mostrarVideoRemoto(stream) {
         audioRemoto.srcObject = null;
     }
     
+    // Asignar stream
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     video.style.display = "block";
@@ -331,6 +335,7 @@ function mostrarVideoRemoto(stream) {
         audioRemoto.setAttribute('playsinline', 'true');
     }
     
+    // Reproducir
     setTimeout(() => {
         videoRemoto.play().then(() => {
             console.log('✅ Video remoto reproduciendo');
@@ -345,7 +350,10 @@ function mostrarVideoRemoto(stream) {
             isConnecting = false;
         }).catch(err => {
             console.warn('⚠️ Error en video:', err.message);
-            setTimeout(() => videoRemoto.play().catch(() => {}), 500);
+            // Reintentar una vez
+            setTimeout(() => {
+                videoRemoto.play().catch(() => {});
+            }, 500);
         });
     }, 300);
 }
@@ -367,7 +375,7 @@ function ocultarVideoRemoto() {
 }
 
 // ============================================
-// 🧹 LIMPIAR PEER - VERSIÓN CORREGIDA
+// 🧹 LIMPIAR PEER - UNA SOLA CONEXIÓN
 // ============================================
 function limpiarPeer() {
     if (pc) {
@@ -384,16 +392,18 @@ function limpiarPeer() {
     audioController.destroyAll();
     isConnecting = false;
     isOfferSent = false;
+    targetPeerId = null;
 }
 
 // ============================================
-// 🔥 CREAR PEER CONNECTION - VERSIÓN CORREGIDA
+// 🔥 CREAR PEER CONNECTION - UNA SOLA
 // ============================================
 function crearPeerConnection(targetId) {
-    // 🔥 LIMPIAR CONEXIÓN ANTERIOR PRIMERO
+    // LIMPIAR CONEXIÓN ANTERIOR
     limpiarPeer();
     
     console.log(`🔗 Creando conexión con: ${targetId}`);
+    targetPeerId = targetId;
     
     try {
         pc = new RTCPeerConnection({
@@ -417,10 +427,6 @@ function crearPeerConnection(targetId) {
                 console.error(`❌ Error agregando track ${track.kind}:`, error);
             }
         });
-        const senders = pc.getSenders();
-        const hasAudio = senders.some(s => s.track && s.track.kind === 'audio');
-        const hasVideo = senders.some(s => s.track && s.track.kind === 'video');
-        console.log(`📤 Senders: Audio=${hasAudio ? '✅' : '❌'}, Video=${hasVideo ? '✅' : '❌'}`);
     }
 
     pc.ontrack = (event) => {
@@ -463,7 +469,7 @@ function crearPeerConnection(targetId) {
 }
 
 // ============================================
-// 🔄 MANEJAR FALLAS - VERSIÓN CORREGIDA
+// 🔄 MANEJAR FALLAS
 // ============================================
 function handleConnectionFailure() {
     console.log('❌ Falla de conexión');
@@ -477,7 +483,7 @@ function handleConnectionFailure() {
 }
 
 // ============================================
-// 📤 INICIAR OFERTA - VERSIÓN CORREGIDA
+// 📤 INICIAR OFERTA
 // ============================================
 function iniciarOferta(targetId) {
     console.log(`📤 Iniciando oferta para ${targetId}`);
@@ -537,9 +543,10 @@ function iniciarOferta(targetId) {
 }
 
 // ============================================
-// 🔗 CONECTAR CON TODOS - VERSIÓN CORREGIDA
+// 🔗 CONECTAR CON TODOS - VERSIÓN FINAL
 // ============================================
 function conectarConTodos(clientes) {
+    // SI YA ESTAMOS CONECTANDO, SALIR
     if (isConnecting) {
         console.log('⏳ Conexión en proceso...');
         return;
@@ -555,17 +562,24 @@ function conectarConTodos(clientes) {
     const targetId = otros[0];
     console.log(`🎯 Conectando con: ${targetId}`);
     
-    // 🔥 SI YA HAY CONEXIÓN, NO CREAR OTRA
+    // SI YA HAY CONEXIÓN, NO CREAR OTRA
     if (pc && pc.connectionState === "connected") {
         console.log('✅ Ya conectado');
+        actualizarInfoPeer(targetId);
         return;
     }
     
-    // 🔥 DECIDIR QUIÉN OFERTA (ID MÁS PEQUEÑO = OFERTANTE)
+    // SI YA HAY PEER PERO ESTÁ CONECTANDO, ESPERAR
+    if (pc && pc.connectionState === "connecting") {
+        console.log('⏳ Ya conectando...');
+        return;
+    }
+    
+    // DECIDIR QUIÉN OFERTA (ID MÁS PEQUEÑO = OFERTANTE)
     soyOfertante = socket.id < targetId;
     rolAsignado = true;
     
-    console.log(`📌 ROL: ${soyOfertante ? '🟢 OFERTANTE' : '🔴 ANSWER'} (${socket.id.substring(0,6)} vs ${targetId.substring(0,6)})`);
+    console.log(`📌 ROL: ${soyOfertante ? '🟢 OFERTANTE' : '🔴 ANSWER'}`);
     
     isConnecting = true;
     isOfferSent = false;
@@ -586,7 +600,7 @@ function conectarConTodos(clientes) {
 }
 
 // ============================================
-// 📡 EVENTOS SOCKET.IO - VERSIÓN CORREGIDA
+// 📡 EVENTOS SOCKET.IO - VERSIÓN FINAL
 // ============================================
 
 socket.on("connect", async () => {
@@ -606,31 +620,31 @@ socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA DE: ${from}`);
     
-    // 🔥 IGNORAR SI YA ESTAMOS CONECTADOS
+    // IGNORAR SI YA ESTAMOS CONECTADOS
     if (pc && pc.connectionState === "connected") {
         console.log('ℹ️ Ya conectado, ignorando');
         return;
     }
     
-    // 🔥 IGNORAR SI SOMOS OFERTANTE
+    // IGNORAR SI SOMOS OFERTANTE
     if (rolAsignado && soyOfertante) {
         console.log('⚠️ Soy OFERTANTE, ignorando');
         return;
     }
     
-    // 🔥 IGNORAR SI YA ENVIAMOS OFERTA
+    // IGNORAR SI YA ENVIAMOS OFERTA
     if (isOfferSent) {
         console.log('⏳ Ya enviamos oferta, ignorando');
         return;
     }
     
-    // 🔥 IGNORAR SI YA ESTAMOS EN NEGOCIACIÓN
+    // IGNORAR SI YA ESTAMOS EN NEGOCIACIÓN
     if (pc && (pc.signalingState === 'have-local-offer' || pc.signalingState === 'have-remote-offer')) {
         console.log('⏳ Ya en negociación');
         return;
     }
     
-    // 🔥 LIMPIAR CONEXIÓN ANTERIOR
+    // LIMPIAR CONEXIÓN ANTERIOR
     limpiarPeer();
     
     try {
@@ -679,7 +693,7 @@ socket.on("answer", async (data) => {
     const { from, answer } = data;
     console.log(`📩 RESPUESTA DE: ${from}`);
     
-    // 🔥 SOLO EL OFERTANTE PROCESA RESPUESTAS
+    // SOLO EL OFERTANTE PROCESA RESPUESTAS
     if (rolAsignado && !soyOfertante) {
         console.log('⚠️ Soy ANSWER, ignorando');
         return;
@@ -735,7 +749,7 @@ socket.on("ice-candidate", async (data) => {
 socket.on("clientes-conectados", (lista) => {
     console.log("📋 Clientes:", lista);
     
-    // 🔥 SI YA HAY CONEXIÓN, NO HACER NADA
+    // SI YA HAY CONEXIÓN, NO HACER NADA
     if (pc && pc.connectionState === "connected") {
         console.log('✅ Ya conectado, ignorando lista');
         return;

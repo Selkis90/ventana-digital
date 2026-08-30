@@ -400,6 +400,67 @@ html, body {
 }
 
 /* ============================================
+   BOTÓN DE REPRODUCCIÓN MANUAL
+   ============================================ */
+#btn-play {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 9999;
+    padding: 20px 40px;
+    font-size: 24px;
+    font-weight: bold;
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+    border: none;
+    border-radius: 16px;
+    cursor: pointer;
+    box-shadow: 0 8px 40px rgba(0, 123, 255, 0.5);
+    display: none;
+    transition: all 0.3s ease;
+    letter-spacing: 1px;
+    animation: pulse-play 2s ease-in-out infinite;
+}
+
+#btn-play:hover {
+    transform: translate(-50%, -50%) scale(1.05);
+    box-shadow: 0 8px 60px rgba(0, 123, 255, 0.7);
+}
+
+#btn-play:active {
+    transform: translate(-50%, -50%) scale(0.95);
+}
+
+@keyframes pulse-play {
+    0%, 100% {
+        box-shadow: 0 8px 40px rgba(0, 123, 255, 0.5);
+    }
+    50% {
+        box-shadow: 0 8px 60px rgba(0, 123, 255, 0.8);
+    }
+}
+
+/* Responsive del botón play */
+@media (max-width: 480px) {
+    #btn-play {
+        padding: 14px 24px;
+        font-size: 16px;
+        border-radius: 12px;
+        width: 80%;
+        max-width: 280px;
+    }
+}
+
+@media (min-width: 481px) and (max-width: 768px) {
+    #btn-play {
+        padding: 16px 32px;
+        font-size: 20px;
+        border-radius: 14px;
+    }
+}
+
+/* ============================================
    RESPONSIVE COMPLETO
    ============================================ */
 

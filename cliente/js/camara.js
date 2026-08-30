@@ -56,6 +56,7 @@ let reconnectTimer = null;
 let isOfferSent = false;
 let soyOfertante = false;
 let soyAnswer = false;
+let rolAsignado = false;
 
 // ============================================
 // 🔊 CONTROL DE AUDIO
@@ -295,7 +296,6 @@ function mostrarVideoRemoto(stream, peerId) {
     
     if (!stream || stream === streamLocal) return;
     
-    // SI YA ESTÁ REPRODUCIENDO, NO REASIGNAR
     if (videoRemoto.srcObject === stream && !videoRemoto.paused) {
         console.log('ℹ️ Video ya está reproduciendo');
         return;
@@ -308,7 +308,6 @@ function mostrarVideoRemoto(stream, peerId) {
     const videoTracks = stream.getVideoTracks();
     console.log(`🎵 Audio: ${audioTracks.length}, Video: ${videoTracks.length}`);
     
-    // Limpiar si es diferente
     if (videoRemoto.srcObject && videoRemoto.srcObject !== stream) {
         try { videoRemoto.pause(); } catch(e) {}
         videoRemoto.srcObject = null;
@@ -318,7 +317,6 @@ function mostrarVideoRemoto(stream, peerId) {
         audioRemoto.srcObject = null;
     }
     
-    // Asignar
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     video.style.display = "block";
@@ -339,7 +337,6 @@ function mostrarVideoRemoto(stream, peerId) {
         audioRemoto.setAttribute('playsinline', 'true');
     }
     
-    // Reproducir
     setTimeout(() => {
         videoRemoto.play().then(() => {
             console.log('✅ Video remoto reproduciendo');
@@ -588,6 +585,7 @@ function conectarConTodos(clientes) {
     // 🔥 DECIDIR QUIÉN OFERTA: EL QUE TIENE EL ID MÁS PEQUEÑO
     soyOfertante = socket.id < targetId;
     soyAnswer = !soyOfertante;
+    rolAsignado = true;
     
     console.log(`📌 ROL: ${soyOfertante ? '🟢 OFERTANTE' : '🔴 ANSWER'} (${socket.id.substring(0,6)} vs ${targetId.substring(0,6)})`);
     
@@ -623,6 +621,7 @@ socket.on("connect", async () => {
     isOfferSent = false;
     soyOfertante = false;
     soyAnswer = false;
+    rolAsignado = false;
     actualizarEstado("🟢 Conectado al servidor", "conectado");
     actualizarInfoPeer(null);
     await obtenerTurnServers();
@@ -634,9 +633,9 @@ socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA DE: ${from}`);
     
-    // 🔥 SOLO EL ANSWER PROCESA OFERTAS
-    if (soyOfertante) {
-        console.log(`⚠️ Soy OFERTANTE, ignorando oferta de ${from}`);
+    // 🔥 SI YA TENEMOS ROL ASIGNADO Y SOMOS OFERTANTE, IGNORAR
+    if (rolAsignado && soyOfertante) {
+        console.log(`⚠️ Soy OFERTANTE (rol asignado), ignorando oferta de ${from}`);
         return;
     }
     
@@ -649,6 +648,12 @@ socket.on("offer", async (data) => {
     // Si ya estamos en negociación, ignorar
     if (peers[from] && (peers[from].signalingState === 'have-local-offer' || peers[from].signalingState === 'have-remote-offer')) {
         console.log(`⏳ Ya en negociación`);
+        return;
+    }
+    
+    // 🔥 SI ENVIAMOS OFERTA, IGNORAR LA DEL OTRO
+    if (isOfferSent) {
+        console.log(`⏳ Ya enviamos oferta, ignorando la de ${from}`);
         return;
     }
     
@@ -696,7 +701,7 @@ socket.on("answer", async (data) => {
     console.log(`📩 RESPUESTA DE: ${from}`);
     
     // 🔥 SOLO EL OFERTANTE PROCESA RESPUESTAS
-    if (!soyOfertante) {
+    if (rolAsignado && !soyOfertante) {
         console.log(`⚠️ Soy ANSWER, ignorando respuesta de ${from}`);
         return;
     }
@@ -782,6 +787,7 @@ socket.on("cliente-desconectado", (data) => {
     isOfferSent = false;
     soyOfertante = false;
     soyAnswer = false;
+    rolAsignado = false;
     if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -794,6 +800,7 @@ socket.on("disconnect", () => {
     isOfferSent = false;
     soyOfertante = false;
     soyAnswer = false;
+    rolAsignado = false;
     actualizarEstado("🔴 Reconectando...", "desconectado");
     ocultarVideoRemoto();
     Object.keys(peers).forEach(key => limpiarPeer(key));
@@ -845,6 +852,7 @@ async function iniciarCamara() {
         isOfferSent = false;
         soyOfertante = false;
         soyAnswer = false;
+        rolAsignado = false;
         actualizarEstado("🟢 Cámara lista", "conectado");
         
         setTimeout(() => socket.emit("clientes-conectados"), 1000);
@@ -953,6 +961,7 @@ document.addEventListener('DOMContentLoaded', () => {
             isOfferSent = false;
             soyOfertante = false;
             soyAnswer = false;
+            rolAsignado = false;
             ocultarVideoRemoto();
             Object.keys(peers).forEach(key => limpiarPeer(key));
             audioController.destroyAll();

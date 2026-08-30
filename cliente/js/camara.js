@@ -70,8 +70,8 @@ let rolAsignado = false;
 let pc = null;
 let conectado = false;
 let videoReproduciendo = false;
-let miId = null;
 let peerId = null;
+let audioCreado = false;
 
 // ============================================
 // 🔊 AUDIO CONTROLLER
@@ -131,6 +131,7 @@ class AudioController {
             gainNode.connect(this.globalContext.destination);
             this.audioContexts.set('remoto', { source, gainNode, filter });
             console.log('✅ Audio remoto CREADO (WebAudio)');
+            audioCreado = true;
             return true;
         } catch (error) {
             console.error('❌ Error creando audio:', error);
@@ -166,6 +167,7 @@ class AudioController {
             } catch (e) {}
             this.audioContexts.delete('remoto');
             console.log('🗑️ Audio destruido');
+            audioCreado = false;
         }
     }
 
@@ -178,6 +180,7 @@ class AudioController {
             } catch (e) {}
         }
         this.audioContexts.clear();
+        audioCreado = false;
         console.log('🗑️ Todos los audios destruidos');
     }
 
@@ -289,6 +292,12 @@ function mostrarVideoRemoto(stream) {
         return;
     }
     
+    // 🔥 SI EL VIDEO YA ESTÁ REPRODUCIENDO, NO HACER NADA
+    if (videoReproduciendo && videoRemoto.srcObject === stream) {
+        console.log('ℹ️ Video ya está reproduciendo, ignorando');
+        return;
+    }
+    
     const audioTracks = stream.getAudioTracks();
     const videoTracks = stream.getVideoTracks();
     console.log(`🎵 Audio: ${audioTracks.length}, Video: ${videoTracks.length}`);
@@ -322,6 +331,12 @@ function mostrarVideoRemoto(stream) {
     const maxIntentos = 10;
     
     function intentarReproducir() {
+        // 🔥 SI YA ESTAMOS REPRODUCIENDO, SALIR
+        if (videoReproduciendo) {
+            console.log('ℹ️ Video ya está reproduciendo, saliendo de intentos');
+            return;
+        }
+        
         intentos++;
         console.log(`🔄 Intento ${intentos} de reproducción...`);
         
@@ -338,7 +353,7 @@ function mostrarVideoRemoto(stream) {
                 videoReproduciendo = true;
                 ocultarBotonReproducir();
                 
-                if (audioTracks.length > 0) {
+                if (audioTracks.length > 0 && !audioCreado) {
                     audioRemoto.play()
                         .then(() => {
                             console.log('✅ Audio remoto reproduciendo');
@@ -349,7 +364,7 @@ function mostrarVideoRemoto(stream) {
                             audioController.createAudioForPeer(stream);
                             actualizarEstado('🟢 Conectado (audio WebAudio)', 'conectado');
                         });
-                } else {
+                } else if (audioTracks.length === 0) {
                     actualizarEstado('🟢 Conectado (sin audio)', 'conectado');
                 }
                 isConnecting = false;
@@ -453,6 +468,7 @@ function limpiarPeer() {
     isOfferSent = false;
     conectado = false;
     videoReproduciendo = false;
+    peerId = null;
 }
 
 // ============================================
@@ -540,6 +556,7 @@ function handleFailure() {
     rolAsignado = false;
     conectado = false;
     videoReproduciendo = false;
+    peerId = null;
     actualizarEstado('🔴 Desconectado', 'desconectado');
 }
 
@@ -666,18 +683,17 @@ function conectarConTodos(clientes) {
 
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
-    miId = socket.id;
     isConnecting = false;
     isOfferSent = false;
     soyOfertante = false;
     rolAsignado = false;
     conectado = false;
     videoReproduciendo = false;
+    peerId = null;
     actualizarEstado("🟢 Conectado al servidor", "conectado");
     actualizarInfoPeer(null);
     await obtenerTurnServers();
     await audioController.init();
-    // Esperar un momento antes de pedir la lista
     setTimeout(() => socket.emit("clientes-conectados"), 1500);
 });
 
@@ -685,9 +701,9 @@ socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA DE: ${from}`);
     
-    // Si ya estamos conectados, ignorar
+    // 🔥 SI YA ESTAMOS CONECTADOS, IGNORAR COMPLETAMENTE
     if (conectado || (pc && pc.connectionState === "connected")) {
-        console.log('ℹ️ Ya conectado, ignorando');
+        console.log('ℹ️ Ya conectado, ignorando oferta');
         return;
     }
     
@@ -816,23 +832,19 @@ socket.on("ice-candidate", async (data) => {
 socket.on("clientes-conectados", (lista) => {
     console.log("📋 Clientes:", lista);
     
-    // 🔥 FILTRAR: Solo usar el primer cliente de la lista (el más antiguo)
-    const otros = lista.filter(id => id !== socket.id);
-    
     // Si ya estamos conectados, ignorar
     if (conectado || (pc && pc.connectionState === "connected")) {
         console.log('✅ Ya conectado, ignorando lista');
         return;
     }
     
-    // Si solo estamos nosotros, esperar
+    const otros = lista.filter(id => id !== socket.id);
     if (otros.length === 0) {
         actualizarEstado('🟢 Esperando otro equipo', 'conectado');
         actualizarInfoPeer(null);
         return;
     }
     
-    // 🔥 SOLO CONECTAR SI NO ESTAMOS YA EN PROCESO
     if (!isConnecting) {
         console.log('🔄 Iniciando conexión con el primer cliente disponible...');
         setTimeout(() => conectarConTodos(lista), 500);
@@ -841,7 +853,6 @@ socket.on("clientes-conectados", (lista) => {
 
 socket.on("nuevo-cliente", (data) => {
     console.log("🆕 Nuevo cliente:", data.id);
-    // Solo conectar si no estamos ya conectados o conectando
     if (!conectado && !isConnecting && !pc) {
         setTimeout(() => socket.emit("clientes-conectados"), 1000);
     }
@@ -849,7 +860,6 @@ socket.on("nuevo-cliente", (data) => {
 
 socket.on("cliente-desconectado", (data) => {
     console.log("🔴 Cliente desconectado:", data.id);
-    // Si el peer desconectado era nuestro peer, limpiar todo
     if (peerId === data.id || (pc && data.id)) {
         handleFailure();
     }
@@ -917,6 +927,7 @@ async function iniciarCamara() {
         rolAsignado = false;
         conectado = false;
         videoReproduciendo = false;
+        peerId = null;
         actualizarEstado("🟢 Cámara lista", "conectado");
         
         setTimeout(() => socket.emit("clientes-conectados"), 1000);

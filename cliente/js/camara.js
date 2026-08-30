@@ -31,7 +31,7 @@ if (isMobile) {
 }
 
 // ============================================
-// 🔌 SOCKET - CON RECONEXIÓN LIMITADA
+// 🔌 SOCKET
 // ============================================
 const socket = io("https://ventana-digital.onrender.com", {
     transports: ['websocket', 'polling'],
@@ -54,7 +54,6 @@ let isOfferSent = false;
 let soyOfertante = false;
 let rolAsignado = false;
 let pc = null;
-let targetId = null;
 let conectado = false;
 
 // ============================================
@@ -341,7 +340,7 @@ function ocultarVideoRemoto() {
 }
 
 // ============================================
-// 🧹 LIMPIAR PEER - SOLO UNA CONEXIÓN
+// 🧹 LIMPIAR PEER
 // ============================================
 function limpiarPeer() {
     if (pc) {
@@ -359,18 +358,15 @@ function limpiarPeer() {
     isConnecting = false;
     isOfferSent = false;
     conectado = false;
-    targetId = null;
 }
 
 // ============================================
-// 🔥 CREAR PEER - SOLO UNA
+// 🔥 CREAR PEER
 // ============================================
 function crearPeerConnection(id) {
-    // LIMPIAR CONEXIÓN ANTERIOR
     limpiarPeer();
     
     console.log(`🔗 Creando conexión con: ${id}`);
-    targetId = id;
     
     try {
         pc = new RTCPeerConnection({
@@ -512,10 +508,9 @@ function iniciarOferta(id) {
 }
 
 // ============================================
-// 🔗 CONECTAR - VERSIÓN FINAL
+// 🔗 CONECTAR
 // ============================================
 function conectarConTodos(clientes) {
-    // SI YA ESTAMOS CONECTADOS, SALIR
     if (conectado) {
         console.log('✅ Ya conectado');
         return;
@@ -536,7 +531,6 @@ function conectarConTodos(clientes) {
     const id = otros[0];
     console.log(`🎯 Conectando con: ${id}`);
     
-    // SI YA HAY PEER Y ESTÁ CONECTADO, NO CREAR OTRO
     if (pc && pc.connectionState === "connected") {
         console.log('✅ Ya conectado');
         conectado = true;
@@ -549,7 +543,6 @@ function conectarConTodos(clientes) {
         return;
     }
     
-    // DECIDIR ROL: ID MÁS PEQUEÑO = OFERTANTE
     soyOfertante = socket.id < id;
     rolAsignado = true;
     
@@ -574,7 +567,7 @@ function conectarConTodos(clientes) {
 }
 
 // ============================================
-// 📡 EVENTOS SOCKET - VERSIÓN FINAL
+// 📡 EVENTOS SOCKET
 // ============================================
 
 socket.on("connect", async () => {
@@ -595,7 +588,6 @@ socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA DE: ${from}`);
     
-    // SI YA ESTAMOS CONECTADOS
     if (conectado || (pc && pc.connectionState === "connected")) {
         console.log('ℹ️ Ya conectado, ignorando');
         return;

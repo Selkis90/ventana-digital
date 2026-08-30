@@ -13,6 +13,7 @@ function iniciarApp() {
 const video = document.getElementById("video");
 const videoRemoto = document.getElementById("video-remoto");
 const audioRemoto = document.getElementById("audio-remoto");
+const btnPlay = document.getElementById("btn-play");
 
 if (!video || !videoRemoto || !audioRemoto) {
     console.error('❌ Error: Elementos HTML no encontrados');
@@ -283,7 +284,7 @@ async function obtenerTurnServers() {
 }
 
 // ============================================
-// 📹 MOSTRAR VIDEO REMOTO - VERSIÓN DEFINITIVA
+// 📹 MOSTRAR VIDEO REMOTO
 // ============================================
 function mostrarVideoRemoto(stream) {
     console.log('📹 ASIGNANDO VIDEO REMOTO');
@@ -292,7 +293,6 @@ function mostrarVideoRemoto(stream) {
         return;
     }
     
-    // 🔥 SI EL VIDEO YA ESTÁ REPRODUCIENDO, NO HACER NADA
     if (videoReproduciendo && videoRemoto.srcObject === stream) {
         console.log('ℹ️ Video ya está reproduciendo, ignorando');
         return;
@@ -326,14 +326,17 @@ function mostrarVideoRemoto(stream) {
         audioRemoto.setAttribute('playsinline', 'true');
     }
     
+    // Mostrar botón de reproducción si es necesario
+    mostrarBotonReproducir(stream);
+    
     // Intentar reproducir
     let intentos = 0;
     const maxIntentos = 10;
     
     function intentarReproducir() {
-        // 🔥 SI YA ESTAMOS REPRODUCIENDO, SALIR
         if (videoReproduciendo) {
             console.log('ℹ️ Video ya está reproduciendo, saliendo de intentos');
+            ocultarBotonReproducir();
             return;
         }
         
@@ -342,7 +345,7 @@ function mostrarVideoRemoto(stream) {
         
         if (intentos > maxIntentos) {
             console.warn('⚠️ No se pudo reproducir automáticamente.');
-            actualizarEstado('🔴 Haz clic en el video para reproducir', 'desconectado');
+            actualizarEstado('🔴 Haz clic en VER VIDEO', 'desconectado');
             mostrarBotonReproducir(stream);
             return;
         }
@@ -380,52 +383,39 @@ function mostrarVideoRemoto(stream) {
     }
     
     function mostrarBotonReproducir(stream) {
-        let btnPlay = document.getElementById('btn-play-remoto');
-        if (!btnPlay) {
-            btnPlay = document.createElement('button');
-            btnPlay.id = 'btn-play-remoto';
-            btnPlay.innerHTML = '▶️ HAZ CLIC PARA VER VIDEO';
-            btnPlay.style.cssText = `
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                z-index: 9999;
-                padding: 20px 40px;
-                font-size: 24px;
-                background: #007bff;
-                color: white;
-                border: none;
-                border-radius: 10px;
-                cursor: pointer;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            `;
-            document.body.appendChild(btnPlay);
-            
-            btnPlay.addEventListener('click', function() {
-                console.log('🔄 Usuario hizo clic en reproducir');
-                videoRemoto.play()
-                    .then(() => {
-                        console.log('✅ Video reproducido por usuario');
-                        videoReproduciendo = true;
-                        ocultarBotonReproducir();
-                        if (stream.getAudioTracks().length > 0) {
-                            audioRemoto.play().catch(() => {});
-                            audioController.createAudioForPeer(stream);
-                        }
-                        actualizarEstado('🟢 Conectado con audio', 'conectado');
-                    })
-                    .catch(err => {
-                        console.error('❌ Error al reproducir:', err);
-                    });
-            });
+        if (btnPlay) {
+            btnPlay.style.display = 'block';
+            // Eliminar eventos anteriores para evitar duplicados
+            const newBtn = btnPlay.cloneNode(true);
+            btnPlay.parentNode.replaceChild(newBtn, btnPlay);
+            // Actualizar referencia
+            const nuevoBtn = document.getElementById('btn-play');
+            if (nuevoBtn) {
+                nuevoBtn.addEventListener('click', function() {
+                    console.log('🔄 Usuario hizo clic en VER VIDEO');
+                    videoRemoto.play()
+                        .then(() => {
+                            console.log('✅ Video reproducido por usuario');
+                            videoReproduciendo = true;
+                            nuevoBtn.style.display = 'none';
+                            if (stream.getAudioTracks().length > 0) {
+                                audioRemoto.play().catch(() => {});
+                                audioController.createAudioForPeer(stream);
+                            }
+                            actualizarEstado('🟢 Conectado con audio', 'conectado');
+                        })
+                        .catch(err => {
+                            console.error('❌ Error al reproducir:', err);
+                        });
+                });
+            }
         }
-        btnPlay.style.display = 'block';
     }
     
     function ocultarBotonReproducir() {
-        const btnPlay = document.getElementById('btn-play-remoto');
-        if (btnPlay) btnPlay.style.display = 'none';
+        if (btnPlay) {
+            btnPlay.style.display = 'none';
+        }
     }
     
     setTimeout(intentarReproducir, 300);
@@ -446,6 +436,7 @@ function ocultarVideoRemoto() {
     audioController.destroyAll();
     if (streamLocal) video.style.display = "block";
     actualizarInfoPeer(null);
+    if (btnPlay) btnPlay.style.display = 'none';
 }
 
 // ============================================
@@ -621,10 +612,9 @@ function iniciarOferta(id) {
 }
 
 // ============================================
-// 🔗 CONECTAR - CON CONTROL DE DUPLICADOS
+// 🔗 CONECTAR
 // ============================================
 function conectarConTodos(clientes) {
-    // Si ya estamos conectados, salir
     if (conectado) {
         console.log('✅ Ya conectado');
         return;
@@ -635,7 +625,6 @@ function conectarConTodos(clientes) {
         return;
     }
     
-    // Filtrar solo el primer otro cliente (el más antiguo)
     const otros = clientes.filter(id => id !== socket.id);
     if (otros.length === 0) {
         console.log('⏳ No hay otros clientes');
@@ -643,17 +632,14 @@ function conectarConTodos(clientes) {
         return;
     }
     
-    // 🔥 SOLO CONECTAR CON EL PRIMER CLIENTE DE LA LISTA
     const id = otros[0];
     console.log(`🎯 Conectando con: ${id}`);
     
-    // Si ya hay un peer conectado, no crear otro
     if (pc && (pc.connectionState === "connected" || pc.connectionState === "connecting")) {
         console.log(`⏳ Ya en estado: ${pc.connectionState}`);
         return;
     }
     
-    // Decidir rol: el que tiene el ID más pequeño es OFERTANTE
     soyOfertante = socket.id < id;
     rolAsignado = true;
     
@@ -678,7 +664,7 @@ function conectarConTodos(clientes) {
 }
 
 // ============================================
-// 📡 EVENTOS SOCKET - VERSIÓN DEFINITIVA
+// 📡 EVENTOS SOCKET
 // ============================================
 
 socket.on("connect", async () => {
@@ -701,31 +687,26 @@ socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA DE: ${from}`);
     
-    // 🔥 SI YA ESTAMOS CONECTADOS, IGNORAR COMPLETAMENTE
     if (conectado || (pc && pc.connectionState === "connected")) {
         console.log('ℹ️ Ya conectado, ignorando oferta');
         return;
     }
     
-    // Si somos ofertante, ignorar (solo el ANSWER responde)
     if (soyOfertante) {
         console.log('⚠️ Soy OFERTANTE, ignorando');
         return;
     }
     
-    // Si ya enviamos oferta, ignorar
     if (isOfferSent) {
         console.log('⏳ Ya enviamos oferta, ignorando');
         return;
     }
     
-    // Si ya estamos en negociación, ignorar
     if (pc && (pc.signalingState === 'have-local-offer' || pc.signalingState === 'have-remote-offer')) {
         console.log('⏳ Ya en negociación');
         return;
     }
     
-    // Limpiar peer anterior
     limpiarPeer();
     
     try {
@@ -775,7 +756,6 @@ socket.on("answer", async (data) => {
     const { from, answer } = data;
     console.log(`📩 RESPUESTA DE: ${from}`);
     
-    // Solo el OFERTANTE procesa respuestas
     if (!soyOfertante) {
         console.log('⚠️ Soy ANSWER, ignorando');
         return;
@@ -832,7 +812,6 @@ socket.on("ice-candidate", async (data) => {
 socket.on("clientes-conectados", (lista) => {
     console.log("📋 Clientes:", lista);
     
-    // Si ya estamos conectados, ignorar
     if (conectado || (pc && pc.connectionState === "connected")) {
         console.log('✅ Ya conectado, ignorando lista');
         return;

@@ -45,16 +45,17 @@ const socket = io("https://ventana-digital.onrender.com", {
 });
 
 // ============================================
-// 📦 VARIABLES GLOBALES - SIMPLIFICADAS
+// 📦 VARIABLES GLOBALES
 // ============================================
 const peers = {};
 let streamLocal = null;
 let turnServers = [];
 let peerIdRemoto = null;
 let isConnecting = false;
-let connectionAttempts = 0;
 let reconnectTimer = null;
 let isOfferSent = false;
+let soyOfertante = false;
+let soyAnswer = false;
 
 // ============================================
 // 🔊 CONTROL DE AUDIO
@@ -294,7 +295,7 @@ function mostrarVideoRemoto(stream, peerId) {
     
     if (!stream || stream === streamLocal) return;
     
-    // 🔥 SI YA ESTÁ REPRODUCIENDO, NO REASIGNAR
+    // SI YA ESTÁ REPRODUCIENDO, NO REASIGNAR
     if (videoRemoto.srcObject === stream && !videoRemoto.paused) {
         console.log('ℹ️ Video ya está reproduciendo');
         return;
@@ -351,7 +352,6 @@ function mostrarVideoRemoto(stream, peerId) {
                 });
             }
             isConnecting = false;
-            connectionAttempts = 0;
         }).catch(err => {
             console.warn('⚠️ Error en video:', err.message);
             setTimeout(() => videoRemoto.play().catch(() => {}), 500);
@@ -459,7 +459,6 @@ function crearPeerConnection(targetId) {
             actualizarInfoPeer(targetId);
             isConnecting = false;
             isOfferSent = false;
-            connectionAttempts = 0;
         } else if (pc.connectionState === "failed") {
             handleConnectionFailure(targetId);
         }
@@ -486,13 +485,13 @@ function handleConnectionFailure(targetId) {
 }
 
 // ============================================
-// 📤 INICIAR OFERTA - SOLO UNO
+// 📤 INICIAR OFERTA
 // ============================================
 function iniciarOferta(targetId, pc) {
     console.log(`📤 Iniciando oferta para ${targetId}`);
     
     if (isOfferSent) {
-        console.log(`⏳ Oferta ya enviada, esperando respuesta...`);
+        console.log(`⏳ Oferta ya enviada`);
         return;
     }
     
@@ -504,7 +503,7 @@ function iniciarOferta(targetId, pc) {
     }
     
     if (pc.signalingState !== 'stable') {
-        console.log(`⏳ Signaling state no es stable: ${pc.signalingState}, esperando...`);
+        console.log(`⏳ Signaling state: ${pc.signalingState}, esperando...`);
         setTimeout(() => {
             if (pc.signalingState === 'stable' && peers[targetId]) {
                 iniciarOferta(targetId, pc);
@@ -546,7 +545,7 @@ function iniciarOferta(targetId, pc) {
 }
 
 // ============================================
-// 🔗 CONECTAR CON TODOS - VERSIÓN FINAL
+// 🔗 CONECTAR CON TODOS - CON ROLES FIJOS
 // ============================================
 function conectarConTodos(clientes) {
     if (isConnecting) {
@@ -586,40 +585,44 @@ function conectarConTodos(clientes) {
         limpiarPeer(targetId);
     }
     
+    // 🔥 DECIDIR QUIÉN OFERTA: EL QUE TIENE EL ID MÁS PEQUEÑO
+    soyOfertante = socket.id < targetId;
+    soyAnswer = !soyOfertante;
+    
+    console.log(`📌 ROL: ${soyOfertante ? '🟢 OFERTANTE' : '🔴 ANSWER'} (${socket.id.substring(0,6)} vs ${targetId.substring(0,6)})`);
+    
     isConnecting = true;
     isOfferSent = false;
     
-    // SOLO UNO OFERTA - EL QUE LLEGA PRIMERO
-    reconnectTimer = setTimeout(() => {
-        if (peers[targetId]) {
-            const pc = peers[targetId];
-            if (pc.connectionState === "connected" || pc.connectionState === "connecting") {
-                console.log(`ℹ️ El otro equipo ya inició, esperando...`);
-                isConnecting = false;
-                reconnectTimer = null;
-                return;
-            }
-        }
-        
+    // SOLO EL OFERTANTE INICIA LA CONEXIÓN
+    if (soyOfertante) {
         console.log(`📤 INICIANDO COMO OFERTANTE...`);
-        const pc = crearPeerConnection(targetId);
-        if (pc && pc.signalingState !== 'closed') {
-            iniciarOferta(targetId, pc);
-        } else {
-            isConnecting = false;
-        }
-        reconnectTimer = null;
-    }, 1000);
+        reconnectTimer = setTimeout(() => {
+            const pc = crearPeerConnection(targetId);
+            if (pc && pc.signalingState !== 'closed') {
+                iniciarOferta(targetId, pc);
+            } else {
+                isConnecting = false;
+            }
+            reconnectTimer = null;
+        }, 500);
+    } else {
+        console.log(`📥 ESPERANDO COMO ANSWER...`);
+        actualizarEstado("🟢 Esperando conexión entrante...", "conectado");
+        isConnecting = false;
+    }
 }
 
 // ============================================
-// 📡 EVENTOS SOCKET.IO - VERSIÓN FINAL
+// 📡 EVENTOS SOCKET.IO - VERSIÓN DEFINITIVA
 // ============================================
 
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
     isConnecting = false;
     isOfferSent = false;
+    soyOfertante = false;
+    soyAnswer = false;
     actualizarEstado("🟢 Conectado al servidor", "conectado");
     actualizarInfoPeer(null);
     await obtenerTurnServers();
@@ -631,19 +634,19 @@ socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA DE: ${from}`);
     
-    // 🔥 IGNORAR SI YA ESTAMOS CONECTADOS
+    // 🔥 SOLO EL ANSWER PROCESA OFERTAS
+    if (soyOfertante) {
+        console.log(`⚠️ Soy OFERTANTE, ignorando oferta de ${from}`);
+        return;
+    }
+    
+    // Si ya estamos conectados, ignorar
     if (peers[from] && peers[from].connectionState === "connected") {
         console.log(`ℹ️ Ya conectado con ${from}`);
         return;
     }
     
-    // 🔥 IGNORAR SI YA ENVIAMOS OFERTA
-    if (isOfferSent) {
-        console.log(`⏳ Ya enviamos oferta, esperando respuesta...`);
-        return;
-    }
-    
-    // 🔥 IGNORAR SI YA ESTAMOS EN NEGOCIACIÓN
+    // Si ya estamos en negociación, ignorar
     if (peers[from] && (peers[from].signalingState === 'have-local-offer' || peers[from].signalingState === 'have-remote-offer')) {
         console.log(`⏳ Ya en negociación`);
         return;
@@ -681,7 +684,6 @@ socket.on("offer", async (data) => {
         socket.emit("answer", { target: from, answer: pc.localDescription });
         console.log(`✅ Respuesta enviada a: ${from}`);
         isConnecting = false;
-        connectionAttempts = 0;
     } catch (error) {
         console.error(`❌ Error:`, error);
         limpiarPeer(from);
@@ -692,6 +694,12 @@ socket.on("offer", async (data) => {
 socket.on("answer", async (data) => {
     const { from, answer } = data;
     console.log(`📩 RESPUESTA DE: ${from}`);
+    
+    // 🔥 SOLO EL OFERTANTE PROCESA RESPUESTAS
+    if (!soyOfertante) {
+        console.log(`⚠️ Soy ANSWER, ignorando respuesta de ${from}`);
+        return;
+    }
     
     const pc = peers[from];
     if (!pc) {
@@ -704,22 +712,21 @@ socket.on("answer", async (data) => {
         return;
     }
 
-    // SOLO PROCESAR SI ESTAMOS EN EL ESTADO CORRECTO
-    if (pc.signalingState === 'have-local-offer') {
-        try {
-            await pc.setRemoteDescription(new RTCSessionDescription(answer));
-            console.log(`✅ Descripción remota establecida (respuesta)`);
-            isConnecting = false;
-            connectionAttempts = 0;
-            isOfferSent = false;
-        } catch (error) {
-            console.error(`❌ Error:`, error);
-            limpiarPeer(from);
-            isConnecting = false;
-            isOfferSent = false;
-        }
-    } else {
+    if (pc.signalingState !== 'have-local-offer') {
         console.log(`ℹ️ Estado ${pc.signalingState}, ignorando respuesta`);
+        return;
+    }
+
+    try {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        console.log(`✅ Descripción remota establecida (respuesta)`);
+        isConnecting = false;
+        isOfferSent = false;
+    } catch (error) {
+        console.error(`❌ Error:`, error);
+        limpiarPeer(from);
+        isConnecting = false;
+        isOfferSent = false;
     }
 });
 
@@ -773,6 +780,8 @@ socket.on("cliente-desconectado", (data) => {
     }
     isConnecting = false;
     isOfferSent = false;
+    soyOfertante = false;
+    soyAnswer = false;
     if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -783,6 +792,8 @@ socket.on("disconnect", () => {
     console.log("❌ Desconectado del servidor");
     isConnecting = false;
     isOfferSent = false;
+    soyOfertante = false;
+    soyAnswer = false;
     actualizarEstado("🔴 Reconectando...", "desconectado");
     ocultarVideoRemoto();
     Object.keys(peers).forEach(key => limpiarPeer(key));
@@ -832,6 +843,8 @@ async function iniciarCamara() {
         await audioController.init();
         isConnecting = false;
         isOfferSent = false;
+        soyOfertante = false;
+        soyAnswer = false;
         actualizarEstado("🟢 Cámara lista", "conectado");
         
         setTimeout(() => socket.emit("clientes-conectados"), 1000);
@@ -938,6 +951,8 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("🔄 Forzando reconexión...");
             isConnecting = false;
             isOfferSent = false;
+            soyOfertante = false;
+            soyAnswer = false;
             ocultarVideoRemoto();
             Object.keys(peers).forEach(key => limpiarPeer(key));
             audioController.destroyAll();
@@ -998,6 +1013,7 @@ function mostrarDiagnostico() {
     badge.innerHTML = `
         <div class="diagnostico-header">📊 DIAGNÓSTICO</div>
         <div class="info-line"><span class="label">🔗 Socket ID:</span><span class="value">${socket.id ? socket.id.substring(0, 8) : 'N/A'}</span></div>
+        <div class="info-line"><span class="label">📌 ROL:</span><span class="value ${soyOfertante ? 'success' : 'warning'}">${soyOfertante ? '🟢 OFERTANTE' : soyAnswer ? '🔴 ANSWER' : '⏳ SIN DEFINIR'}</span></div>
         <div class="info-line"><span class="label">📡 Conexiones:</span><span class="value ${activePeers.length === 0 ? 'warning' : ''}">${activePeers.length} / ${peerIds.length}</span></div>
         <div class="info-line"><span class="label">🔗 Estado peer:</span><span class="value">${connectionState}</span></div>
         <div class="info-line"><span class="label">🎤 Micrófono LOCAL:</span><span class="value ${!tieneAudioLocal ? 'error' : ''}">${tieneAudioLocal ? '✅ Activo' : '❌ Sin audio'}</span></div>

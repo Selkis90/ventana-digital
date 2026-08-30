@@ -1,5 +1,5 @@
 // ============================================
-// 📱 CONFIGURACIÓN INICIAL Y DETECCIÓN
+// 📱 CONFIGURACIÓN INICIAL
 // ============================================
 const video = document.getElementById("video");
 const videoRemoto = document.getElementById("video-remoto");
@@ -31,12 +31,12 @@ if (isMobile) {
 }
 
 // ============================================
-// 🔌 CONFIGURACIÓN DE SOCKET
+// 🔌 SOCKET - CON RECONEXIÓN LIMITADA
 // ============================================
 const socket = io("https://ventana-digital.onrender.com", {
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionAttempts: 3,
+    reconnectionAttempts: 2,
     reconnectionDelay: 2000,
     reconnectionDelayMax: 5000,
     timeout: 30000,
@@ -45,7 +45,7 @@ const socket = io("https://ventana-digital.onrender.com", {
 });
 
 // ============================================
-// 📦 VARIABLES GLOBALES - SIMPLIFICADAS
+// 📦 VARIABLES - SOLO UNA CONEXIÓN
 // ============================================
 let streamLocal = null;
 let turnServers = [];
@@ -54,10 +54,11 @@ let isOfferSent = false;
 let soyOfertante = false;
 let rolAsignado = false;
 let pc = null;
-let targetPeerId = null;
+let targetId = null;
+let conectado = false;
 
 // ============================================
-// 🔊 CONTROL DE AUDIO
+// 🔊 AUDIO CONTROLLER
 // ============================================
 class AudioController {
     constructor() {
@@ -68,9 +69,7 @@ class AudioController {
     }
 
     async init() {
-        if (this.isInitialized && this.globalContext && this.globalContext.state !== 'closed') {
-            return true;
-        }
+        if (this.isInitialized && this.globalContext && this.globalContext.state !== 'closed') return true;
         try {
             if (this.isIOS) {
                 if (!window._iosAudioContext) {
@@ -100,33 +99,21 @@ class AudioController {
             if (!stream || stream === streamLocal) return false;
             const audioTracks = stream.getAudioTracks();
             if (audioTracks.length === 0) return false;
-
-            if (this.audioContexts.has('remoto')) {
-                this.destroyAudioForPeer();
-            }
-
+            if (this.audioContexts.has('remoto')) this.destroyAudioForPeer();
             if (!this.globalContext || this.globalContext.state === 'closed') {
                 this.isInitialized = false;
                 return false;
             }
-
             const source = this.globalContext.createMediaStreamSource(stream);
             const gainNode = this.globalContext.createGain();
             gainNode.gain.value = 0.3;
             const filter = this.globalContext.createBiquadFilter();
             filter.type = 'lowpass';
             filter.frequency.value = isMobile ? 6000 : 8000;
-            
             source.connect(filter);
             filter.connect(gainNode);
             gainNode.connect(this.globalContext.destination);
-            
-            this.audioContexts.set('remoto', {
-                source: source,
-                gainNode: gainNode,
-                filter: filter
-            });
-            
+            this.audioContexts.set('remoto', { source, gainNode, filter });
             console.log('✅ Audio remoto CREADO');
             return true;
         } catch (error) {
@@ -192,7 +179,7 @@ class AudioController {
 const audioController = new AudioController();
 
 // ============================================
-// 🎵 CREAR TRACK DE AUDIO SILENCIOSO
+// 🎵 TRACK SILENCIOSO
 // ============================================
 function crearTrackAudioSilencioso() {
     try {
@@ -200,9 +187,7 @@ function crearTrackAudioSilencioso() {
         const bufferSize = audioContext.sampleRate * 1;
         const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
         const data = buffer.getChannelData(0);
-        for (let i = 0; i < data.length; i++) {
-            data[i] = 0;
-        }
+        for (let i = 0; i < data.length; i++) data[i] = 0;
         const source = audioContext.createBufferSource();
         source.buffer = buffer;
         source.loop = true;
@@ -233,7 +218,7 @@ function asegurarAudioLocal() {
 }
 
 // ============================================
-// 🔧 FUNCIONES DE UI
+// 🔧 UI
 // ============================================
 function actualizarEstado(mensaje, tipo) {
     const estado = document.getElementById("estado");
@@ -246,16 +231,12 @@ function actualizarEstado(mensaje, tipo) {
 function actualizarInfoPeer(id) {
     const miId = document.getElementById('mi-id');
     const peerInfo = document.getElementById('peer-conectado');
-    if (miId) {
-        miId.textContent = `ID: ${socket.id ? socket.id.substring(0, 8) : 'Conectando...'}`;
-    }
-    if (peerInfo) {
-        peerInfo.textContent = `Peer: ${id ? id.substring(0, 8) : 'Ninguno'}`;
-    }
+    if (miId) miId.textContent = `ID: ${socket.id ? socket.id.substring(0, 8) : 'Conectando...'}`;
+    if (peerInfo) peerInfo.textContent = `Peer: ${id ? id.substring(0, 8) : 'Ninguno'}`;
 }
 
 // ============================================
-// 🌐 OBTENER TURN SERVERS
+// 🌐 TURN SERVERS
 // ============================================
 async function obtenerTurnServers() {
     try {
@@ -274,11 +255,7 @@ async function obtenerTurnServers() {
     turnServers = [
         { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
         {
-            urls: [
-                "turn:openrelay.metered.ca:80",
-                "turn:openrelay.metered.ca:443",
-                "turn:openrelay.metered.ca:3478"
-            ],
+            urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443", "turn:openrelay.metered.ca:3478"],
             username: "openrelayproject",
             credential: "openrelayproject"
         }
@@ -291,10 +268,7 @@ async function obtenerTurnServers() {
 // ============================================
 function mostrarVideoRemoto(stream) {
     console.log('📹 ASIGNANDO VIDEO REMOTO');
-    
     if (!stream || stream === streamLocal) return;
-    
-    // Si ya está reproduciendo, no hacer nada
     if (videoRemoto.srcObject === stream && !videoRemoto.paused) {
         console.log('ℹ️ Video ya está reproduciendo');
         return;
@@ -304,7 +278,6 @@ function mostrarVideoRemoto(stream) {
     const videoTracks = stream.getVideoTracks();
     console.log(`🎵 Audio: ${audioTracks.length}, Video: ${videoTracks.length}`);
     
-    // Limpiar si hay otro stream
     if (videoRemoto.srcObject && videoRemoto.srcObject !== stream) {
         try { videoRemoto.pause(); } catch(e) {}
         videoRemoto.srcObject = null;
@@ -314,7 +287,6 @@ function mostrarVideoRemoto(stream) {
         audioRemoto.srcObject = null;
     }
     
-    // Asignar stream
     videoRemoto.srcObject = stream;
     videoRemoto.style.display = "block";
     video.style.display = "block";
@@ -335,7 +307,6 @@ function mostrarVideoRemoto(stream) {
         audioRemoto.setAttribute('playsinline', 'true');
     }
     
-    // Reproducir
     setTimeout(() => {
         videoRemoto.play().then(() => {
             console.log('✅ Video remoto reproduciendo');
@@ -343,17 +314,12 @@ function mostrarVideoRemoto(stream) {
                 audioRemoto.play().then(() => {
                     console.log('✅ Audio remoto reproduciendo');
                     actualizarEstado('🟢 Conectado con audio', 'conectado');
-                }).catch(() => {
-                    audioController.createAudioForPeer(stream);
-                });
+                }).catch(() => audioController.createAudioForPeer(stream));
             }
             isConnecting = false;
         }).catch(err => {
             console.warn('⚠️ Error en video:', err.message);
-            // Reintentar una vez
-            setTimeout(() => {
-                videoRemoto.play().catch(() => {});
-            }, 500);
+            setTimeout(() => videoRemoto.play().catch(() => {}), 500);
         });
     }, 300);
 }
@@ -375,7 +341,7 @@ function ocultarVideoRemoto() {
 }
 
 // ============================================
-// 🧹 LIMPIAR PEER - UNA SOLA CONEXIÓN
+// 🧹 LIMPIAR PEER - SOLO UNA CONEXIÓN
 // ============================================
 function limpiarPeer() {
     if (pc) {
@@ -392,18 +358,19 @@ function limpiarPeer() {
     audioController.destroyAll();
     isConnecting = false;
     isOfferSent = false;
-    targetPeerId = null;
+    conectado = false;
+    targetId = null;
 }
 
 // ============================================
-// 🔥 CREAR PEER CONNECTION - UNA SOLA
+// 🔥 CREAR PEER - SOLO UNA
 // ============================================
-function crearPeerConnection(targetId) {
+function crearPeerConnection(id) {
     // LIMPIAR CONEXIÓN ANTERIOR
     limpiarPeer();
     
-    console.log(`🔗 Creando conexión con: ${targetId}`);
-    targetPeerId = targetId;
+    console.log(`🔗 Creando conexión con: ${id}`);
+    targetId = id;
     
     try {
         pc = new RTCPeerConnection({
@@ -440,15 +407,15 @@ function crearPeerConnection(targetId) {
     };
 
     pc.onicecandidate = (event) => {
-        if (event.candidate && targetId) {
-            socket.emit("ice-candidate", { target: targetId, candidate: event.candidate });
+        if (event.candidate && id) {
+            socket.emit("ice-candidate", { target: id, candidate: event.candidate });
         }
     };
 
     pc.oniceconnectionstatechange = () => {
         console.log(`🔗 ICE: ${pc ? pc.iceConnectionState : 'null'}`);
         if (pc && pc.iceConnectionState === "failed") {
-            handleConnectionFailure();
+            handleFailure();
         }
     };
 
@@ -456,11 +423,12 @@ function crearPeerConnection(targetId) {
         console.log(`🔗 Estado: ${pc ? pc.connectionState : 'null'}`);
         if (pc && pc.connectionState === "connected") {
             console.log('✅ CONEXIÓN ESTABLECIDA!');
+            conectado = true;
             actualizarEstado('🟢 Conectado', 'conectado');
             isConnecting = false;
             isOfferSent = false;
         } else if (pc && pc.connectionState === "failed") {
-            handleConnectionFailure();
+            handleFailure();
         }
     };
 
@@ -471,7 +439,7 @@ function crearPeerConnection(targetId) {
 // ============================================
 // 🔄 MANEJAR FALLAS
 // ============================================
-function handleConnectionFailure() {
+function handleFailure() {
     console.log('❌ Falla de conexión');
     ocultarVideoRemoto();
     limpiarPeer();
@@ -479,14 +447,15 @@ function handleConnectionFailure() {
     isOfferSent = false;
     soyOfertante = false;
     rolAsignado = false;
+    conectado = false;
     actualizarEstado('🔴 Desconectado', 'desconectado');
 }
 
 // ============================================
 // 📤 INICIAR OFERTA
 // ============================================
-function iniciarOferta(targetId) {
-    console.log(`📤 Iniciando oferta para ${targetId}`);
+function iniciarOferta(id) {
+    console.log(`📤 Iniciando oferta para ${id}`);
     
     if (isOfferSent) {
         console.log('⏳ Oferta ya enviada');
@@ -504,7 +473,7 @@ function iniciarOferta(targetId) {
         console.log(`⏳ Signaling state: ${pc.signalingState}, esperando...`);
         setTimeout(() => {
             if (pc && pc.signalingState === 'stable') {
-                iniciarOferta(targetId);
+                iniciarOferta(id);
             } else {
                 isConnecting = false;
             }
@@ -530,8 +499,8 @@ function iniciarOferta(targetId) {
         return pc.setLocalDescription(offer);
     })
     .then(() => {
-        socket.emit("offer", { target: targetId, offer: pc.localDescription });
-        console.log(`✅ Oferta enviada a ${targetId}`);
+        socket.emit("offer", { target: id, offer: pc.localDescription });
+        console.log(`✅ Oferta enviada a ${id}`);
         actualizarEstado('🔄 Esperando respuesta...', 'inicializando');
     })
     .catch(error => {
@@ -543,10 +512,15 @@ function iniciarOferta(targetId) {
 }
 
 // ============================================
-// 🔗 CONECTAR CON TODOS - VERSIÓN FINAL
+// 🔗 CONECTAR - VERSIÓN FINAL
 // ============================================
 function conectarConTodos(clientes) {
-    // SI YA ESTAMOS CONECTANDO, SALIR
+    // SI YA ESTAMOS CONECTADOS, SALIR
+    if (conectado) {
+        console.log('✅ Ya conectado');
+        return;
+    }
+    
     if (isConnecting) {
         console.log('⏳ Conexión en proceso...');
         return;
@@ -559,24 +533,24 @@ function conectarConTodos(clientes) {
         return;
     }
     
-    const targetId = otros[0];
-    console.log(`🎯 Conectando con: ${targetId}`);
+    const id = otros[0];
+    console.log(`🎯 Conectando con: ${id}`);
     
-    // SI YA HAY CONEXIÓN, NO CREAR OTRA
+    // SI YA HAY PEER Y ESTÁ CONECTADO, NO CREAR OTRO
     if (pc && pc.connectionState === "connected") {
         console.log('✅ Ya conectado');
-        actualizarInfoPeer(targetId);
+        conectado = true;
+        actualizarInfoPeer(id);
         return;
     }
     
-    // SI YA HAY PEER PERO ESTÁ CONECTANDO, ESPERAR
     if (pc && pc.connectionState === "connecting") {
         console.log('⏳ Ya conectando...');
         return;
     }
     
-    // DECIDIR QUIÉN OFERTA (ID MÁS PEQUEÑO = OFERTANTE)
-    soyOfertante = socket.id < targetId;
+    // DECIDIR ROL: ID MÁS PEQUEÑO = OFERTANTE
+    soyOfertante = socket.id < id;
     rolAsignado = true;
     
     console.log(`📌 ROL: ${soyOfertante ? '🟢 OFERTANTE' : '🔴 ANSWER'}`);
@@ -586,9 +560,9 @@ function conectarConTodos(clientes) {
     
     if (soyOfertante) {
         console.log('📤 INICIANDO COMO OFERTANTE...');
-        const newPc = crearPeerConnection(targetId);
+        const newPc = crearPeerConnection(id);
         if (newPc && newPc.signalingState !== 'closed') {
-            setTimeout(() => iniciarOferta(targetId), 500);
+            setTimeout(() => iniciarOferta(id), 500);
         } else {
             isConnecting = false;
         }
@@ -600,7 +574,7 @@ function conectarConTodos(clientes) {
 }
 
 // ============================================
-// 📡 EVENTOS SOCKET.IO - VERSIÓN FINAL
+// 📡 EVENTOS SOCKET - VERSIÓN FINAL
 // ============================================
 
 socket.on("connect", async () => {
@@ -609,6 +583,7 @@ socket.on("connect", async () => {
     isOfferSent = false;
     soyOfertante = false;
     rolAsignado = false;
+    conectado = false;
     actualizarEstado("🟢 Conectado al servidor", "conectado");
     actualizarInfoPeer(null);
     await obtenerTurnServers();
@@ -620,31 +595,27 @@ socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA DE: ${from}`);
     
-    // IGNORAR SI YA ESTAMOS CONECTADOS
-    if (pc && pc.connectionState === "connected") {
+    // SI YA ESTAMOS CONECTADOS
+    if (conectado || (pc && pc.connectionState === "connected")) {
         console.log('ℹ️ Ya conectado, ignorando');
         return;
     }
     
-    // IGNORAR SI SOMOS OFERTANTE
-    if (rolAsignado && soyOfertante) {
+    if (soyOfertante) {
         console.log('⚠️ Soy OFERTANTE, ignorando');
         return;
     }
     
-    // IGNORAR SI YA ENVIAMOS OFERTA
     if (isOfferSent) {
         console.log('⏳ Ya enviamos oferta, ignorando');
         return;
     }
     
-    // IGNORAR SI YA ESTAMOS EN NEGOCIACIÓN
     if (pc && (pc.signalingState === 'have-local-offer' || pc.signalingState === 'have-remote-offer')) {
         console.log('⏳ Ya en negociación');
         return;
     }
     
-    // LIMPIAR CONEXIÓN ANTERIOR
     limpiarPeer();
     
     try {
@@ -693,8 +664,7 @@ socket.on("answer", async (data) => {
     const { from, answer } = data;
     console.log(`📩 RESPUESTA DE: ${from}`);
     
-    // SOLO EL OFERTANTE PROCESA RESPUESTAS
-    if (rolAsignado && !soyOfertante) {
+    if (!soyOfertante) {
         console.log('⚠️ Soy ANSWER, ignorando');
         return;
     }
@@ -749,8 +719,7 @@ socket.on("ice-candidate", async (data) => {
 socket.on("clientes-conectados", (lista) => {
     console.log("📋 Clientes:", lista);
     
-    // SI YA HAY CONEXIÓN, NO HACER NADA
-    if (pc && pc.connectionState === "connected") {
+    if (conectado || (pc && pc.connectionState === "connected")) {
         console.log('✅ Ya conectado, ignorando lista');
         return;
     }
@@ -772,16 +741,14 @@ socket.on("nuevo-cliente", (data) => {
 
 socket.on("cliente-desconectado", (data) => {
     console.log("🔴 Cliente desconectado:", data.id);
-    if (pc) {
-        handleConnectionFailure();
-    }
+    if (pc) handleFailure();
     actualizarEstado('🟢 Esperando otro equipo', 'conectado');
     actualizarInfoPeer(null);
 });
 
 socket.on("disconnect", () => {
     console.log("❌ Desconectado del servidor");
-    handleConnectionFailure();
+    handleFailure();
     actualizarEstado("🔴 Reconectando...", "desconectado");
 });
 
@@ -792,16 +759,8 @@ async function iniciarCamara() {
     try {
         console.log("📷 Solicitando cámara...");
         const constraints = {
-            video: {
-                width: { ideal: 640 },
-                height: { ideal: 480 },
-                facingMode: 'user'
-            },
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            }
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         };
         
         const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -830,6 +789,7 @@ async function iniciarCamara() {
         isOfferSent = false;
         soyOfertante = false;
         rolAsignado = false;
+        conectado = false;
         actualizarEstado("🟢 Cámara lista", "conectado");
         
         setTimeout(() => socket.emit("clientes-conectados"), 1000);
@@ -841,7 +801,7 @@ async function iniciarCamara() {
 }
 
 // ============================================
-// 🎛️ CONTROLES DE UI
+// 🎛️ CONTROLES
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
     const controlVolumen = document.getElementById('volumen');
@@ -932,7 +892,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnReconectar) {
         btnReconectar.addEventListener('click', () => {
             console.log("🔄 Forzando reconexión...");
-            handleConnectionFailure();
+            handleFailure();
             socket.disconnect();
             setTimeout(() => socket.connect(), 1000);
             actualizarEstado("🔄 Reconectando...", "inicializando");

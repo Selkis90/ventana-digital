@@ -60,7 +60,6 @@ let peerIdRemoto = null;
 let isConnecting = false;
 let connectionAttempts = 0;
 const MAX_CONNECTION_ATTEMPTS = 3;
-let audioTrackCreated = false;
 let isAudioEnabled = true;
 let isVideoEnabled = true;
 let isMuted = false;
@@ -127,13 +126,11 @@ class AudioController {
                 return false;
             }
 
-            // Habilitar todos los tracks de audio
             audioTracks.forEach(track => {
                 track.enabled = true;
                 console.log(`🎵 Track de audio remoto: ${track.label} - enabled: ${track.enabled}`);
             });
 
-            // Limpiar audio anterior si existe
             if (this.audioContexts.has(peerId)) {
                 this.destroyAudioForPeer(peerId);
             }
@@ -144,7 +141,6 @@ class AudioController {
                 return false;
             }
 
-            // Crear nodos de audio
             const source = this.globalContext.createMediaStreamSource(stream);
             const gainNode = this.globalContext.createGain();
             gainNode.gain.value = 0.3;
@@ -153,7 +149,6 @@ class AudioController {
             filter.type = 'lowpass';
             filter.frequency.value = isMobile ? 6000 : 8000;
             
-            // Conectar: source -> filter -> gain -> destination
             source.connect(filter);
             filter.connect(gainNode);
             gainNode.connect(this.globalContext.destination);
@@ -231,6 +226,8 @@ class AudioController {
     }
 }
 
+const audioController = new AudioController();
+
 // ============================================
 // 🎵 CREAR TRACK DE AUDIO SILENCIOSO (FALLBACK)
 // ============================================
@@ -241,7 +238,7 @@ function crearTrackAudioSilencioso() {
         const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
         const data = buffer.getChannelData(0);
         for (let i = 0; i < data.length; i++) {
-            data[i] = 0; // Silencio absoluto
+            data[i] = 0;
         }
         
         const source = audioContext.createBufferSource();
@@ -262,7 +259,7 @@ function crearTrackAudioSilencioso() {
 }
 
 // ============================================
-// 🔥 ASEGURAR AUDIO LOCAL - CRÍTICO
+// 🔥 ASEGURAR AUDIO LOCAL
 // ============================================
 function asegurarAudioLocal() {
     if (!streamLocal) {
@@ -273,7 +270,6 @@ function asegurarAudioLocal() {
     let audioTracks = streamLocal.getAudioTracks();
     console.log(`🎵 Audio tracks antes de asegurar: ${audioTracks.length}`);
     
-    // Si no hay audio, crear track silencioso
     if (audioTracks.length === 0) {
         console.warn('⚠️ NO HAY AUDIO LOCAL - Creando track silencioso');
         const silentTrack = crearTrackAudioSilencioso();
@@ -281,17 +277,14 @@ function asegurarAudioLocal() {
             streamLocal.addTrack(silentTrack);
             audioTracks = streamLocal.getAudioTracks();
             console.log(`✅ Track silencioso agregado. Audio ahora: ${audioTracks.length}`);
-            audioTrackCreated = true;
         }
     }
     
-    // Habilitar TODOS los tracks de audio
     audioTracks.forEach(track => {
         track.enabled = true;
-        console.log(`🎤 Audio local: ${track.label} - enabled: ${track.enabled} - readyState: ${track.readyState}`);
+        console.log(`🎤 Audio local: ${track.label} - enabled: ${track.enabled}`);
     });
     
-    // Verificar que realmente hay audio
     const hasAudio = audioTracks.length > 0;
     console.log(`✅ Audio local asegurado: ${hasAudio ? 'SÍ' : 'NO'}`);
     return hasAudio;
@@ -337,7 +330,6 @@ async function obtenerTurnServers() {
         console.warn('⚠️ No se pudo obtener TURN:', error.message);
     }
     
-    // Servidores de respaldo
     console.log('🔄 Usando TURN de respaldo');
     turnServers = [
         { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
@@ -358,7 +350,7 @@ async function obtenerTurnServers() {
 }
 
 // ============================================
-// 📹 MOSTRAR VIDEO REMOTO - CON AUDIO GARANTIZADO
+// 📹 MOSTRAR VIDEO REMOTO - VERSIÓN CORREGIDA
 // ============================================
 function mostrarVideoRemoto(stream, peerId) {
     console.log(`📹 ASIGNANDO VIDEO REMOTO de ${peerId}`);
@@ -378,89 +370,114 @@ function mostrarVideoRemoto(stream, peerId) {
     
     const audioTracks = stream.getAudioTracks();
     const videoTracks = stream.getVideoTracks();
-    console.log(`📊 Stream remoto: Audio=${audioTracks.length}, Video=${videoTracks.length}`);
+    console.log(`🎵 Audio remoto: ${audioTracks.length}, Video remoto: ${videoTracks.length}`);
     
-    // 🔥 DIAGNÓSTICO CRÍTICO
-    if (audioTracks.length === 0) {
-        console.warn('⚠️ EL STREAM REMOTO NO TIENE AUDIO - Solo video');
-        actualizarEstado("🔴 Sin audio remoto - esperando...", "desconectado");
-    } else {
-        console.log(`🎵 Audio remoto encontrado: ${audioTracks.length} tracks`);
-        audioTracks.forEach(track => {
-            track.enabled = true;
-            console.log(`   - ${track.label} - enabled: ${track.enabled} - readyState: ${track.readyState}`);
-        });
+    // 🔥 SOLUCIÓN: Limpiar y reasignar el stream correctamente
+    if (videoRemoto.srcObject === stream) {
+        console.log('ℹ️ Stream ya asignado a video-remoto');
+        if (audioTracks.length > 0) {
+            audioTracks.forEach(t => {
+                t.enabled = true;
+                console.log(`🎵 Track de audio remoto habilitado: ${t.label}`);
+            });
+        }
+        return;
     }
     
-    // ============================================
-    // 🔥 ASIGNAR VIDEO Y AUDIO
-    // ============================================
-    
-    // 1. VIDEO - Asignar al elemento video
-    if (videoRemoto.srcObject !== stream) {
+    // 🔥 CRÍTICO: Detener cualquier reproducción anterior
+    try {
         if (videoRemoto.srcObject) {
+            videoRemoto.pause();
             videoRemoto.srcObject = null;
         }
-        videoRemoto.srcObject = stream;
-        videoRemoto.style.display = "block";
-        video.style.display = "block";
-        
-        if (isMobile) {
-            videoRemoto.setAttribute('playsinline', 'true');
-            videoRemoto.setAttribute('webkit-playsinline', 'true');
+        if (audioRemoto.srcObject) {
+            audioRemoto.pause();
+            audioRemoto.srcObject = null;
         }
-        
-        videoRemoto.muted = false;
-        videoRemoto.volume = 0.3;
+    } catch (e) {
+        console.warn('⚠️ Error al limpiar recursos:', e);
     }
     
-    // 2. AUDIO - Reproducción directa con <audio> (FALLBACK)
+    // 🔥 Asignar el stream al elemento de video
+    videoRemoto.srcObject = stream;
+    videoRemoto.style.display = "block";
+    video.style.display = "block";
+    videoRemoto.muted = false;
+    videoRemoto.volume = 0.3;
+    
+    // 🔥 Asignar el stream al elemento de audio también
     if (audioTracks.length > 0) {
         audioRemoto.srcObject = stream;
         audioRemoto.style.display = "block";
         audioRemoto.muted = false;
         audioRemoto.volume = 0.3;
         
-        // Forzar reproducción de audio
-        const playAudio = () => {
-            audioRemoto.play()
-                .then(() => {
-                    console.log('✅ Audio remoto reproduciendo (element <audio>)');
-                    actualizarEstado("🟢 Conectado con audio", "conectado");
-                })
-                .catch(err => {
-                    console.warn('⚠️ Error al reproducir audio remoto con <audio>:', err.message);
-                    // Intentar con WebAudio como respaldo
-                    audioController.createAudioForPeer(peerId, stream);
-                });
-        };
-        
-        // Esperar un poco antes de reproducir
-        setTimeout(playAudio, 300);
+        // Habilitar todos los tracks de audio
+        audioTracks.forEach(t => {
+            t.enabled = true;
+            console.log(`🎵 Track de audio remoto habilitado: ${t.label}`);
+        });
     } else {
-        console.warn('⚠️ No se reproduce audio - sin tracks de audio');
+        console.warn('⚠️ No hay audio en el stream remoto');
         actualizarEstado("🔴 Sin audio remoto", "desconectado");
     }
     
-    // 3. Reproducir video
-    const playVideo = () => {
-        videoRemoto.play()
-            .then(() => {
-                console.log('✅ Video remoto reproduciendo');
+    if (isMobile) {
+        videoRemoto.setAttribute('playsinline', 'true');
+        videoRemoto.setAttribute('webkit-playsinline', 'true');
+        audioRemoto.setAttribute('playsinline', 'true');
+    }
+    
+    // 🔥 Reproducir con manejo de errores mejorado
+    const playMedia = async () => {
+        try {
+            // Reproducir video
+            await videoRemoto.play();
+            console.log(`✅ Video remoto reproduciendo correctamente`);
+            
+            // Reproducir audio
+            if (audioTracks.length > 0) {
+                try {
+                    await audioRemoto.play();
+                    console.log(`✅ Audio remoto reproduciendo correctamente`);
+                    actualizarEstado(`🟢 Conectado con audio`, "conectado");
+                } catch (audioError) {
+                    console.warn(`⚠️ Error al reproducir audio: ${audioError.message}`);
+                    // Intentar con WebAudio como respaldo
+                    await audioController.init();
+                    const audioCreated = audioController.createAudioForPeer(peerId, stream);
+                    if (audioCreated) {
+                        audioController.setVolume(peerId, 0.3);
+                        console.log(`✅ Audio remoto configurado con WebAudio`);
+                        actualizarEstado(`🟢 Conectado con audio (WebAudio)`, "conectado");
+                    }
+                }
+            }
+            
+            isConnecting = false;
+            connectionAttempts = 0;
+            
+        } catch (error) {
+            console.warn(`⚠️ Error al reproducir: ${error.message}`);
+            
+            // Reintentar después de un breve retraso
+            setTimeout(() => {
+                try {
+                    videoRemoto.play();
+                    if (audioTracks.length > 0) {
+                        audioRemoto.play();
+                    }
+                    console.log(`✅ Reproducción exitosa en reintento`);
+                } catch (e) {
+                    console.warn(`⚠️ Error en reintento: ${e.message}`);
+                }
                 isConnecting = false;
-                connectionAttempts = 0;
-            })
-            .catch(err => {
-                console.warn('⚠️ Error al reproducir video:', err.message);
-                setTimeout(() => {
-                    videoRemoto.play().catch(() => {});
-                }, 1000);
-            });
+            }, 500);
+        }
     };
     
-    if (videoRemoto.paused) {
-        playVideo();
-    }
+    // Esperar un momento para que el DOM se actualice
+    setTimeout(playMedia, 200);
 }
 
 function ocultarVideoRemoto() {
@@ -468,11 +485,16 @@ function ocultarVideoRemoto() {
     audioRemoto.style.display = "none";
     
     if (videoRemoto.srcObject) {
-        videoRemoto.srcObject = null;
+        try {
+            videoRemoto.pause();
+            videoRemoto.srcObject = null;
+        } catch (e) {}
     }
     if (audioRemoto.srcObject) {
-        audioRemoto.srcObject = null;
-        audioRemoto.pause();
+        try {
+            audioRemoto.pause();
+            audioRemoto.srcObject = null;
+        } catch (e) {}
     }
     
     if (peerIdRemoto) {
@@ -510,10 +532,10 @@ function limpiarPeer(targetId) {
 }
 
 // ============================================
-// 🔥🔥🔥 CREACIÓN DE PEER CON AUDIO GARANTIZADO
+// 🔥🔥🔥 CREACIÓN DE PEER CONNECTION
 // ============================================
-function crearPeerConnection(targetId) {
-    console.log(`🔗 Creando conexión con: ${targetId}`);
+function crearPeerConnection(targetId, iceRestart = false) {
+    console.log(`🔗 Creando conexión con: ${targetId} (iceRestart: ${iceRestart})`);
     
     limpiarPeer(targetId);
     
@@ -526,62 +548,54 @@ function crearPeerConnection(targetId) {
     });
 
     // ============================================
-    // 🔥 CRÍTICO: GARANTIZAR QUE HAYA AUDIO
+    // 🔥 CRÍTICO: AGREGAR TRACKS DE AUDIO
     // ============================================
     if (streamLocal) {
         // Asegurar audio local
         asegurarAudioLocal();
         
-        let audioTracks = streamLocal.getAudioTracks();
-        let videoTracks = streamLocal.getVideoTracks();
+        const audioTracks = streamLocal.getAudioTracks();
+        const videoTracks = streamLocal.getVideoTracks();
         console.log(`📹 Tracks locales: Audio=${audioTracks.length}, Video=${videoTracks.length}`);
         
-        // 🔥 Habilitar TODOS los tracks
+        // Habilitar todos los tracks
         audioTracks.forEach(track => {
             track.enabled = true;
-            console.log(`🎤 Audio local habilitado: ${track.label}`);
+            console.log(`🎤 Track de audio local habilitado para envío: ${track.label}`);
         });
         
         videoTracks.forEach(track => {
             track.enabled = true;
-            console.log(`📹 Video local habilitado: ${track.label}`);
+            console.log(`📹 Track de video local habilitado: ${track.label}`);
         });
         
-        // 🔥 Agregar TODOS los tracks al peer
+        // Agregar TODOS los tracks
         streamLocal.getTracks().forEach(track => {
             try {
-                const sender = pc.addTrack(track, streamLocal);
-                console.log(`✅ Track agregado: ${track.kind} (${track.label})`);
+                pc.addTrack(track, streamLocal);
+                console.log(`✅ Agregando track local para envío: ${track.kind} (${track.label})`);
             } catch (error) {
                 console.error(`❌ Error agregando track ${track.kind}:`, error);
             }
         });
         
-        // 🔥 VERIFICAR SENDERS
+        // Verificar senders
         const senders = pc.getSenders();
-        console.log(`📤 Senders: ${senders.length}`);
         const hasAudio = senders.some(s => s.track && s.track.kind === 'audio');
         const hasVideo = senders.some(s => s.track && s.track.kind === 'video');
-        console.log(`   Audio sender: ${hasAudio ? '✅' : '❌'}`);
-        console.log(`   Video sender: ${hasVideo ? '✅' : '❌'}`);
+        console.log(`📤 Senders: Audio=${hasAudio ? '✅' : '❌'}, Video=${hasVideo ? '✅' : '❌'}`);
         
-        // 🔥 SI NO HAY AUDIO, FORZAR AGREGADO
         if (!hasAudio) {
             console.error('❌ CRÍTICO: No hay sender de audio - FORZANDO...');
             audioTracks.forEach(track => {
                 try {
                     track.enabled = true;
-                    const sender = pc.addTrack(track, streamLocal);
-                    console.log(`✅ Audio forzado: ${track.label} - Sender: ${sender ? 'OK' : 'FALLÓ'}`);
+                    pc.addTrack(track, streamLocal);
+                    console.log(`✅ Audio forzado: ${track.label}`);
                 } catch (e) {
                     console.error('❌ Error forzando audio:', e);
                 }
             });
-            
-            // Verificar nuevamente
-            const senders2 = pc.getSenders();
-            const hasAudio2 = senders2.some(s => s.track && s.track.kind === 'audio');
-            console.log(`   Audio después de forzar: ${hasAudio2 ? '✅' : '❌'}`);
         }
     } else {
         console.warn('⚠️ No hay streamLocal');
@@ -592,11 +606,10 @@ function crearPeerConnection(targetId) {
     // ============================================
     pc.ontrack = (event) => {
         console.log(`📥 Track remoto recibido: ${event.track.kind} (${event.track.label})`);
-        console.log(`   enabled: ${event.track.enabled}, readyState: ${event.track.readyState}`);
         
         if (event.track.kind === 'audio') {
             event.track.enabled = true;
-            console.log(`🎵 Track de audio remoto habilitado`);
+            console.log(`🎵 Track de audio remoto recibido, enabled: ${event.track.enabled}`);
         }
         
         if (event.streams && event.streams[0]) {
@@ -607,22 +620,17 @@ function crearPeerConnection(targetId) {
             }
             
             const audioTracks = stream.getAudioTracks();
-            const videoTracks = stream.getVideoTracks();
-            console.log(`📦 Stream recibido: Audio=${audioTracks.length}, Video=${videoTracks.length}`);
+            console.log(`🎵 Stream remoto tiene ${audioTracks.length} tracks de audio`);
             
             audioTracks.forEach(t => {
                 t.enabled = true;
-                console.log(`   🎵 Track de audio remoto: ${t.label}`);
+                console.log(`🎵 Track de audio remoto habilitado: ${t.label}`);
             });
             
-            // Inicializar AudioController si es necesario
-            if (!audioController.isInitialized) {
-                audioController.init().then(() => {
-                    mostrarVideoRemoto(stream, targetId);
-                });
-            } else {
+            // 🔥 Esperar un poco antes de mostrar
+            setTimeout(() => {
                 mostrarVideoRemoto(stream, targetId);
-            }
+            }, 200);
         }
     };
 
@@ -674,7 +682,7 @@ function crearPeerConnection(targetId) {
     };
 
     pc.onnegotiationneeded = () => {
-        console.log(`🤝 Negociación necesaria con ${targetId}`);
+        console.log(`🤝 Negociación con ${targetId} (iceRestart: ${iceRestart})`);
         const senders = pc.getSenders();
         const hasAudio = senders.some(s => s.track && s.track.kind === 'audio');
         console.log(`   Audio en negociación: ${hasAudio ? '✅' : '❌'}`);
@@ -731,7 +739,7 @@ function iniciarOferta(targetId, pc) {
     console.log(`📤 Iniciando oferta para ${targetId}`);
     
     if (!pc || pc.signalingState === 'closed') {
-        console.warn(`⚠️ PC cerrado o inválido`);
+        console.warn(`⚠️ PC cerrado, no se puede crear oferta para ${targetId}`);
         limpiarPeer(targetId);
         isConnecting = false;
         return;
@@ -744,7 +752,7 @@ function iniciarOferta(targetId, pc) {
         return;
     }
     
-    // 🔥 Verificar senders
+    // Verificar senders
     const senders = pc.getSenders();
     const hasAudio = senders.some(s => s.track && s.track.kind === 'audio');
     console.log(`📤 Senders antes de oferta: ${senders.length}, Audio: ${hasAudio ? '✅' : '❌'}`);
@@ -762,23 +770,20 @@ function iniciarOferta(targetId, pc) {
         });
     }
     
-    // Crear oferta
     pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: true,
         voiceActivityDetection: true
     })
     .then(offer => {
-        // 🔥 Verificar que el SDP contenga audio
         const hasAudioInSDP = offer.sdp ? offer.sdp.includes('m=audio') : false;
         const hasVideoInSDP = offer.sdp ? offer.sdp.includes('m=video') : false;
         console.log(`📝 SDP: Audio=${hasAudioInSDP ? '✅' : '❌'}, Video=${hasVideoInSDP ? '✅' : '❌'}`);
         
         if (!hasAudioInSDP) {
-            console.error('❌ EL SDP NO CONTIENE AUDIO - El otro lado NO te escuchará');
+            console.error('❌ EL SDP NO CONTIENE AUDIO');
             actualizarEstado("🔴 SDP sin audio", "error");
             
-            // Reintentar con forzado
             if (streamLocal) {
                 streamLocal.getAudioTracks().forEach(track => {
                     track.enabled = true;
@@ -787,7 +792,6 @@ function iniciarOferta(targetId, pc) {
                         console.log(`✅ Audio forzado en SDP: ${track.label}`);
                     } catch (e) {}
                 });
-                // Recrear oferta
                 return pc.createOffer({
                     offerToReceiveAudio: true,
                     offerToReceiveVideo: true,
@@ -804,7 +808,7 @@ function iniciarOferta(targetId, pc) {
             offer: pc.localDescription 
         });
         console.log(`✅ Oferta enviada a ${targetId}`);
-        actualizarEstado(`🔄 Esperando respuesta de ${targetId.substring(0, 8)}...`, "inicializando");
+        actualizarEstado(`🔄 Esperando respuesta...`, "inicializando");
     })
     .catch(error => {
         console.error(`❌ Error creando oferta:`, error);
@@ -873,13 +877,9 @@ socket.on("connect", async () => {
     actualizarEstado("🟢 Conectado al servidor", "conectado");
     actualizarInfoPeer(null);
     
-    // Obtener TURN servers
     await obtenerTurnServers();
-    
-    // Inicializar AudioController
     await audioController.init();
     
-    // Asegurar audio local si ya existe
     if (streamLocal) {
         asegurarAudioLocal();
         streamLocal.getAudioTracks().forEach(track => {
@@ -888,24 +888,18 @@ socket.on("connect", async () => {
         });
     }
     
-    // Solicitar lista de clientes
     setTimeout(() => socket.emit("clientes-conectados"), 1000);
 });
 
 socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA RECIBIDA DE: ${from}`);
-    console.log(`🔍 SDP contiene audio? ${offer.sdp ? offer.sdp.includes('m=audio') : 'N/A'}`);
-    console.log(`🔍 SDP contiene video? ${offer.sdp ? offer.sdp.includes('m=video') : 'N/A'}`);
-    
-    if (offer.sdp && !offer.sdp.includes('m=audio')) {
-        console.error('❌ LA OFERTA NO CONTIENE AUDIO - El otro lado no está enviando audio');
-        actualizarEstado("🔴 El otro lado no envía audio", "desconectado");
-    }
+    const iceRestart = offer.sdp ? offer.sdp.includes('a=ice-options:renomination') : false;
+    console.log(`🔄 ICE restart en oferta: ${iceRestart}`);
     
     try {
         limpiarPeer(from);
-        const pc = crearPeerConnection(from);
+        const pc = crearPeerConnection(from, iceRestart);
         
         if (pc.signalingState === 'closed') {
             console.warn(`⚠️ PC cerrado`);
@@ -915,9 +909,8 @@ socket.on("offer", async (data) => {
         }
         
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        console.log(`✅ Descripción remota establecida`);
+        console.log(`✅ Descripción remota establecida (oferta) de ${from}`);
         
-        // Aplicar candidatos pendientes
         if (pc._pendingCandidates && pc._pendingCandidates.length > 0) {
             console.log(`📦 Aplicando ${pc._pendingCandidates.length} candidatos pendientes`);
             for (const candidate of pc._pendingCandidates) {
@@ -930,7 +923,6 @@ socket.on("offer", async (data) => {
             pc._pendingCandidates = [];
         }
 
-        // Crear respuesta
         const answer = await pc.createAnswer({
             offerToReceiveAudio: true,
             offerToReceiveVideo: true
@@ -990,7 +982,7 @@ socket.on("answer", async (data) => {
 
     try {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        console.log(`✅ Descripción remota establecida para ${from}`);
+        console.log(`✅ Descripción remota establecida (respuesta) de ${from}`);
         isConnecting = false;
         connectionAttempts = 0;
     } catch (error) {
@@ -1007,7 +999,7 @@ socket.on("ice-candidate", async (data) => {
     const { from, candidate } = data;
     const pc = peers[from];
     if (!pc) {
-        console.log(`⚠️ No hay peer para ${from}`);
+        console.log(`⚠️ No hay peer para ${from}, ignorando ICE candidate`);
         return;
     }
 
@@ -1016,7 +1008,7 @@ socket.on("ice-candidate", async (data) => {
             await pc.addIceCandidate(new RTCIceCandidate(candidate));
             console.log(`✅ ICE Candidate agregado de ${from}`);
         } else {
-            console.log(`⏳ Guardando candidate de ${from}`);
+            console.log(`⏳ Descripción remota no lista para ${from}, guardando candidate`);
             if (!pc._pendingCandidates) pc._pendingCandidates = [];
             pc._pendingCandidates.push(candidate);
         }
@@ -1101,20 +1093,16 @@ async function iniciarCamara() {
         const audioTracks = stream.getAudioTracks();
         const videoTracks = stream.getVideoTracks();
         console.log(`📊 Stream local: Audio=${audioTracks.length}, Video=${videoTracks.length}`);
-        console.log(`🔍 DIAGNÓSTICO LOCAL: ${audioTracks.length === 0 ? '❌ NO HAY AUDIO LOCAL' : '✅ HAY AUDIO LOCAL'}`);
         
-        // Asegurar audio
         if (audioTracks.length === 0) {
             console.warn('⚠️ NO HAY AUDIO - Creando track silencioso');
             const silentTrack = crearTrackAudioSilencioso();
             if (silentTrack) {
                 streamLocal.addTrack(silentTrack);
                 console.log('✅ Track silencioso agregado');
-                audioTrackCreated = true;
             }
         }
         
-        // Habilitar todos los tracks
         audioTracks.forEach(track => {
             track.enabled = true;
             console.log(`🎤 Audio local: ${track.label} - enabled: ${track.enabled}`);
@@ -1125,7 +1113,6 @@ async function iniciarCamara() {
             console.log(`📹 Video local: ${track.label}`);
         });
         
-        // Mostrar video local
         video.srcObject = stream;
         video.style.display = "block";
         video.muted = true;
@@ -1143,17 +1130,13 @@ async function iniciarCamara() {
             console.warn("⚠️ Error en video local:", e.message);
         }
         
-        // Inicializar AudioController
-        await audioController.init();
-        
-        // Conectar al servidor
         await obtenerTurnServers();
+        await audioController.init();
         isConnecting = false;
         connectionAttempts = 0;
         
         actualizarEstado("🟢 Cámara lista", "conectado");
         
-        // Solicitar clientes conectados
         setTimeout(() => socket.emit("clientes-conectados"), 1000);
         
     } catch (error) {
@@ -1177,7 +1160,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnFullscreen = document.getElementById('btn-fullscreen');
     const btnDiagnostico = document.getElementById('btn-diagnostico');
     
-    // Control de volumen
     if (controlVolumen) {
         controlVolumen.value = 0.3;
         controlVolumen.addEventListener('input', (e) => {
@@ -1193,7 +1175,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Botón silenciar
     if (btnSilenciar) {
         btnSilenciar.addEventListener('click', () => {
             isMuted = !isMuted;
@@ -1207,7 +1188,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Botón micrófono
     if (btnToggleMicrofono) {
         btnToggleMicrofono.addEventListener('click', () => {
             isAudioEnabled = !isAudioEnabled;
@@ -1224,7 +1204,6 @@ document.addEventListener('DOMContentLoaded', () => {
         btnToggleMicrofono.classList.add('activo');
     }
     
-    // Botón cámara
     if (btnToggleCamara) {
         btnToggleCamara.addEventListener('click', () => {
             isVideoEnabled = !isVideoEnabled;
@@ -1241,19 +1220,16 @@ document.addEventListener('DOMContentLoaded', () => {
         btnToggleCamara.classList.add('activo');
     }
     
-    // Botón pantalla completa
     if (btnFullscreen) {
         btnFullscreen.addEventListener('click', () => {
-            const videoElement = document.getElementById('video-remoto');
-            if (videoElement.requestFullscreen) {
-                videoElement.requestFullscreen();
-            } else if (videoElement.webkitRequestFullscreen) {
-                videoElement.webkitRequestFullscreen();
+            if (videoRemoto.requestFullscreen) {
+                videoRemoto.requestFullscreen();
+            } else if (videoRemoto.webkitRequestFullscreen) {
+                videoRemoto.webkitRequestFullscreen();
             }
         });
     }
     
-    // Botón diagnóstico
     if (btnDiagnostico) {
         let visible = false;
         btnDiagnostico.addEventListener('click', () => {
@@ -1268,7 +1244,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Botón reconectar
     if (btnReconectar) {
         btnReconectar.addEventListener('click', () => {
             console.log("🔄 Reconectando...");
@@ -1283,7 +1258,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Manejar iOS - reanudar audio al tocar
     if (isiOS) {
         document.addEventListener('touchstart', () => {
             audioController.resumeContext();
@@ -1389,7 +1363,6 @@ window.addEventListener("load", () => {
 });
 
 window.addEventListener("beforeunload", () => {
-    // Limpiar recursos
     Object.keys(peers).forEach(key => limpiarPeer(key));
     if (streamLocal) {
         streamLocal.getTracks().forEach(track => track.stop());

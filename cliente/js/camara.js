@@ -1,9 +1,27 @@
 // ============================================
+// 🔥 ESPERAR A QUE EL DOM ESTÉ LISTO
+// ============================================
+document.addEventListener('DOMContentLoaded', function() {
+    iniciarApp();
+});
+
+function iniciarApp() {
+
+// ============================================
 // 📱 CONFIGURACIÓN INICIAL
 // ============================================
 const video = document.getElementById("video");
 const videoRemoto = document.getElementById("video-remoto");
 const audioRemoto = document.getElementById("audio-remoto");
+
+// 🔥 VERIFICAR QUE LOS ELEMENTOS EXISTAN
+if (!video || !videoRemoto || !audioRemoto) {
+    console.error('❌ Error: Elementos HTML no encontrados');
+    console.log('video:', video);
+    console.log('videoRemoto:', videoRemoto);
+    console.log('audioRemoto:', audioRemoto);
+    return;
+}
 
 const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent);
 const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -795,7 +813,7 @@ async function iniciarCamara() {
 // ============================================
 // 🎛️ CONTROLES
 // ============================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', function() {
     const controlVolumen = document.getElementById('volumen');
     const labelVolumen = document.getElementById('volumen-label');
     const btnSilenciar = document.getElementById('btn-silenciar');
@@ -954,14 +972,6 @@ function ocultarDiagnostico() {
 // ============================================
 // 🚀 INICIALIZACIÓN
 // ============================================
-window.addEventListener("load", () => {
-    console.log("🚀 Iniciando Ventana Digital...");
-    iniciarCamara();
-});
+iniciarCamara();
 
-window.addEventListener("beforeunload", () => {
-    limpiarPeer();
-    if (streamLocal) streamLocal.getTracks().forEach(track => track.stop());
-    audioController.destroyAll();
-    socket.disconnect();
-});
+} // FIN DE iniciarApp()

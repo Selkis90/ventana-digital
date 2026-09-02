@@ -86,6 +86,17 @@ module.exports = (io) => {
             const lista = Array.from(clientes.keys());
             console.log(`📋 Enviando lista de ${lista.length} clientes a TODOS`);
             io.emit('clientes-conectados', lista);
+
+            // 🔥 NUEVA LÓGICA: El más antiguo es el orquestador
+            if (lista.length > 1) {
+                const primerCliente = lista[0]; // El más antiguo
+                if (socket.id === primerCliente) {
+                    // Este cliente es el orquestador, por lo que iniciará conexiones
+                    console.log(`👑 El cliente ${socket.id} es el ORQUESTADOR y buscará conectar con los demás.`);
+                    // Aquí, el cliente (frontend) decidirá a quién enviar ofertas.
+                    // El servidor no envía ofertas automáticamente, solo reenvía.
+                }
+            }
         });
 
         socket.on('ping', () => {

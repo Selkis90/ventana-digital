@@ -694,7 +694,7 @@ async function iniciarOferta(peerId) {
 }
 
 // ============================================
-// 🔗 CONECTAR CON PEERS (SOLO ORQUESTADOR)
+// 🔗 CONECTAR CON PEERS (MALLA: TODOS SE CONECTAN CON TODOS)
 // ============================================
 function conectarConPeers(clientes) {
     const conectadosActuales = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
@@ -706,23 +706,23 @@ function conectarConPeers(clientes) {
     
     if (disponibles.length === 0) return;
 
-    // 🔥 SOLO EL ORQUESTADOR INICIA LAS CONEXIONES (Corregido con ID del servidor)
-    if (socket.id !== orquestadorId) {
-        console.log(`⏳ No soy el orquestador (${orquestadorId}). Esperando oferta...`);
-        return; // Los demás solo esperan
-    }
-
-    console.log(`👑 Soy el ORQUESTADOR. Conectando con ${disponibles.length} dispositivo(s)...`);
-
+    // 🔥 LÓGICA DE MALLA: Cada dispositivo intenta conectar, PERO solo el que tiene el ID más bajo inicia la oferta
     for (const peerId of disponibles) {
         if (videoContainers.size >= MAX_DEVICES) break;
         if (peerConnections.has(peerId)) continue;
         
-        console.log(`🎯 Conectando con: ${peerId}`);
-        const pc = crearPeerConnection(peerId);
-        if (!pc) continue;
+        // El dispositivo con el ID más bajo (alfabéticamente) inicia la conexión
+        const soyOfertante = socket.id < peerId;
         
-        setTimeout(() => iniciarOferta(peerId), 500);
+        if (soyOfertante) {
+            console.log(`🎯 [MALLA] Yo (${socket.id}) soy el ofertante para: ${peerId}`);
+            const pc = crearPeerConnection(peerId);
+            if (!pc) continue;
+            setTimeout(() => iniciarOferta(peerId), 500);
+        } else {
+            console.log(`⏳ [MALLA] Esperando oferta de: ${peerId} (tiene ID menor)`);
+            // No hacemos nada, esperamos su oferta
+        }
     }
 }
 
@@ -746,15 +746,10 @@ socket.on("connect", async () => {
     await iniciarCamara();
 });
 
-// 🔥 NUEVO EVENTO PARA SABER QUIÉN ES EL ORQUESTADOR
+// 🔥 EVENTO PARA SABER QUIÉN ES EL ORQUESTADOR (Ya no es obligatorio, pero se mantiene por compatibilidad)
 socket.on("actualizar-orquestador", (data) => {
     orquestadorId = data.orquestadorId;
     console.log(`👑 Orquestador actual: ${orquestadorId}`);
-    
-    // Si me acabo de convertir en orquestador, debo intentar conectar con todos
-    if (socket.id === orquestadorId) {
-        socket.emit("clientes-conectados"); // Fuerza a reconectar con todos
-    }
 });
 
 socket.on("offer", async (data) => {

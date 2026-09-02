@@ -59,6 +59,8 @@ const MAX_DEVICES = 4;
 let isAudioMuted = false;
 // Control de volumen
 let currentVolume = 0.3;
+// 🔥 ID del dispositivo que inicia las conexiones
+let orquestadorId = null;
 
 // ============================================
 // 🔊 AUDIO CONTROLLER
@@ -276,25 +278,21 @@ function actualizarInfoPeer() {
 // ============================================
 
 function crearContenedorVideo(id, esLocal = false) {
-    // Verificar si ya existe
     if (videoContainers.has(id)) {
         return videoContainers.get(id);
     }
     
-    // Verificar límite de dispositivos
     const totalVideos = videoContainers.size;
     if (totalVideos >= MAX_DEVICES) {
         console.warn(`⚠️ Máximo de ${MAX_DEVICES} dispositivos alcanzado`);
         return null;
     }
     
-    // Crear contenedor
     const container = document.createElement('div');
     container.className = `video-container ${esLocal ? 'local' : 'remote'}`;
     container.dataset.peerId = id;
     container.dataset.esLocal = esLocal ? 'true' : 'false';
     
-    // Crear video
     const video = document.createElement('video');
     video.autoplay = true;
     video.playsInline = true;
@@ -306,39 +304,32 @@ function crearContenedorVideo(id, esLocal = false) {
     video.style.objectFit = 'cover';
     video.style.background = '#1a1a1a';
     
-    // Crear etiqueta
     const label = document.createElement('div');
     label.className = `video-label ${esLocal ? 'local-label' : 'remote-label'}`;
     label.textContent = esLocal ? '📷 Tú' : `📹 ${id.substring(0, 6)}`;
     
-    // Crear indicador de audio
     const audioIndicator = document.createElement('div');
     audioIndicator.className = 'audio-indicator';
     if (!esLocal) audioIndicator.classList.add('activo');
     
-    // Crear indicador de video apagado
     const offIndicator = document.createElement('div');
     offIndicator.className = 'video-off-indicator';
     offIndicator.textContent = '📷';
     offIndicator.style.display = 'none';
     
-    // Agregar elementos
     container.appendChild(video);
     container.appendChild(label);
     container.appendChild(audioIndicator);
     container.appendChild(offIndicator);
     
-    // Click para hacer grande
     container.addEventListener('click', function(e) {
         e.stopPropagation();
         toggleVideoGrande(id);
     });
     
-    // Agregar al grid
     gridVideos.appendChild(container);
     videoContainers.set(id, container);
     
-    // Actualizar layout
     actualizarLayout();
     actualizarInfoPeer();
     
@@ -352,7 +343,6 @@ function actualizarLayout() {
     const containers = Array.from(gridVideos.children);
     const total = containers.length;
     
-    // Limpiar estilos y clases previas
     containers.forEach(c => {
         c.style.position = 'static';
         c.style.width = '';
@@ -364,17 +354,14 @@ function actualizarLayout() {
         c.style.boxShadow = '';
         c.classList.remove('grande', 'pequeno');
         
-        // Mostrar labels por defecto
         const label = c.querySelector('.video-label');
         if (label) label.style.display = 'block';
     });
 
-    // Quitar clase especial si existe
     document.body.classList.remove('layout-especial');
 
     if (total === 0) return;
 
-    // === CASO 1: 1 SOLA PERSONA (O VIDEO EN GRANDE) ===
     if (total === 1 || (videoGrandeId && videoContainers.has(videoGrandeId))) {
         const grande = videoGrandeId ? videoContainers.get(videoGrandeId) : containers[0];
         if (grande && grande.parentNode) {
@@ -383,8 +370,6 @@ function actualizarLayout() {
                     c.classList.add('pequeno');
                     c.style.borderRadius = '8px';
                     c.style.boxShadow = '0 4px 15px rgba(0,0,0,0.5)';
-                    
-                    // Ocultar labels en pequeños
                     const label = c.querySelector('.video-label');
                     if (label) label.style.display = 'none';
                 } else {
@@ -395,9 +380,8 @@ function actualizarLayout() {
         }
     }
 
-    // === CASO 2: 2 PANTALLAS (50/50) ===
     if (total === 2) {
-        document.body.classList.add('layout-especial'); // Quitar bordes y gaps
+        document.body.classList.add('layout-especial');
         containers.forEach((c, i) => {
             c.style.position = 'absolute';
             c.style.top = '0';
@@ -405,7 +389,6 @@ function actualizarLayout() {
             c.style.width = '50%';
             c.style.borderRadius = '0';
             c.style.zIndex = '1';
-
             if (i === 0) {
                 c.style.left = '0';
             } else {
@@ -415,49 +398,41 @@ function actualizarLayout() {
         return;
     }
 
-    // === CASO 3: 3 PANTALLAS (1 Grande izq, 2 pequeñas der) ===
     if (total === 3) {
-        document.body.classList.add('layout-especial'); // Quitar bordes y gaps
+        document.body.classList.add('layout-especial');
         containers.forEach((c, i) => {
             c.style.position = 'absolute';
             c.style.borderRadius = '0';
             c.style.zIndex = '1';
-
             if (i === 0) {
-                // Primer video: IZQUIERDA (50% ancho, 100% alto)
                 c.style.top = '0';
                 c.style.left = '0';
                 c.style.width = '50%';
                 c.style.height = '100%';
             } else {
-                // Videos 2 y 3: DERECHA (50% ancho, 50% alto cada uno)
                 c.style.left = '50%';
                 c.style.width = '50%';
                 c.style.height = '50%';
-                
                 if (i === 1) {
-                    c.style.top = '0'; // Arriba a la derecha
+                    c.style.top = '0';
                 } else {
-                    c.style.top = '50%'; // Abajo a la derecha
+                    c.style.top = '50%';
                 }
             }
         });
         return;
     }
 
-    // === CASO 4: 4 PANTALLAS (Cuadrícula 2x2) ===
     if (total >= 4) {
-        document.body.classList.add('layout-especial'); // Quitar bordes y gaps para que peguen
+        document.body.classList.add('layout-especial');
         containers.forEach((c, i) => {
             c.style.position = 'absolute';
             c.style.width = '50%';
             c.style.height = '50%';
             c.style.borderRadius = '0';
             c.style.zIndex = '1';
-
             const col = (i % 2);
             const row = Math.floor(i / 2);
-
             c.style.left = `${col * 50}%`;
             c.style.top = `${row * 50}%`;
         });
@@ -482,7 +457,6 @@ function eliminarContenedorVideo(id) {
         if (videoGrandeId === id) {
             videoGrandeId = null;
         }
-        // Limpiar peer connection si existe
         if (peerConnections.has(id)) {
             try {
                 const pc = peerConnections.get(id);
@@ -490,9 +464,7 @@ function eliminarContenedorVideo(id) {
             } catch (e) {}
             peerConnections.delete(id);
         }
-        // Limpiar stream
         peersStreams.delete(id);
-        // Limpiar audio
         audioController.destroyAudioForPeer(id);
         actualizarLayout();
         actualizarInfoPeer();
@@ -510,19 +482,15 @@ function asignarVideo(id, stream, esLocal = false) {
     video.srcObject = stream;
     video.style.display = 'block';
     
-    // Ocultar indicador de off
     const offIndicator = container.querySelector('.video-off-indicator');
     if (offIndicator) offIndicator.style.display = 'none';
     
-    // Marcar como activo
     container.classList.add('activo');
     
-    // Si tiene audio y es remoto, crear contexto de audio
     if (!esLocal && stream.getAudioTracks().length > 0) {
         audioController.createAudioForPeer(stream, id);
     }
     
-    // Mostrar indicador de audio
     const audioIndicator = container.querySelector('.audio-indicator');
     if (audioIndicator) {
         if (!esLocal && stream.getAudioTracks().length > 0) {
@@ -532,7 +500,6 @@ function asignarVideo(id, stream, esLocal = false) {
         }
     }
     
-    // Intentar reproducir
     if (!esLocal) {
         video.play().catch(() => {
             console.log('⏳ Esperando interacción para reproducir video');
@@ -578,7 +545,6 @@ async function obtenerTurnServers() {
 // 🔥 CREAR PEER CONNECTION
 // ============================================
 function crearPeerConnection(peerId) {
-    // Si ya existe, cerrarla
     if (peerConnections.has(peerId)) {
         try {
             const oldPc = peerConnections.get(peerId);
@@ -599,7 +565,6 @@ function crearPeerConnection(peerId) {
         
         peerConnections.set(peerId, pc);
         
-        // Agregar tracks locales
         if (streamLocal) {
             asegurarAudioLocal();
             streamLocal.getTracks().forEach(track => {
@@ -619,19 +584,14 @@ function crearPeerConnection(peerId) {
                 if (stream === streamLocal) return;
                 
                 stream.getAudioTracks().forEach(t => t.enabled = true);
-                
-                // Guardar stream
                 peersStreams.set(peerId, stream);
                 
-                // Crear contenedor si no existe
                 if (!videoContainers.has(peerId)) {
                     crearContenedorVideo(peerId, false);
                 }
                 
-                // Asignar video
                 asignarVideo(peerId, stream, false);
                 
-                // Actualizar estado
                 const peers = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
                 actualizarEstado(`🟢 Conectado a ${peers.length} dispositivo(s)`, 'conectado');
                 actualizarInfoPeer();
@@ -737,7 +697,6 @@ async function iniciarOferta(peerId) {
 // 🔗 CONECTAR CON PEERS (SOLO ORQUESTADOR)
 // ============================================
 function conectarConPeers(clientes) {
-    // Filtrar clientes que ya están conectados
     const conectadosActuales = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
     const disponibles = clientes.filter(id => 
         id !== socket.id && 
@@ -745,41 +704,24 @@ function conectarConPeers(clientes) {
         videoContainers.size < MAX_DEVICES
     );
     
-    if (disponibles.length === 0) {
-        console.log('⏳ No hay nuevos clientes disponibles');
-        if (videoContainers.size === 0) {
-            actualizarEstado('🟢 Esperando otro equipo', 'conectado');
-        }
-        return;
-    }
-    
-    // 🔥 LÓGICA DEL ORQUESTADOR: 
-    // Solo el cliente con el ID más bajo (considerado el más antiguo) inicia ofertas.
-    const soyOrquestador = socket.id < Math.min(...clientes.map(id => id));
-    
-    if (!soyOrquestador) {
-        console.log(`⏳ Soy ${socket.id}, no soy el orquestador. Esperando ofertas...`);
-        actualizarEstado(`🟢 Esperando conexión de ${disponibles[0].substring(0, 6)}`, 'conectado');
-        return; // No hacemos nada, esperamos a que nos llegue la oferta
+    if (disponibles.length === 0) return;
+
+    // 🔥 SOLO EL ORQUESTADOR INICIA LAS CONEXIONES (Corregido con ID del servidor)
+    if (socket.id !== orquestadorId) {
+        console.log(`⏳ No soy el orquestador (${orquestadorId}). Esperando oferta...`);
+        return; // Los demás solo esperan
     }
 
-    // Conectar con cada cliente disponible (solo si soy el orquestador)
+    console.log(`👑 Soy el ORQUESTADOR. Conectando con ${disponibles.length} dispositivo(s)...`);
+
     for (const peerId of disponibles) {
-        if (videoContainers.size >= MAX_DEVICES) {
-            console.warn(`⚠️ Máximo de ${MAX_DEVICES} dispositivos alcanzado`);
-            break;
-        }
+        if (videoContainers.size >= MAX_DEVICES) break;
+        if (peerConnections.has(peerId)) continue;
         
-        if (peerConnections.has(peerId)) {
-            continue;
-        }
-        
-        console.log(`👑 [ORQUESTADOR] Conectando con: ${peerId}`);
-        
+        console.log(`🎯 Conectando con: ${peerId}`);
         const pc = crearPeerConnection(peerId);
         if (!pc) continue;
         
-        // Como soy el orquestador, siempre envío la oferta
         setTimeout(() => iniciarOferta(peerId), 500);
     }
 }
@@ -795,7 +737,6 @@ socket.on("connect", async () => {
     actualizarEstado("🟢 Conectado al servidor", "conectado");
     actualizarInfoPeer();
     
-    // Crear contenedor local si no existe
     if (!videoContainers.has(socket.id)) {
         crearContenedorVideo(socket.id, true);
     }
@@ -805,17 +746,26 @@ socket.on("connect", async () => {
     await iniciarCamara();
 });
 
+// 🔥 NUEVO EVENTO PARA SABER QUIÉN ES EL ORQUESTADOR
+socket.on("actualizar-orquestador", (data) => {
+    orquestadorId = data.orquestadorId;
+    console.log(`👑 Orquestador actual: ${orquestadorId}`);
+    
+    // Si me acabo de convertir en orquestador, debo intentar conectar con todos
+    if (socket.id === orquestadorId) {
+        socket.emit("clientes-conectados"); // Fuerza a reconectar con todos
+    }
+});
+
 socket.on("offer", async (data) => {
     const { from, offer } = data;
     console.log(`📩 OFERTA DE: ${from}`);
     
-    // Verificar límite de dispositivos
     if (videoContainers.size >= MAX_DEVICES) {
         console.warn(`⚠️ Máximo de ${MAX_DEVICES} dispositivos alcanzado, ignorando oferta`);
         return;
     }
     
-    // Verificar si ya estamos conectados a este peer
     if (peerConnections.has(from)) {
         console.log('ℹ️ Ya conectado a este peer');
         return;
@@ -832,7 +782,6 @@ socket.on("offer", async (data) => {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
         console.log('✅ Descripción remota establecida');
         
-        // Agregar ICE candidates pendientes
         if (pc._pendingCandidates && pc._pendingCandidates.length > 0) {
             for (const candidate of pc._pendingCandidates) {
                 try {
@@ -906,7 +855,6 @@ socket.on("ice-candidate", async (data) => {
 socket.on("clientes-conectados", (lista) => {
     console.log("📋 Clientes:", lista);
     
-    // Limpiar clientes que ya no están
     const conectadosActuales = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
     for (const id of conectadosActuales) {
         if (!lista.includes(id)) {
@@ -914,7 +862,6 @@ socket.on("clientes-conectados", (lista) => {
         }
     }
     
-    // Conectar con nuevos clientes
     if (videoContainers.size < MAX_DEVICES) {
         setTimeout(() => conectarConPeers(lista), 500);
     }
@@ -938,12 +885,10 @@ socket.on("cliente-desconectado", (data) => {
 
 socket.on("disconnect", () => {
     console.log("❌ Desconectado del servidor");
-    // Limpiar todos los videos remotos
     const ids = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
     for (const id of ids) {
         eliminarContenedorVideo(id);
     }
-    // Limpiar todas las conexiones
     for (const [id, pc] of peerConnections) {
         try { pc.close(); } catch (e) {}
     }
@@ -992,7 +937,6 @@ async function iniciarCamara() {
         
         audioTracks.forEach(track => track.enabled = true);
         
-        // Asignar video local
         const container = videoContainers.get(socket.id);
         if (container) {
             const video = container.querySelector('video');
@@ -1032,7 +976,6 @@ function configurarControles() {
     const btnFullscreen = document.getElementById('btn-fullscreen');
     const btnDiagnostico = document.getElementById('btn-diagnostico');
     
-    // Control de volumen
     if (controlVolumen) {
         controlVolumen.value = currentVolume;
         controlVolumen.addEventListener('input', (e) => {
@@ -1043,7 +986,6 @@ function configurarControles() {
         });
     }
     
-    // Botón silenciar
     if (btnSilenciar) {
         btnSilenciar.addEventListener('click', () => {
             const muted = audioController.toggleMute();
@@ -1053,7 +995,6 @@ function configurarControles() {
         });
     }
     
-    // Botón micrófono
     if (btnToggleMicrofono) {
         let audioEnabled = true;
         btnToggleMicrofono.addEventListener('click', () => {
@@ -1068,7 +1009,6 @@ function configurarControles() {
         btnToggleMicrofono.classList.add('activo');
     }
     
-    // Botón cámara
     if (btnToggleCamara) {
         let videoEnabled = true;
         btnToggleCamara.addEventListener('click', () => {
@@ -1076,7 +1016,6 @@ function configurarControles() {
             if (streamLocal) {
                 streamLocal.getVideoTracks().forEach(track => track.enabled = videoEnabled);
             }
-            // Mostrar/ocultar indicador en video local
             const container = videoContainers.get(socket.id);
             if (container) {
                 const offIndicator = container.querySelector('.video-off-indicator');
@@ -1095,7 +1034,6 @@ function configurarControles() {
         btnToggleCamara.classList.add('activo');
     }
     
-    // Botón pantalla completa
     if (btnFullscreen) {
         btnFullscreen.addEventListener('click', () => {
             if (videoGrandeId && videoContainers.has(videoGrandeId)) {
@@ -1113,7 +1051,6 @@ function configurarControles() {
                     }
                 }
             } else {
-                // Si no hay video en grande, poner el grid en pantalla completa
                 if (gridVideos.requestFullscreen) {
                     gridVideos.requestFullscreen().catch(() => {});
                 } else if (gridVideos.webkitRequestFullscreen) {
@@ -1127,28 +1064,21 @@ function configurarControles() {
         });
     }
     
-    // Botón reconectar
     if (btnReconectar) {
         btnReconectar.addEventListener('click', () => {
             console.log("🔄 Forzando reconexión...");
-            
-            // Limpiar todas las conexiones
             const ids = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
             for (const id of ids) {
                 eliminarContenedorVideo(id);
             }
-            
-            // Limpiar peer connections
             for (const [id, pc] of peerConnections) {
                 try { pc.close(); } catch (e) {}
             }
             peerConnections.clear();
-            
             isConnecting = false;
             conectado = false;
             videoGrandeId = null;
             
-            // Reconectar socket
             socket.disconnect();
             setTimeout(() => {
                 socket.connect();
@@ -1157,7 +1087,6 @@ function configurarControles() {
         });
     }
     
-    // Botón diagnóstico
     if (btnDiagnostico) {
         let visible = false;
         btnDiagnostico.addEventListener('click', () => {
@@ -1172,7 +1101,6 @@ function configurarControles() {
         });
     }
     
-    // iOS - activar audio con touch
     if (isiOS) {
         document.addEventListener('touchstart', () => {
             audioController.resumeContext();
@@ -1197,7 +1125,6 @@ function mostrarDiagnostico() {
     const peersConnected = Array.from(videoContainers.keys()).filter(id => id !== socket.id).length;
     const audioContextState = audioController.getContextState();
     
-    // Obtener estado de las conexiones
     let connectionStates = '';
     for (const [id, pc] of peerConnections) {
         const state = pc.connectionState || 'N/A';
@@ -1227,20 +1154,14 @@ function ocultarDiagnostico() {
 // 🚀 INICIALIZACIÓN
 // ============================================
 
-// Crear contenedor local
 if (socket.id) {
     crearContenedorVideo(socket.id, true);
 }
 
-// Configurar controles
 configurarControles();
-
-// Actualizar estado inicial
 actualizarEstado('🟢 Inicializando...', 'inicializando');
 
-// Evento para cuando el DOM esté completamente cargado
 document.addEventListener('DOMContentLoaded', function() {
-    // Asegurar que el grid tenga al menos el contenedor local
     if (!videoContainers.has(socket.id) && socket.id) {
         crearContenedorVideo(socket.id, true);
     }

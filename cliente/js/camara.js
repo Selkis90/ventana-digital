@@ -326,6 +326,7 @@ function crearContenedorVideo(id, esLocal = false) {
 
 // 🔥 Nueva función para ordenar los videos de forma IDÉNTICA en todos los dispositivos
 function ordenarContenedores() {
+    // Obtener los contenedores y ordenarlos según su dataset.peerId
     const contenedores = Array.from(gridVideos.children);
     contenedores.sort((a, b) => {
         const idA = a.dataset.peerId || '';
@@ -698,7 +699,7 @@ async function iniciarOferta(peerId) {
 }
 
 // ============================================
-// 🔗 CONECTAR CON PEERS (MALLA CON TURNOS)
+// 🔗 CONECTAR CON PEERS (MALLA TOTAL: TODOS SE CONECTAN CON TODOS)
 // ============================================
 function conectarConPeers(clientes) {
     const conectadosActuales = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
@@ -710,22 +711,17 @@ function conectarConPeers(clientes) {
     
     if (disponibles.length === 0) return;
 
-    // 🔥 LÓGICA DE TURNOS: Todos pueden conectar, pero siempre el que tenga el ID menor inicia.
-    // Esto crea una malla estable de "A con B" y "B con C" sin caos.
+    // 🔥 MALLA TOTAL: TODOS los dispositivos envían ofertas a todos los demás.
+    // Esto garantiza que si un dispositivo no recibe la oferta del otro, el otro la reciba de este.
     for (const peerId of disponibles) {
         if (videoContainers.size >= MAX_DEVICES) break;
         if (peerConnections.has(peerId)) continue;
         
-        const soyOfertante = socket.id < peerId;
+        console.log(`🎯 [MALLA TOTAL] Conectando con: ${peerId} (sin importar ID)`);
+        const pc = crearPeerConnection(peerId);
+        if (!pc) continue;
         
-        if (soyOfertante) {
-            console.log(`🎯 [MALLA] Yo (${socket.id}) soy el ofertante para: ${peerId}`);
-            const pc = crearPeerConnection(peerId);
-            if (!pc) continue;
-            setTimeout(() => iniciarOferta(peerId), 500);
-        } else {
-            console.log(`⏳ [MALLA] Esperando oferta de: ${peerId} (tiene ID menor)`);
-        }
+        setTimeout(() => iniciarOferta(peerId), 500);
     }
 }
 

@@ -51,14 +51,13 @@ let videoGrandeId = null;
 const MAX_DEVICES = 4;
 let isAudioMuted = false;
 let currentVolume = 0.3;
-// 🔥 ELIMINAMOS la variable orquestadorId, ya no se usa
+let orquestadorId = null;
 
 // ============================================
-// 🔊 AUDIO CONTROLLER (CORREGIDO ESTRICTAMENTE)
+// 🔊 AUDIO CONTROLLER (CORREGIDO DEFINITIVO)
 // ============================================
 class AudioController {
     constructor() {
-        // 🔥 CAMBIO CRÍTICO: Usar un MAPA donde la clave es el peerId, pero el AudioContext es ÚNICO
         this.audioNodes = new Map();
         this.isInitialized = false;
         this.isIOS = isiOS;
@@ -85,7 +84,6 @@ class AudioController {
                 }
             }
             this.isInitialized = true;
-            console.log('✅ AudioController inicializado (contexto único)');
             return true;
         } catch (error) {
             console.warn('⚠️ Error inicializando AudioContext:', error);
@@ -96,10 +94,7 @@ class AudioController {
     // 🔥 SOLO se crea audio para streams REMOTOS (Nunca para el local)
     createAudioForPeer(stream, peerId) {
         try {
-            if (!stream || stream === streamLocal) {
-                console.log(`⛔ BLOQUEADO: Intento de crear audio para stream LOCAL (${peerId})`);
-                return false;
-            }
+            if (!stream || stream === streamLocal) return false;
             
             const audioTracks = stream.getAudioTracks();
             if (audioTracks.length === 0) return false;
@@ -115,12 +110,9 @@ class AudioController {
 
             const source = this.globalContext.createMediaStreamSource(stream);
             const gainNode = this.globalContext.createGain();
-            
-            // 🔥 El volumen inicial se aplica al nodo gain
             const vol = this.muted ? 0 : this.volume;
             gainNode.gain.value = vol;
 
-            // Filtro para evitar zumbidos
             const filter = this.globalContext.createBiquadFilter();
             filter.type = 'lowpass';
             filter.frequency.value = isMobile ? 6000 : 8000;
@@ -129,9 +121,7 @@ class AudioController {
             filter.connect(gainNode);
             gainNode.connect(this.globalContext.destination);
 
-            // Guardamos SOLO los nodos de audio remotos (peerId NO es el socket.id local)
             this.audioNodes.set(peerId, { source, gainNode, filter });
-            console.log(`✅ Audio REMOTO creado para peer ${peerId} (vol: ${vol})`);
             return true;
         } catch (error) {
             console.error('❌ Error creando audio:', error);
@@ -147,7 +137,6 @@ class AudioController {
                 audioData.gainNode.gain.value = vol;
             }
         }
-        console.log(`🔊 Volumen actualizado a: ${vol}`);
         return true;
     }
 
@@ -159,7 +148,6 @@ class AudioController {
                 audioData.gainNode.gain.value = vol;
             }
         }
-        console.log(`🔇 Silencio remoto activado: ${this.muted}`);
         return this.muted;
     }
 
@@ -174,11 +162,6 @@ class AudioController {
     }
 
     destroyAudioForPeer(peerId) {
-        // 🔥 Destruir SOLO si es un peer remoto
-        if (peerId === socket.id) {
-            console.log(`⛔ BLOQUEADO: No se puede destruir audio local`);
-            return;
-        }
         const audioData = this.audioNodes.get(peerId);
         if (audioData) {
             try {
@@ -187,12 +170,10 @@ class AudioController {
                 audioData.gainNode.disconnect();
             } catch (e) {}
             this.audioNodes.delete(peerId);
-            console.log(`🗑️ Audio REMOTO destruido para peer ${peerId}`);
         }
     }
 
     destroyAll() {
-        // 🔥 Destruir todos los nodos REMOTOS (nunca el local, porque no existe en el mapa)
         for (const [peerId, audioData] of this.audioNodes) {
             try {
                 audioData.source.disconnect();
@@ -217,7 +198,7 @@ class AudioController {
 const audioController = new AudioController();
 
 // ============================================
-// 🎵 TRACK SILENCIOSO (Para que los demás te escuchen sin que tú te escuches)
+// 🎵 TRACK SILENCIOSO
 // ============================================
 function crearTrackAudioSilencioso() {
     try {
@@ -250,7 +231,6 @@ function asegurarAudioLocal() {
             audioTracks = streamLocal.getAudioTracks();
         }
     }
-    // 🔥 El audio local se ENVÍA activamente para que los demás lo escuchen
     audioTracks.forEach(track => track.enabled = true);
     return audioTracks.length > 0;
 }
@@ -344,6 +324,7 @@ function crearContenedorVideo(id, esLocal = false) {
     return container;
 }
 
+// 🔥 ORDENAR SIEMPRE ALFABÉTICAMENTE PARA QUE TODOS VEAN LO MISMO
 function ordenarContenedores() {
     const contenedores = Array.from(gridVideos.children);
     contenedores.sort((a, b) => {
@@ -509,7 +490,7 @@ function asignarVideo(id, stream, esLocal = false) {
     
     container.classList.add('activo');
     
-    // 🔥 CRÍTICO: Solo crear audio si NO es el stream local
+    // 🔥 Solo crear audio si NO es el stream local
     if (!esLocal && stream.getAudioTracks().length > 0) {
         audioController.createAudioForPeer(stream, id);
     }
@@ -762,7 +743,11 @@ socket.on("connect", async () => {
     await iniciarCamara();
 });
 
-// 🔥 ELIMINAMOS el evento actualizar-orquestador (ya no existe)
+// 🔥 EVENTO PARA SABER QUIÉN ES EL ORQUESTADOR
+socket.on("actualizar-orquestador", (data) => {
+    orquestadorId = data.orquestadorId;
+    console.log(`👑 Orquestador actual: ${orquestadorId}`);
+});
 
 socket.on("offer", async (data) => {
     const { from, offer } = data;
@@ -942,7 +927,6 @@ async function iniciarCamara() {
             if (silentTrack) streamLocal.addTrack(silentTrack);
         }
         
-        // 🔥 El audio local se ENVÍA activamente (para que los demás lo escuchen)
         audioTracks.forEach(track => track.enabled = true);
         
         const container = videoContainers.get(socket.id);

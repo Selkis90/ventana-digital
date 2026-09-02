@@ -51,6 +51,7 @@ let videoGrandeId = null;
 const MAX_DEVICES = 4;
 let isAudioMuted = false;
 let currentVolume = 0.3;
+// 🔥 VARIABLE DEL ORQUESTADOR
 let orquestadorId = null;
 
 // ============================================
@@ -549,6 +550,7 @@ async function obtenerTurnServers() {
 // 🔥 CREAR PEER CONNECTION
 // ============================================
 function crearPeerConnection(peerId) {
+    // 🔥 CAMBIO CRÍTICO: Si ya existe una conexión, la cerramos y creamos una nueva limpia
     if (peerConnections.has(peerId)) {
         try {
             const oldPc = peerConnections.get(peerId);
@@ -698,7 +700,7 @@ async function iniciarOferta(peerId) {
 }
 
 // ============================================
-// 🔗 CONECTAR CON PEERS (MALLA TOTAL)
+// 🔗 CONECTAR CON PEERS (SOLO EL ORQUESTADOR INICIA)
 // ============================================
 function conectarConPeers(clientes) {
     const conectadosActuales = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
@@ -710,12 +712,20 @@ function conectarConPeers(clientes) {
     
     if (disponibles.length === 0) return;
 
-    // 🔥 TODOS envían ofertas a todos (Sin esperar a nadie)
+    // 🔥 CAMBIO CRÍTICO: Solo el dispositivo con el ID del Orquestador envía ofertas
+    // Esto evita el caos de "doble oferta" que impedía que se conectaran
+    if (socket.id !== orquestadorId) {
+        console.log(`⏳ No soy el orquestador (${orquestadorId}). Esperando ofertas...`);
+        return; // Los demás solo esperan
+    }
+
+    console.log(`👑 Soy el ORQUESTADOR. Conectando con ${disponibles.length} dispositivo(s)...`);
+
     for (const peerId of disponibles) {
         if (videoContainers.size >= MAX_DEVICES) break;
         if (peerConnections.has(peerId)) continue;
         
-        console.log(`🎯 [MALLA TOTAL] Conectando con: ${peerId}`);
+        console.log(`🎯 Conectando con: ${peerId}`);
         const pc = crearPeerConnection(peerId);
         if (!pc) continue;
         
@@ -747,6 +757,11 @@ socket.on("connect", async () => {
 socket.on("actualizar-orquestador", (data) => {
     orquestadorId = data.orquestadorId;
     console.log(`👑 Orquestador actual: ${orquestadorId}`);
+    
+    // Si me acabo de convertir en orquestador, debo intentar conectar con todos
+    if (socket.id === orquestadorId) {
+        socket.emit("clientes-conectados");
+    }
 });
 
 socket.on("offer", async (data) => {
@@ -758,9 +773,14 @@ socket.on("offer", async (data) => {
         return;
     }
     
+    // 🔥 CAMBIO CRÍTICO: Si ya existe, NO la bloqueamos, la reemplazamos (limpiamos)
     if (peerConnections.has(from)) {
-        console.log('ℹ️ Ya conectado a este peer');
-        return;
+        try {
+            const oldPc = peerConnections.get(from);
+            oldPc.close();
+        } catch (e) {}
+        peerConnections.delete(from);
+        console.log(`♻️ Reiniciando conexión con ${from} por oferta recibida`);
     }
     
     try {

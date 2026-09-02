@@ -12,8 +12,10 @@ module.exports = (io) => {
         });
 
         const listaClientes = Array.from(clientes.keys());
-        console.log(`📋 Enviando lista de ${listaClientes.length} clientes a TODOS`);
-        
+
+        // 🔥 LO MÁS IMPORTANTE: Decirle a cada cliente quién es el ORQUESTADOR (El primero)
+        const orquestadorId = listaClientes[0];
+        io.emit('actualizar-orquestador', { orquestadorId: orquestadorId });
         io.emit('clientes-conectados', listaClientes);
         
         socket.broadcast.emit('nuevo-cliente', { 
@@ -22,49 +24,20 @@ module.exports = (io) => {
         });
 
         socket.on('offer', (data) => {
-            console.log(`📤 Oferta de ${socket.id} para ${data.target}`);
-            
             if (clientes.has(data.target)) {
-                io.to(data.target).emit('offer', {
-                    from: socket.id,
-                    offer: data.offer,
-                    timestamp: new Date().toISOString()
-                });
-                console.log(`✅ Oferta reenviada a ${data.target}`);
-            } else {
-                console.warn(`⚠️ Cliente ${data.target} no encontrado`);
-                socket.emit('cliente-desconectado', { 
-                    id: data.target,
-                    reason: 'target_not_found'
-                });
+                io.to(data.target).emit('offer', { from: socket.id, offer: data.offer });
             }
         });
 
         socket.on('answer', (data) => {
-            console.log(`📤 Respuesta de ${socket.id} para ${data.target}`);
             if (clientes.has(data.target)) {
-                io.to(data.target).emit('answer', {
-                    from: socket.id,
-                    answer: data.answer,
-                    timestamp: new Date().toISOString()
-                });
-                console.log(`✅ Respuesta reenviada a ${data.target}`);
-            } else {
-                console.warn(`⚠️ Cliente ${data.target} no encontrado`);
+                io.to(data.target).emit('answer', { from: socket.id, answer: data.answer });
             }
         });
 
         socket.on('ice-candidate', (data) => {
-            console.log(`🧊 ICE candidate de ${socket.id} para ${data.target}`);
             if (clientes.has(data.target)) {
-                io.to(data.target).emit('ice-candidate', {
-                    from: socket.id,
-                    candidate: data.candidate,
-                    timestamp: new Date().toISOString()
-                });
-                console.log(`✅ ICE candidate reenviado a ${data.target}`);
-            } else {
-                console.warn(`⚠️ Cliente ${data.target} no encontrado`);
+                io.to(data.target).emit('ice-candidate', { from: socket.id, candidate: data.candidate });
             }
         });
 
@@ -73,30 +46,16 @@ module.exports = (io) => {
             const toDelete = [];
             
             clientes.forEach((client, id) => {
-                if (!sockets.has(id)) {
-                    toDelete.push(id);
-                }
+                if (!sockets.has(id)) toDelete.push(id);
             });
             
-            toDelete.forEach(id => {
-                console.log(`🧹 Eliminando cliente inactivo: ${id}`);
-                clientes.delete(id);
-            });
+            toDelete.forEach(id => clientes.delete(id));
             
             const lista = Array.from(clientes.keys());
-            console.log(`📋 Enviando lista de ${lista.length} clientes a TODOS`);
+            // Actualizar orquestador si el primero se fue
+            const nuevoOrquestador = lista[0];
+            io.emit('actualizar-orquestador', { orquestadorId: nuevoOrquestador });
             io.emit('clientes-conectados', lista);
-
-            // 🔥 NUEVA LÓGICA: El más antiguo es el orquestador
-            if (lista.length > 1) {
-                const primerCliente = lista[0]; // El más antiguo
-                if (socket.id === primerCliente) {
-                    // Este cliente es el orquestador, por lo que iniciará conexiones
-                    console.log(`👑 El cliente ${socket.id} es el ORQUESTADOR y buscará conectar con los demás.`);
-                    // Aquí, el cliente (frontend) decidirá a quién enviar ofertas.
-                    // El servidor no envía ofertas automáticamente, solo reenvía.
-                }
-            }
         });
 
         socket.on('ping', () => {
@@ -104,17 +63,13 @@ module.exports = (io) => {
         });
 
         socket.on('disconnect', () => {
-            console.log(`❌ Cliente desconectado: ${socket.id}`);
             clientes.delete(socket.id);
-            
             const lista = Array.from(clientes.keys());
-            console.log(`📋 Lista actualizada: ${lista.length} clientes`);
             
-            io.emit('cliente-desconectado', { 
-                id: socket.id,
-                timestamp: new Date().toISOString()
-            });
-            
+            // 🔥 Si el orquestador se fue, el siguiente toma su lugar
+            const nuevoOrquestador = lista[0];
+            io.emit('actualizar-orquestador', { orquestadorId: nuevoOrquestador });
+            io.emit('cliente-desconectado', { id: socket.id });
             io.emit('clientes-conectados', lista);
         });
     });

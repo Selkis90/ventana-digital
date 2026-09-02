@@ -11,33 +11,13 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
-    <!-- VIDEO REMOTO (PANTALLA GRANDE - FONDO) -->
-    <video id="video-remoto" autoplay playsinline webkit-playsinline></video>
-    
-    <!-- 🔥 BOTÓN DE REPRODUCCIÓN (se muestra si el autoplay es bloqueado) -->
-    <button id="btn-play" style="
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        z-index: 9999;
-        padding: 20px 40px;
-        font-size: 24px;
-        background: #007bff;
-        color: white;
-        border: none;
-        border-radius: 10px;
-        cursor: pointer;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        display: none;
-        font-weight: bold;
-    ">▶️ VER VIDEO</button>
+    <!-- CONTENEDOR DE VIDEOS EN CUADRÍCULA -->
+    <div id="grid-videos">
+        <!-- Los videos se generarán dinámicamente -->
+    </div>
     
     <!-- AUDIO REMOTO (OCULTO - NECESARIO PARA EL SONIDO) -->
     <audio id="audio-remoto" autoplay playsinline webkit-playsinline></audio>
-    
-    <!-- VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA) -->
-    <video id="video" autoplay playsinline webkit-playsinline muted></video>
     
     <!-- ESTADO -->
     <div id="estado" class="inicializando">🔄 Inicializando...</div>

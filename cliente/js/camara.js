@@ -345,79 +345,123 @@ function crearContenedorVideo(id, esLocal = false) {
     return container;
 }
 
+// ============================================
+// 🎨 NUEVA FUNCIÓN ACTUALIZAR LAYOUT (REEMPLAZADA)
+// ============================================
 function actualizarLayout() {
     const containers = Array.from(gridVideos.children);
     const total = containers.length;
     
-    // Limpiar estilos de grid
+    // Limpiar estilos y clases previas
     containers.forEach(c => {
-        c.style.gridColumn = '';
-        c.style.gridRow = '';
+        c.style.position = 'static';
+        c.style.width = '';
+        c.style.height = '';
+        c.style.left = '';
+        c.style.top = '';
+        c.style.zIndex = '';
+        c.style.borderRadius = '';
+        c.style.boxShadow = '';
         c.classList.remove('grande', 'pequeno');
+        
+        // Mostrar labels por defecto
+        const label = c.querySelector('.video-label');
+        if (label) label.style.display = 'block';
     });
-    
+
+    // Quitar clase especial si existe
+    document.body.classList.remove('layout-especial');
+
     if (total === 0) return;
-    
-    // Si hay un video en grande
-    if (videoGrandeId && videoContainers.has(videoGrandeId)) {
-        const grande = videoContainers.get(videoGrandeId);
+
+    // === CASO 1: 1 SOLA PERSONA (O VIDEO EN GRANDE) ===
+    if (total === 1 || (videoGrandeId && videoContainers.has(videoGrandeId))) {
+        const grande = videoGrandeId ? videoContainers.get(videoGrandeId) : containers[0];
         if (grande && grande.parentNode) {
-            grande.classList.add('grande');
-            // Los demás en pequeño
             containers.forEach(c => {
                 if (c !== grande) {
                     c.classList.add('pequeno');
+                    c.style.borderRadius = '8px';
+                    c.style.boxShadow = '0 4px 15px rgba(0,0,0,0.5)';
+                    
                     // Ocultar labels en pequeños
                     const label = c.querySelector('.video-label');
                     if (label) label.style.display = 'none';
                 } else {
-                    const label = grande.querySelector('.video-label');
-                    if (label) label.style.display = 'block';
+                    c.classList.add('grande');
                 }
             });
+            return;
         }
+    }
+
+    // === CASO 2: 2 PANTALLAS (50/50) ===
+    if (total === 2) {
+        document.body.classList.add('layout-especial'); // Quitar bordes y gaps
+        containers.forEach((c, i) => {
+            c.style.position = 'absolute';
+            c.style.top = '0';
+            c.style.height = '100%';
+            c.style.width = '50%';
+            c.style.borderRadius = '0';
+            c.style.zIndex = '1';
+
+            if (i === 0) {
+                c.style.left = '0';
+            } else {
+                c.style.left = '50%';
+            }
+        });
         return;
     }
-    
-    // Mostrar todos los labels
-    containers.forEach(c => {
-        const label = c.querySelector('.video-label');
-        if (label) label.style.display = 'block';
-    });
-    
-    // Layout normal según cantidad
-    if (total === 1) {
-        containers[0].style.gridColumn = '1 / -1';
-        containers[0].style.gridRow = '1 / -1';
-    } else if (total === 2) {
+
+    // === CASO 3: 3 PANTALLAS (1 Grande izq, 2 pequeñas der) ===
+    if (total === 3) {
+        document.body.classList.add('layout-especial'); // Quitar bordes y gaps
         containers.forEach((c, i) => {
+            c.style.position = 'absolute';
+            c.style.borderRadius = '0';
+            c.style.zIndex = '1';
+
             if (i === 0) {
-                c.style.gridColumn = '1 / 2';
-                c.style.gridRow = '1 / -1';
+                // Primer video: IZQUIERDA (50% ancho, 100% alto)
+                c.style.top = '0';
+                c.style.left = '0';
+                c.style.width = '50%';
+                c.style.height = '100%';
             } else {
-                c.style.gridColumn = '2 / 3';
-                c.style.gridRow = '1 / -1';
+                // Videos 2 y 3: DERECHA (50% ancho, 50% alto cada uno)
+                c.style.left = '50%';
+                c.style.width = '50%';
+                c.style.height = '50%';
+                
+                if (i === 1) {
+                    c.style.top = '0'; // Arriba a la derecha
+                } else {
+                    c.style.top = '50%'; // Abajo a la derecha
+                }
             }
         });
-    } else if (total === 3) {
+        return;
+    }
+
+    // === CASO 4: 4 PANTALLAS (Cuadrícula 2x2) ===
+    if (total >= 4) {
+        document.body.classList.add('layout-especial'); // Quitar bordes y gaps para que peguen
         containers.forEach((c, i) => {
-            if (i === 0) {
-                c.style.gridColumn = '1 / 2';
-                c.style.gridRow = '1 / -1';
-            } else {
-                c.style.gridColumn = '2 / 3';
-                c.style.gridRow = i === 1 ? '1 / 2' : '2 / -1';
-            }
+            c.style.position = 'absolute';
+            c.style.width = '50%';
+            c.style.height = '50%';
+            c.style.borderRadius = '0';
+            c.style.zIndex = '1';
+
+            const col = (i % 2);
+            const row = Math.floor(i / 2);
+
+            c.style.left = `${col * 50}%`;
+            c.style.top = `${row * 50}%`;
         });
-    } else if (total >= 4) {
-        containers.forEach((c, i) => {
-            const col = (i % 2) + 1;
-            const row = Math.floor(i / 2) + 1;
-            if (row <= 2 && col <= 2) {
-                c.style.gridColumn = `${col} / ${col + 1}`;
-                c.style.gridRow = `${row} / ${row + 1}`;
-            }
-        });
+        return;
     }
 }
 

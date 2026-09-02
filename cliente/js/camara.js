@@ -346,7 +346,7 @@ function crearContenedorVideo(id, esLocal = false) {
 }
 
 // ============================================
-// 🎨 NUEVA FUNCIÓN ACTUALIZAR LAYOUT (REEMPLAZADA)
+// 🎨 NUEVA FUNCIÓN ACTUALIZAR LAYOUT
 // ============================================
 function actualizarLayout() {
     const containers = Array.from(gridVideos.children);
@@ -734,7 +734,7 @@ async function iniciarOferta(peerId) {
 }
 
 // ============================================
-// 🔗 CONECTAR CON PEERS
+// 🔗 CONECTAR CON PEERS (SOLO ORQUESTADOR)
 // ============================================
 function conectarConPeers(clientes) {
     // Filtrar clientes que ya están conectados
@@ -753,7 +753,17 @@ function conectarConPeers(clientes) {
         return;
     }
     
-    // Conectar con cada cliente disponible
+    // 🔥 LÓGICA DEL ORQUESTADOR: 
+    // Solo el cliente con el ID más bajo (considerado el más antiguo) inicia ofertas.
+    const soyOrquestador = socket.id < Math.min(...clientes.map(id => id));
+    
+    if (!soyOrquestador) {
+        console.log(`⏳ Soy ${socket.id}, no soy el orquestador. Esperando ofertas...`);
+        actualizarEstado(`🟢 Esperando conexión de ${disponibles[0].substring(0, 6)}`, 'conectado');
+        return; // No hacemos nada, esperamos a que nos llegue la oferta
+    }
+
+    // Conectar con cada cliente disponible (solo si soy el orquestador)
     for (const peerId of disponibles) {
         if (videoContainers.size >= MAX_DEVICES) {
             console.warn(`⚠️ Máximo de ${MAX_DEVICES} dispositivos alcanzado`);
@@ -764,20 +774,13 @@ function conectarConPeers(clientes) {
             continue;
         }
         
-        console.log(`🎯 Conectando con: ${peerId}`);
-        
-        const soyOfertante = socket.id < peerId;
-        console.log(`📌 ROL: ${soyOfertante ? '🟢 OFERTANTE' : '🔴 ANSWER'}`);
+        console.log(`👑 [ORQUESTADOR] Conectando con: ${peerId}`);
         
         const pc = crearPeerConnection(peerId);
         if (!pc) continue;
         
-        if (soyOfertante) {
-            setTimeout(() => iniciarOferta(peerId), 500);
-        } else {
-            console.log(`📥 ESPERANDO OFERTA de ${peerId}...`);
-            actualizarEstado(`🟢 Esperando conexión de ${peerId.substring(0, 6)}`, 'conectado');
-        }
+        // Como soy el orquestador, siempre envío la oferta
+        setTimeout(() => iniciarOferta(peerId), 500);
     }
 }
 

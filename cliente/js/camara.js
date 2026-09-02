@@ -45,21 +45,13 @@ let turnServers = [];
 let isConnecting = false;
 let conectado = false;
 
-// Mapa para almacenar las conexiones PeerConnection por peerId
 const peerConnections = new Map();
-// Mapa para almacenar los streams de los peers
 const peersStreams = new Map();
-// Mapa para almacenar los contenedores de video
 const videoContainers = new Map();
-// ID del video en grande
 let videoGrandeId = null;
-// Máximo de dispositivos
 const MAX_DEVICES = 4;
-// Estado de audio silenciado
 let isAudioMuted = false;
-// Control de volumen
 let currentVolume = 0.3;
-// 🔥 ID del dispositivo que inicia las conexiones
 let orquestadorId = null;
 
 // ============================================
@@ -93,7 +85,6 @@ class AudioController {
                 }
             }
             this.isInitialized = true;
-            console.log('✅ AudioController inicializado');
             return true;
         } catch (error) {
             console.warn('⚠️ Error inicializando AudioContext:', error);
@@ -130,7 +121,6 @@ class AudioController {
             gainNode.connect(this.globalContext.destination);
             
             this.audioContexts.set(peerId, { source, gainNode, filter });
-            console.log(`✅ Audio creado para peer ${peerId} (vol: ${vol})`);
             return true;
         } catch (error) {
             console.error('❌ Error creando audio:', error);
@@ -141,14 +131,12 @@ class AudioController {
     setVolume(volume) {
         this.volume = Math.max(0, Math.min(1, volume));
         const vol = this.muted ? 0 : this.volume;
-        let success = false;
         for (const [peerId, audioData] of this.audioContexts) {
             if (audioData && audioData.gainNode) {
                 audioData.gainNode.gain.value = vol;
-                success = true;
             }
         }
-        return success;
+        return true;
     }
 
     toggleMute() {
@@ -181,7 +169,6 @@ class AudioController {
                 audioData.gainNode.disconnect();
             } catch (e) {}
             this.audioContexts.delete(peerId);
-            console.log(`🗑️ Audio destruido para peer ${peerId}`);
         }
     }
 
@@ -194,7 +181,6 @@ class AudioController {
             } catch (e) {}
         }
         this.audioContexts.clear();
-        console.log('🗑️ Todos los audios destruidos');
     }
 
     resumeContext() {
@@ -227,7 +213,6 @@ function crearTrackAudioSilencioso() {
         source.connect(dest);
         source.start(0);
         const track = dest.stream.getAudioTracks()[0];
-        console.log('✅ Track de audio silencioso creado');
         return track;
     } catch (error) {
         console.error('❌ Error creando track silencioso:', error);
@@ -330,14 +315,32 @@ function crearContenedorVideo(id, esLocal = false) {
     gridVideos.appendChild(container);
     videoContainers.set(id, container);
     
+    // 🔥 ORDENAR SIEMPRE ALFABÉTICAMENTE PARA QUE TODOS VEAN LO MISMO
+    ordenarContenedores();
+    
     actualizarLayout();
     actualizarInfoPeer();
     
     return container;
 }
 
+// 🔥 Nueva función para ordenar los videos de forma IDÉNTICA en todos los dispositivos
+function ordenarContenedores() {
+    const contenedores = Array.from(gridVideos.children);
+    contenedores.sort((a, b) => {
+        const idA = a.dataset.peerId || '';
+        const idB = b.dataset.peerId || '';
+        return idA.localeCompare(idB);
+    });
+    
+    // Reinsertar en el orden correcto (alfabético)
+    contenedores.forEach(container => {
+        gridVideos.appendChild(container);
+    });
+}
+
 // ============================================
-// 🎨 NUEVA FUNCIÓN ACTUALIZAR LAYOUT
+// 🎨 ACTUALIZAR LAYOUT
 // ============================================
 function actualizarLayout() {
     const containers = Array.from(gridVideos.children);
@@ -362,7 +365,7 @@ function actualizarLayout() {
 
     if (total === 0) return;
 
-    if (total === 1 || (videoGrandeId && videoContainers.has(videoGrandeId))) {
+    if (total === 1 || (videoGrandeId && videoContainers.has(videoGrandeId) && videoGrandeId !== socket.id)) {
         const grande = videoGrandeId ? videoContainers.get(videoGrandeId) : containers[0];
         if (grande && grande.parentNode) {
             containers.forEach(c => {
@@ -466,6 +469,7 @@ function eliminarContenedorVideo(id) {
         }
         peersStreams.delete(id);
         audioController.destroyAudioForPeer(id);
+        ordenarContenedores();
         actualizarLayout();
         actualizarInfoPeer();
         console.log(`🗑️ Contenedor eliminado para ${id}`);
@@ -694,7 +698,7 @@ async function iniciarOferta(peerId) {
 }
 
 // ============================================
-// 🔗 CONECTAR CON PEERS (MALLA: TODOS SE CONECTAN CON TODOS)
+// 🔗 CONECTAR CON PEERS (MALLA CON TURNOS)
 // ============================================
 function conectarConPeers(clientes) {
     const conectadosActuales = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
@@ -706,12 +710,12 @@ function conectarConPeers(clientes) {
     
     if (disponibles.length === 0) return;
 
-    // 🔥 LÓGICA DE MALLA: Cada dispositivo intenta conectar, PERO solo el que tiene el ID más bajo inicia la oferta
+    // 🔥 LÓGICA DE TURNOS: Todos pueden conectar, pero siempre el que tenga el ID menor inicia.
+    // Esto crea una malla estable de "A con B" y "B con C" sin caos.
     for (const peerId of disponibles) {
         if (videoContainers.size >= MAX_DEVICES) break;
         if (peerConnections.has(peerId)) continue;
         
-        // El dispositivo con el ID más bajo (alfabéticamente) inicia la conexión
         const soyOfertante = socket.id < peerId;
         
         if (soyOfertante) {
@@ -721,7 +725,6 @@ function conectarConPeers(clientes) {
             setTimeout(() => iniciarOferta(peerId), 500);
         } else {
             console.log(`⏳ [MALLA] Esperando oferta de: ${peerId} (tiene ID menor)`);
-            // No hacemos nada, esperamos su oferta
         }
     }
 }
@@ -746,7 +749,6 @@ socket.on("connect", async () => {
     await iniciarCamara();
 });
 
-// 🔥 EVENTO PARA SABER QUIÉN ES EL ORQUESTADOR (Ya no es obligatorio, pero se mantiene por compatibilidad)
 socket.on("actualizar-orquestador", (data) => {
     orquestadorId = data.orquestadorId;
     console.log(`👑 Orquestador actual: ${orquestadorId}`);

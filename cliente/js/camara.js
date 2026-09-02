@@ -29,8 +29,8 @@ console.log(`📱 Dispositivo: ${isMobile ? 'Móvil' : 'Desktop'}`);
 const socket = io("https://ventana-digital.onrender.com", {
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionAttempts: 3,
-    reconnectionDelay: 2000,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     timeout: 30000,
     forceNew: true,
@@ -38,29 +38,27 @@ const socket = io("https://ventana-digital.onrender.com", {
 });
 
 // ============================================
-// 📦 VARIABLES
+// 📦 VARIABLES GLOBALES
 // ============================================
 let streamLocal = null;
 let turnServers = [];
 let isConnecting = false;
-let isOfferSent = false;
-let soyOfertante = false;
-let rolAsignado = false;
-let pc = null;
 let conectado = false;
-let peerId = null;
-let audioCreado = false;
 
+// Mapa para almacenar las conexiones PeerConnection por peerId
+const peerConnections = new Map();
 // Mapa para almacenar los streams de los peers
 const peersStreams = new Map();
 // Mapa para almacenar los contenedores de video
 const videoContainers = new Map();
-// Lista de IDs de peers conectados
-let connectedPeers = [];
 // ID del video en grande
 let videoGrandeId = null;
 // Máximo de dispositivos
 const MAX_DEVICES = 4;
+// Estado de audio silenciado
+let isAudioMuted = false;
+// Control de volumen
+let currentVolume = 0.3;
 
 // ============================================
 // 🔊 AUDIO CONTROLLER
@@ -71,6 +69,8 @@ class AudioController {
         this.isInitialized = false;
         this.isIOS = isiOS;
         this.globalContext = null;
+        this.volume = 0.3;
+        this.muted = false;
     }
 
     async init() {
@@ -105,7 +105,9 @@ class AudioController {
             const audioTracks = stream.getAudioTracks();
             if (audioTracks.length === 0) return false;
             
-            if (this.audioContexts.has(peerId)) this.destroyAudioForPeer(peerId);
+            if (this.audioContexts.has(peerId)) {
+                this.destroyAudioForPeer(peerId);
+            }
             
             if (!this.globalContext || this.globalContext.state === 'closed') {
                 this.isInitialized = false;
@@ -114,7 +116,8 @@ class AudioController {
             
             const source = this.globalContext.createMediaStreamSource(stream);
             const gainNode = this.globalContext.createGain();
-            gainNode.gain.value = 0.3;
+            const vol = this.muted ? 0 : this.volume;
+            gainNode.gain.value = vol;
             
             const filter = this.globalContext.createBiquadFilter();
             filter.type = 'lowpass';
@@ -125,8 +128,7 @@ class AudioController {
             gainNode.connect(this.globalContext.destination);
             
             this.audioContexts.set(peerId, { source, gainNode, filter });
-            console.log(`✅ Audio creado para peer ${peerId}`);
-            audioCreado = true;
+            console.log(`✅ Audio creado para peer ${peerId} (vol: ${vol})`);
             return true;
         } catch (error) {
             console.error('❌ Error creando audio:', error);
@@ -135,25 +137,37 @@ class AudioController {
     }
 
     setVolume(volume) {
+        this.volume = Math.max(0, Math.min(1, volume));
+        const vol = this.muted ? 0 : this.volume;
         let success = false;
         for (const [peerId, audioData] of this.audioContexts) {
             if (audioData && audioData.gainNode) {
-                audioData.gainNode.gain.value = Math.max(0, Math.min(1, volume));
+                audioData.gainNode.gain.value = vol;
                 success = true;
             }
         }
         return success;
     }
 
-    muteAudio(muted) {
-        let success = false;
+    toggleMute() {
+        this.muted = !this.muted;
+        const vol = this.muted ? 0 : this.volume;
         for (const [peerId, audioData] of this.audioContexts) {
             if (audioData && audioData.gainNode) {
-                audioData.gainNode.gain.value = muted ? 0 : 0.3;
-                success = true;
+                audioData.gainNode.gain.value = vol;
             }
         }
-        return success;
+        return this.muted;
+    }
+
+    muteAudio(muted) {
+        this.muted = muted;
+        const vol = this.muted ? 0 : this.volume;
+        for (const [peerId, audioData] of this.audioContexts) {
+            if (audioData && audioData.gainNode) {
+                audioData.gainNode.gain.value = vol;
+            }
+        }
     }
 
     destroyAudioForPeer(peerId) {
@@ -167,9 +181,6 @@ class AudioController {
             this.audioContexts.delete(peerId);
             console.log(`🗑️ Audio destruido para peer ${peerId}`);
         }
-        if (this.audioContexts.size === 0) {
-            audioCreado = false;
-        }
     }
 
     destroyAll() {
@@ -181,7 +192,6 @@ class AudioController {
             } catch (e) {}
         }
         this.audioContexts.clear();
-        audioCreado = false;
         console.log('🗑️ Todos los audios destruidos');
     }
 
@@ -248,12 +258,17 @@ function actualizarEstado(mensaje, tipo) {
     }
 }
 
-function actualizarInfoPeer(id) {
+function actualizarInfoPeer() {
     const miId = document.getElementById('mi-id');
     const peerInfo = document.getElementById('peer-conectado');
     if (miId) miId.textContent = `ID: ${socket.id ? socket.id.substring(0, 8) : 'Conectando...'}`;
-    if (peerInfo) peerInfo.textContent = `Peer: ${id ? id.substring(0, 8) : 'Ninguno'}`;
-    if (id) peerId = id;
+    
+    const peers = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
+    if (peers.length > 0) {
+        peerInfo.textContent = `Peer: ${peers.length} conectados`;
+    } else {
+        peerInfo.textContent = 'Peer: Ninguno';
+    }
 }
 
 // ============================================
@@ -286,6 +301,10 @@ function crearContenedorVideo(id, esLocal = false) {
     video.webkitPlaysInline = true;
     if (esLocal) video.muted = true;
     video.className = 'video-element';
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'cover';
+    video.style.background = '#1a1a1a';
     
     // Crear etiqueta
     const label = document.createElement('div');
@@ -311,8 +330,7 @@ function crearContenedorVideo(id, esLocal = false) {
     
     // Click para hacer grande
     container.addEventListener('click', function(e) {
-        // Evitar que se active si se hace clic en los controles
-        if (e.target.closest('.btn-control') || e.target.closest('#controles')) return;
+        e.stopPropagation();
         toggleVideoGrande(id);
     });
     
@@ -322,6 +340,7 @@ function crearContenedorVideo(id, esLocal = false) {
     
     // Actualizar layout
     actualizarLayout();
+    actualizarInfoPeer();
     
     return container;
 }
@@ -330,8 +349,10 @@ function actualizarLayout() {
     const containers = Array.from(gridVideos.children);
     const total = containers.length;
     
-    // Limpiar clases anteriores
+    // Limpiar estilos de grid
     containers.forEach(c => {
+        c.style.gridColumn = '';
+        c.style.gridRow = '';
         c.classList.remove('grande', 'pequeno');
     });
     
@@ -340,54 +361,68 @@ function actualizarLayout() {
     // Si hay un video en grande
     if (videoGrandeId && videoContainers.has(videoGrandeId)) {
         const grande = videoContainers.get(videoGrandeId);
-        if (grande) {
+        if (grande && grande.parentNode) {
             grande.classList.add('grande');
             // Los demás en pequeño
             containers.forEach(c => {
-                if (c !== grande) c.classList.add('pequeno');
-            });
-        }
-    } else {
-        // Layout normal según cantidad
-        if (total === 1) {
-            containers[0].style.gridColumn = '1 / -1';
-            containers[0].style.gridRow = '1 / -1';
-        } else if (total === 2) {
-            containers.forEach((c, i) => {
-                if (i === 0) {
-                    c.style.gridColumn = '1 / 2';
-                    c.style.gridRow = '1 / -1';
+                if (c !== grande) {
+                    c.classList.add('pequeno');
+                    // Ocultar labels en pequeños
+                    const label = c.querySelector('.video-label');
+                    if (label) label.style.display = 'none';
                 } else {
-                    c.style.gridColumn = '2 / 3';
-                    c.style.gridRow = '1 / -1';
-                }
-            });
-        } else if (total === 3) {
-            containers.forEach((c, i) => {
-                if (i === 0) {
-                    c.style.gridColumn = '1 / 2';
-                    c.style.gridRow = '1 / -1';
-                } else {
-                    c.style.gridColumn = '2 / 3';
-                    c.style.gridRow = i === 1 ? '1 / 2' : '2 / -1';
-                }
-            });
-        } else if (total >= 4) {
-            containers.forEach((c, i) => {
-                const col = (i % 2) + 1;
-                const row = Math.floor(i / 2) + 1;
-                if (row <= 2 && col <= 2) {
-                    c.style.gridColumn = `${col} / ${col + 1}`;
-                    c.style.gridRow = `${row} / ${row + 1}`;
+                    const label = grande.querySelector('.video-label');
+                    if (label) label.style.display = 'block';
                 }
             });
         }
+        return;
+    }
+    
+    // Mostrar todos los labels
+    containers.forEach(c => {
+        const label = c.querySelector('.video-label');
+        if (label) label.style.display = 'block';
+    });
+    
+    // Layout normal según cantidad
+    if (total === 1) {
+        containers[0].style.gridColumn = '1 / -1';
+        containers[0].style.gridRow = '1 / -1';
+    } else if (total === 2) {
+        containers.forEach((c, i) => {
+            if (i === 0) {
+                c.style.gridColumn = '1 / 2';
+                c.style.gridRow = '1 / -1';
+            } else {
+                c.style.gridColumn = '2 / 3';
+                c.style.gridRow = '1 / -1';
+            }
+        });
+    } else if (total === 3) {
+        containers.forEach((c, i) => {
+            if (i === 0) {
+                c.style.gridColumn = '1 / 2';
+                c.style.gridRow = '1 / -1';
+            } else {
+                c.style.gridColumn = '2 / 3';
+                c.style.gridRow = i === 1 ? '1 / 2' : '2 / -1';
+            }
+        });
+    } else if (total >= 4) {
+        containers.forEach((c, i) => {
+            const col = (i % 2) + 1;
+            const row = Math.floor(i / 2) + 1;
+            if (row <= 2 && col <= 2) {
+                c.style.gridColumn = `${col} / ${col + 1}`;
+                c.style.gridRow = `${row} / ${row + 1}`;
+            }
+        });
     }
 }
 
 function toggleVideoGrande(id) {
     if (videoGrandeId === id) {
-        // Si ya está grande, lo quitamos
         videoGrandeId = null;
     } else {
         videoGrandeId = id;
@@ -403,7 +438,20 @@ function eliminarContenedorVideo(id) {
         if (videoGrandeId === id) {
             videoGrandeId = null;
         }
+        // Limpiar peer connection si existe
+        if (peerConnections.has(id)) {
+            try {
+                const pc = peerConnections.get(id);
+                pc.close();
+            } catch (e) {}
+            peerConnections.delete(id);
+        }
+        // Limpiar stream
+        peersStreams.delete(id);
+        // Limpiar audio
+        audioController.destroyAudioForPeer(id);
         actualizarLayout();
+        actualizarInfoPeer();
         console.log(`🗑️ Contenedor eliminado para ${id}`);
     }
 }
@@ -415,9 +463,6 @@ function asignarVideo(id, stream, esLocal = false) {
     const video = container.querySelector('video');
     if (!video) return false;
     
-    // Si es local y ya tiene stream, no lo cambiamos
-    if (esLocal && video.srcObject === stream) return true;
-    
     video.srcObject = stream;
     video.style.display = 'block';
     
@@ -428,19 +473,29 @@ function asignarVideo(id, stream, esLocal = false) {
     // Marcar como activo
     container.classList.add('activo');
     
-    // Si tiene audio, crear contexto de audio
+    // Si tiene audio y es remoto, crear contexto de audio
     if (!esLocal && stream.getAudioTracks().length > 0) {
         audioController.createAudioForPeer(stream, id);
     }
     
-    // Mostrar indicador de audio si tiene audio
+    // Mostrar indicador de audio
     const audioIndicator = container.querySelector('.audio-indicator');
     if (audioIndicator) {
-        if (stream.getAudioTracks().length > 0) {
+        if (!esLocal && stream.getAudioTracks().length > 0) {
             audioIndicator.classList.add('activo');
         } else {
             audioIndicator.classList.remove('activo');
         }
+    }
+    
+    // Intentar reproducir
+    if (!esLocal) {
+        video.play().catch(() => {
+            console.log('⏳ Esperando interacción para reproducir video');
+        });
+    } else {
+        video.muted = true;
+        video.play().catch(() => {});
     }
     
     console.log(`✅ Video asignado para ${id}`);
@@ -476,198 +531,168 @@ async function obtenerTurnServers() {
 }
 
 // ============================================
-// 🧹 LIMPIAR PEER
+// 🔥 CREAR PEER CONNECTION
 // ============================================
-function limpiarPeer() {
-    if (pc) {
+function crearPeerConnection(peerId) {
+    // Si ya existe, cerrarla
+    if (peerConnections.has(peerId)) {
         try {
-            pc.onicecandidate = null;
-            pc.ontrack = null;
-            pc.onconnectionstatechange = null;
-            pc.oniceconnectionstatechange = null;
-            pc.close();
+            const oldPc = peerConnections.get(peerId);
+            oldPc.close();
         } catch (e) {}
-        pc = null;
-        console.log('🧹 Peer limpiado');
+        peerConnections.delete(peerId);
     }
-    isConnecting = false;
-    isOfferSent = false;
-    conectado = false;
-}
-
-// ============================================
-// 🔥 CREAR PEER
-// ============================================
-function crearPeerConnection(id) {
-    limpiarPeer();
     
-    console.log(`🔗 Creando conexión con: ${id}`);
+    console.log(`🔗 Creando conexión con: ${peerId}`);
     
     try {
-        pc = new RTCPeerConnection({
+        const pc = new RTCPeerConnection({
             iceServers: turnServers,
             iceCandidatePoolSize: 10,
             bundlePolicy: "max-bundle",
             rtcpMuxPolicy: "require"
         });
+        
+        peerConnections.set(peerId, pc);
+        
+        // Agregar tracks locales
+        if (streamLocal) {
+            asegurarAudioLocal();
+            streamLocal.getTracks().forEach(track => {
+                try {
+                    pc.addTrack(track, streamLocal);
+                    console.log(`✅ Track agregado: ${track.kind} para ${peerId}`);
+                } catch (error) {
+                    console.error(`❌ Error agregando track ${track.kind}:`, error);
+                }
+            });
+        }
+        
+        pc.ontrack = (event) => {
+            console.log(`📥 Track recibido: ${event.track.kind} de ${peerId}`);
+            if (event.streams && event.streams[0]) {
+                const stream = event.streams[0];
+                if (stream === streamLocal) return;
+                
+                stream.getAudioTracks().forEach(t => t.enabled = true);
+                
+                // Guardar stream
+                peersStreams.set(peerId, stream);
+                
+                // Crear contenedor si no existe
+                if (!videoContainers.has(peerId)) {
+                    crearContenedorVideo(peerId, false);
+                }
+                
+                // Asignar video
+                asignarVideo(peerId, stream, false);
+                
+                // Actualizar estado
+                const peers = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
+                actualizarEstado(`🟢 Conectado a ${peers.length} dispositivo(s)`, 'conectado');
+                actualizarInfoPeer();
+            }
+        };
+        
+        pc.onicecandidate = (event) => {
+            if (event.candidate && peerId) {
+                socket.emit("ice-candidate", { 
+                    target: peerId, 
+                    candidate: event.candidate 
+                });
+            }
+        };
+        
+        pc.oniceconnectionstatechange = () => {
+            const state = pc.iceConnectionState;
+            console.log(`🔗 ICE: ${state} para ${peerId}`);
+            if (state === "failed" || state === "disconnected") {
+                handlePeerDisconnect(peerId);
+            }
+        };
+        
+        pc.onconnectionstatechange = () => {
+            const state = pc.connectionState;
+            console.log(`🔗 Estado: ${state} para ${peerId}`);
+            if (state === "connected") {
+                console.log(`✅ CONEXIÓN ESTABLECIDA con ${peerId}!`);
+                conectado = true;
+                isConnecting = false;
+                actualizarEstado(`🟢 Conectado a ${videoContainers.size - 1} dispositivo(s)`, 'conectado');
+                actualizarInfoPeer();
+            } else if (state === "failed" || state === "disconnected") {
+                handlePeerDisconnect(peerId);
+            }
+        };
+        
+        pc._pendingCandidates = [];
+        return pc;
     } catch (error) {
         console.error('❌ Error creando RTCPeerConnection:', error);
         return null;
     }
-
-    if (streamLocal) {
-        asegurarAudioLocal();
-        streamLocal.getTracks().forEach(track => {
-            try {
-                pc.addTrack(track, streamLocal);
-                console.log(`✅ Track agregado: ${track.kind}`);
-            } catch (error) {
-                console.error(`❌ Error agregando track ${track.kind}:`, error);
-            }
-        });
-    }
-
-    pc.ontrack = (event) => {
-        console.log(`📥 Track recibido: ${event.track.kind} de ${id}`);
-        if (event.streams && event.streams[0]) {
-            const stream = event.streams[0];
-            if (stream === streamLocal) return;
-            
-            stream.getAudioTracks().forEach(t => t.enabled = true);
-            
-            // Guardar stream
-            peersStreams.set(id, stream);
-            
-            // Crear contenedor si no existe
-            if (!videoContainers.has(id)) {
-                crearContenedorVideo(id, false);
-            }
-            
-            // Asignar video
-            asignarVideo(id, stream, false);
-            
-            // Actualizar estado
-            actualizarEstado(`🟢 Conectado a ${id.substring(0, 6)}`, 'conectado');
-            actualizarInfoPeer(id);
-        }
-    };
-
-    pc.onicecandidate = (event) => {
-        if (event.candidate && id) {
-            socket.emit("ice-candidate", { target: id, candidate: event.candidate });
-        }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-        console.log(`🔗 ICE: ${pc ? pc.iceConnectionState : 'null'} para ${id}`);
-        if (pc && pc.iceConnectionState === "failed") {
-            handleFailure(id);
-        }
-    };
-
-    pc.onconnectionstatechange = () => {
-        console.log(`🔗 Estado: ${pc ? pc.connectionState : 'null'} para ${id}`);
-        if (pc && pc.connectionState === "connected") {
-            console.log(`✅ CONEXIÓN ESTABLECIDA con ${id}!`);
-            conectado = true;
-            isConnecting = false;
-            isOfferSent = false;
-        } else if (pc && pc.connectionState === "failed") {
-            handleFailure(id);
-        }
-    };
-
-    pc._pendingCandidates = [];
-    return pc;
 }
 
 // ============================================
-// 🔄 MANEJAR FALLAS
+// 🔄 MANEJAR DESCONEXIÓN DE PEER
 // ============================================
-function handleFailure(id) {
-    console.log(`❌ Falla de conexión con ${id}`);
-    
-    // Eliminar contenedor
-    if (id) {
-        eliminarContenedorVideo(id);
-        peersStreams.delete(id);
-        audioController.destroyAudioForPeer(id);
+function handlePeerDisconnect(peerId) {
+    console.log(`❌ Desconectado de ${peerId}`);
+    if (peerId) {
+        eliminarContenedorVideo(peerId);
     }
-    
-    // Limpiar peer
-    limpiarPeer();
     isConnecting = false;
-    isOfferSent = false;
-    soyOfertante = false;
-    rolAsignado = false;
     conectado = false;
-    actualizarEstado('🔴 Desconectado', 'desconectado');
+    
+    const peers = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
+    if (peers.length === 0) {
+        actualizarEstado('🟢 Esperando otro equipo', 'conectado');
+        actualizarInfoPeer();
+    } else {
+        actualizarEstado(`🟢 Conectado a ${peers.length} dispositivo(s)`, 'conectado');
+        actualizarInfoPeer();
+    }
 }
 
 // ============================================
 // 📤 INICIAR OFERTA
 // ============================================
-function iniciarOferta(id) {
-    console.log(`📤 Iniciando oferta para ${id}`);
-    
-    if (isOfferSent) {
-        console.log('⏳ Oferta ya enviada');
-        return;
-    }
-    
-    if (!pc || pc.signalingState === 'closed') {
-        console.warn('⚠️ PC cerrado');
-        limpiarPeer();
-        isConnecting = false;
+async function iniciarOferta(peerId) {
+    const pc = peerConnections.get(peerId);
+    if (!pc) {
+        console.warn('⚠️ No hay peer connection para', peerId);
         return;
     }
     
     if (pc.signalingState !== 'stable') {
         console.log(`⏳ Signaling state: ${pc.signalingState}, esperando...`);
         setTimeout(() => {
-            if (pc && pc.signalingState === 'stable') {
-                iniciarOferta(id);
-            } else {
-                isConnecting = false;
+            if (peerConnections.has(peerId)) {
+                iniciarOferta(peerId);
             }
         }, 500);
         return;
     }
     
-    if (!asegurarAudioLocal()) {
-        console.error('❌ No hay audio local');
-        isConnecting = false;
-        return;
+    try {
+        const offer = await pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true
+        });
+        await pc.setLocalDescription(offer);
+        socket.emit("offer", { target: peerId, offer: pc.localDescription });
+        console.log(`✅ Oferta enviada a ${peerId}`);
+        actualizarEstado(`🔄 Conectando con ${peerId.substring(0, 6)}...`, 'inicializando');
+    } catch (error) {
+        console.error('❌ Error creando oferta:', error);
+        handlePeerDisconnect(peerId);
     }
-    
-    isOfferSent = true;
-    
-    pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true
-    })
-    .then(offer => {
-        const hasAudio = offer.sdp ? offer.sdp.includes('m=audio') : false;
-        console.log(`📝 SDP: Audio=${hasAudio ? '✅' : '❌'}`);
-        return pc.setLocalDescription(offer);
-    })
-    .then(() => {
-        socket.emit("offer", { target: id, offer: pc.localDescription });
-        console.log(`✅ Oferta enviada a ${id}`);
-        actualizarEstado(`🔄 Conectando con ${id.substring(0, 6)}...`, 'inicializando');
-    })
-    .catch(error => {
-        console.error('❌ Error:', error);
-        limpiarPeer();
-        isConnecting = false;
-        isOfferSent = false;
-    });
 }
 
 // ============================================
-// 🔗 CONECTAR
+// 🔗 CONECTAR CON PEERS
 // ============================================
-function conectarConTodos(clientes) {
+function conectarConPeers(clientes) {
     // Filtrar clientes que ya están conectados
     const conectadosActuales = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
     const disponibles = clientes.filter(id => 
@@ -684,34 +709,31 @@ function conectarConTodos(clientes) {
         return;
     }
     
-    const id = disponibles[0];
-    console.log(`🎯 Conectando con: ${id}`);
-    
-    if (isConnecting) {
-        console.log('⏳ Conexión en proceso...');
-        return;
-    }
-    
-    soyOfertante = socket.id < id;
-    rolAsignado = true;
-    
-    console.log(`📌 ROL: ${soyOfertante ? '🟢 OFERTANTE' : '🔴 ANSWER'}`);
-    
-    isConnecting = true;
-    isOfferSent = false;
-    
-    if (soyOfertante) {
-        console.log('📤 INICIANDO COMO OFERTANTE...');
-        const newPc = crearPeerConnection(id);
-        if (newPc && newPc.signalingState !== 'closed') {
-            setTimeout(() => iniciarOferta(id), 500);
-        } else {
-            isConnecting = false;
+    // Conectar con cada cliente disponible
+    for (const peerId of disponibles) {
+        if (videoContainers.size >= MAX_DEVICES) {
+            console.warn(`⚠️ Máximo de ${MAX_DEVICES} dispositivos alcanzado`);
+            break;
         }
-    } else {
-        console.log('📥 ESPERANDO COMO ANSWER...');
-        actualizarEstado('🟢 Esperando conexión...', 'conectado');
-        isConnecting = false;
+        
+        if (peerConnections.has(peerId)) {
+            continue;
+        }
+        
+        console.log(`🎯 Conectando con: ${peerId}`);
+        
+        const soyOfertante = socket.id < peerId;
+        console.log(`📌 ROL: ${soyOfertante ? '🟢 OFERTANTE' : '🔴 ANSWER'}`);
+        
+        const pc = crearPeerConnection(peerId);
+        if (!pc) continue;
+        
+        if (soyOfertante) {
+            setTimeout(() => iniciarOferta(peerId), 500);
+        } else {
+            console.log(`📥 ESPERANDO OFERTA de ${peerId}...`);
+            actualizarEstado(`🟢 Esperando conexión de ${peerId.substring(0, 6)}`, 'conectado');
+        }
     }
 }
 
@@ -722,25 +744,18 @@ function conectarConTodos(clientes) {
 socket.on("connect", async () => {
     console.log("✅ Conectado al servidor:", socket.id);
     isConnecting = false;
-    isOfferSent = false;
-    soyOfertante = false;
-    rolAsignado = false;
     conectado = false;
     actualizarEstado("🟢 Conectado al servidor", "conectado");
-    actualizarInfoPeer(null);
+    actualizarInfoPeer();
     
-    // Crear contenedor local
+    // Crear contenedor local si no existe
     if (!videoContainers.has(socket.id)) {
         crearContenedorVideo(socket.id, true);
     }
     
     await obtenerTurnServers();
     await audioController.init();
-    
-    // Iniciar cámara
     await iniciarCamara();
-    
-    setTimeout(() => socket.emit("clientes-conectados"), 1500);
 });
 
 socket.on("offer", async (data) => {
@@ -753,67 +768,46 @@ socket.on("offer", async (data) => {
         return;
     }
     
-    if (conectado || (pc && pc.connectionState === "connected")) {
-        console.log('ℹ️ Ya conectado, ignorando oferta');
+    // Verificar si ya estamos conectados a este peer
+    if (peerConnections.has(from)) {
+        console.log('ℹ️ Ya conectado a este peer');
         return;
     }
-    
-    if (soyOfertante) {
-        console.log('⚠️ Soy OFERTANTE, ignorando');
-        return;
-    }
-    
-    if (isOfferSent) {
-        console.log('⏳ Ya enviamos oferta, ignorando');
-        return;
-    }
-    
-    if (pc && (pc.signalingState === 'have-local-offer' || pc.signalingState === 'have-remote-offer')) {
-        console.log('⏳ Ya en negociación');
-        return;
-    }
-    
-    limpiarPeer();
     
     try {
         console.log('📥 RESPONDIENDO COMO ANSWER...');
-        const newPc = crearPeerConnection(from);
-        if (!newPc) {
+        const pc = crearPeerConnection(from);
+        if (!pc) {
             console.error('❌ No se pudo crear PeerConnection');
             return;
         }
         
-        if (newPc.signalingState === 'closed') {
-            limpiarPeer();
-            return;
-        }
-        
-        await newPc.setRemoteDescription(new RTCSessionDescription(offer));
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
         console.log('✅ Descripción remota establecida');
         
-        if (newPc._pendingCandidates && newPc._pendingCandidates.length > 0) {
-            for (const candidate of newPc._pendingCandidates) {
+        // Agregar ICE candidates pendientes
+        if (pc._pendingCandidates && pc._pendingCandidates.length > 0) {
+            for (const candidate of pc._pendingCandidates) {
                 try {
-                    await newPc.addIceCandidate(new RTCIceCandidate(candidate));
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
                 } catch (e) {}
             }
-            newPc._pendingCandidates = [];
+            pc._pendingCandidates = [];
         }
-
-        const answer = await newPc.createAnswer({
+        
+        const answer = await pc.createAnswer({
             offerToReceiveAudio: true,
             offerToReceiveVideo: true
         });
-        await newPc.setLocalDescription(answer);
-
-        socket.emit("answer", { target: from, answer: newPc.localDescription });
+        await pc.setLocalDescription(answer);
+        
+        socket.emit("answer", { target: from, answer: pc.localDescription });
         console.log('✅ Respuesta enviada');
         isConnecting = false;
-        actualizarInfoPeer(from);
+        actualizarInfoPeer();
     } catch (error) {
         console.error('❌ Error:', error);
-        limpiarPeer();
-        isConnecting = false;
+        handlePeerDisconnect(from);
     }
 });
 
@@ -821,52 +815,41 @@ socket.on("answer", async (data) => {
     const { from, answer } = data;
     console.log(`📩 RESPUESTA DE: ${from}`);
     
-    if (!soyOfertante) {
-        console.log('⚠️ Soy ANSWER, ignorando');
+    const pc = peerConnections.get(from);
+    if (!pc) {
+        console.log('⚠️ No hay peer para esta respuesta');
         return;
     }
     
-    if (!pc) {
-        console.log('⚠️ No hay peer');
-        return;
-    }
-
-    if (pc.signalingState === 'closed') {
-        limpiarPeer();
-        return;
-    }
-
     if (pc.signalingState !== 'have-local-offer') {
         console.log(`ℹ️ Estado ${pc.signalingState}, ignorando`);
         return;
     }
-
+    
     try {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
         console.log('✅ Descripción remota establecida');
         isConnecting = false;
-        isOfferSent = false;
-        actualizarInfoPeer(from);
+        actualizarInfoPeer();
     } catch (error) {
         console.error('❌ Error:', error);
-        limpiarPeer();
-        isConnecting = false;
-        isOfferSent = false;
+        handlePeerDisconnect(from);
     }
 });
 
 socket.on("ice-candidate", async (data) => {
     const { from, candidate } = data;
+    const pc = peerConnections.get(from);
     if (!pc) return;
-
+    
     try {
         if (pc.remoteDescription && pc.remoteDescription.type) {
             await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            console.log('✅ ICE Candidate agregado');
+            console.log('✅ ICE Candidate agregado para', from);
         } else {
             if (!pc._pendingCandidates) pc._pendingCandidates = [];
             pc._pendingCandidates.push(candidate);
-            console.log('⏳ ICE Candidate guardado');
+            console.log('⏳ ICE Candidate guardado para', from);
         }
     } catch (error) {
         console.warn('⚠️ Error ICE:', error.message);
@@ -876,31 +859,23 @@ socket.on("ice-candidate", async (data) => {
 socket.on("clientes-conectados", (lista) => {
     console.log("📋 Clientes:", lista);
     
-    // Verificar si hay espacio para más conexiones
-    if (videoContainers.size >= MAX_DEVICES) {
-        console.log(`ℹ️ Ya hay ${MAX_DEVICES} dispositivos conectados`);
-        return;
-    }
-    
-    // Eliminar clientes que ya no están
+    // Limpiar clientes que ya no están
     const conectadosActuales = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
     for (const id of conectadosActuales) {
         if (!lista.includes(id)) {
             eliminarContenedorVideo(id);
-            peersStreams.delete(id);
-            audioController.destroyAudioForPeer(id);
         }
     }
     
     // Conectar con nuevos clientes
-    if (!isConnecting && !conectado) {
-        setTimeout(() => conectarConTodos(lista), 500);
+    if (videoContainers.size < MAX_DEVICES) {
+        setTimeout(() => conectarConPeers(lista), 500);
     }
 });
 
 socket.on("nuevo-cliente", (data) => {
     console.log("🆕 Nuevo cliente:", data.id);
-    if (videoContainers.size < MAX_DEVICES && !conectado && !isConnecting) {
+    if (videoContainers.size < MAX_DEVICES) {
         setTimeout(() => socket.emit("clientes-conectados"), 1000);
     }
 });
@@ -909,13 +884,9 @@ socket.on("cliente-desconectado", (data) => {
     console.log("🔴 Cliente desconectado:", data.id);
     if (data.id) {
         eliminarContenedorVideo(data.id);
-        peersStreams.delete(data.id);
-        audioController.destroyAudioForPeer(data.id);
-        if (peerId === data.id) {
-            actualizarInfoPeer(null);
-        }
     }
     actualizarEstado('🟢 Esperando otro equipo', 'conectado');
+    actualizarInfoPeer();
 });
 
 socket.on("disconnect", () => {
@@ -924,14 +895,21 @@ socket.on("disconnect", () => {
     const ids = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
     for (const id of ids) {
         eliminarContenedorVideo(id);
-        peersStreams.delete(id);
-        audioController.destroyAudioForPeer(id);
     }
-    limpiarPeer();
+    // Limpiar todas las conexiones
+    for (const [id, pc] of peerConnections) {
+        try { pc.close(); } catch (e) {}
+    }
+    peerConnections.clear();
     isConnecting = false;
-    isOfferSent = false;
     conectado = false;
     actualizarEstado("🔴 Reconectando...", "desconectado");
+});
+
+socket.on("reconnect", () => {
+    console.log("🔄 Reconectado al servidor");
+    actualizarEstado("🟢 Reconectado", "conectado");
+    setTimeout(() => socket.emit("clientes-conectados"), 1000);
 });
 
 // ============================================
@@ -976,7 +954,6 @@ async function iniciarCamara() {
                 video.muted = true;
                 video.volume = 0;
                 video.style.display = 'block';
-                
                 try { 
                     await video.play(); 
                     console.log('📹 Video local reproduciendo');
@@ -986,16 +963,7 @@ async function iniciarCamara() {
             }
         }
         
-        await obtenerTurnServers();
-        await audioController.init();
-        isConnecting = false;
-        isOfferSent = false;
-        soyOfertante = false;
-        rolAsignado = false;
-        conectado = false;
         actualizarEstado("🟢 Cámara lista", "conectado");
-        
-        // Conectar con peers existentes
         setTimeout(() => socket.emit("clientes-conectados"), 1000);
     } catch (error) {
         console.error("❌ Error:", error);
@@ -1007,7 +975,7 @@ async function iniciarCamara() {
 // ============================================
 // 🎛️ CONTROLES
 // ============================================
-document.addEventListener('DOMContentLoaded', function() {
+function configurarControles() {
     const controlVolumen = document.getElementById('volumen');
     const labelVolumen = document.getElementById('volumen-label');
     const btnSilenciar = document.getElementById('btn-silenciar');
@@ -1017,25 +985,28 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnFullscreen = document.getElementById('btn-fullscreen');
     const btnDiagnostico = document.getElementById('btn-diagnostico');
     
+    // Control de volumen
     if (controlVolumen) {
-        controlVolumen.value = 0.3;
+        controlVolumen.value = currentVolume;
         controlVolumen.addEventListener('input', (e) => {
             const vol = parseFloat(e.target.value);
+            currentVolume = vol;
             audioController.setVolume(vol);
             if (labelVolumen) labelVolumen.textContent = `${Math.round(vol * 100)}%`;
         });
     }
     
+    // Botón silenciar
     if (btnSilenciar) {
-        let muted = false;
         btnSilenciar.addEventListener('click', () => {
-            muted = !muted;
-            audioController.muteAudio(muted);
+            const muted = audioController.toggleMute();
             btnSilenciar.textContent = muted ? '🔊 Activar' : '🔇 Silenciar';
             btnSilenciar.classList.toggle('silenciado', muted);
+            isAudioMuted = muted;
         });
     }
     
+    // Botón micrófono
     if (btnToggleMicrofono) {
         let audioEnabled = true;
         btnToggleMicrofono.addEventListener('click', () => {
@@ -1050,6 +1021,7 @@ document.addEventListener('DOMContentLoaded', function() {
         btnToggleMicrofono.classList.add('activo');
     }
     
+    // Botón cámara
     if (btnToggleCamara) {
         let videoEnabled = true;
         btnToggleCamara.addEventListener('click', () => {
@@ -1076,20 +1048,69 @@ document.addEventListener('DOMContentLoaded', function() {
         btnToggleCamara.classList.add('activo');
     }
     
+    // Botón pantalla completa
     if (btnFullscreen) {
         btnFullscreen.addEventListener('click', () => {
-            const container = videoGrandeId ? videoContainers.get(videoGrandeId) : null;
-            const elemento = container ? container.querySelector('video') : gridVideos;
-            if (elemento) {
-                if (elemento.requestFullscreen) {
-                    elemento.requestFullscreen();
-                } else if (elemento.webkitRequestFullscreen) {
-                    elemento.webkitRequestFullscreen();
+            if (videoGrandeId && videoContainers.has(videoGrandeId)) {
+                const container = videoContainers.get(videoGrandeId);
+                const video = container.querySelector('video');
+                if (video) {
+                    if (video.requestFullscreen) {
+                        video.requestFullscreen().catch(() => {});
+                    } else if (video.webkitRequestFullscreen) {
+                        video.webkitRequestFullscreen();
+                    } else if (video.mozRequestFullScreen) {
+                        video.mozRequestFullScreen();
+                    } else if (video.msRequestFullscreen) {
+                        video.msRequestFullscreen();
+                    }
+                }
+            } else {
+                // Si no hay video en grande, poner el grid en pantalla completa
+                if (gridVideos.requestFullscreen) {
+                    gridVideos.requestFullscreen().catch(() => {});
+                } else if (gridVideos.webkitRequestFullscreen) {
+                    gridVideos.webkitRequestFullscreen();
+                } else if (gridVideos.mozRequestFullScreen) {
+                    gridVideos.mozRequestFullScreen();
+                } else if (gridVideos.msRequestFullscreen) {
+                    gridVideos.msRequestFullscreen();
                 }
             }
         });
     }
     
+    // Botón reconectar
+    if (btnReconectar) {
+        btnReconectar.addEventListener('click', () => {
+            console.log("🔄 Forzando reconexión...");
+            
+            // Limpiar todas las conexiones
+            const ids = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
+            for (const id of ids) {
+                eliminarContenedorVideo(id);
+            }
+            
+            // Limpiar peer connections
+            for (const [id, pc] of peerConnections) {
+                try { pc.close(); } catch (e) {}
+            }
+            peerConnections.clear();
+            
+            isConnecting = false;
+            conectado = false;
+            videoGrandeId = null;
+            
+            // Reconectar socket
+            socket.disconnect();
+            setTimeout(() => {
+                socket.connect();
+                actualizarEstado("🔄 Reconectando...", "inicializando");
+            }, 500);
+        });
+    }
+    
+    // Botón diagnóstico
     if (btnDiagnostico) {
         let visible = false;
         btnDiagnostico.addEventListener('click', () => {
@@ -1104,49 +1125,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    if (btnReconectar) {
-        btnReconectar.addEventListener('click', () => {
-            console.log("🔄 Forzando reconexión...");
-            // Limpiar todo
-            const ids = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
-            for (const id of ids) {
-                eliminarContenedorVideo(id);
-                peersStreams.delete(id);
-                audioController.destroyAudioForPeer(id);
-            }
-            limpiarPeer();
-            isConnecting = false;
-            isOfferSent = false;
-            conectado = false;
-            socket.disconnect();
-            setTimeout(() => {
-                socket.connect();
-                // Recrear contenedor local si no existe
-                if (!videoContainers.has(socket.id)) {
-                    crearContenedorVideo(socket.id, true);
-                    if (streamLocal) {
-                        const container = videoContainers.get(socket.id);
-                        if (container) {
-                            const video = container.querySelector('video');
-                            if (video) {
-                                video.srcObject = streamLocal;
-                                video.muted = true;
-                                video.play().catch(() => {});
-                            }
-                        }
-                    }
-                }
-            }, 1000);
-            actualizarEstado("🔄 Reconectando...", "inicializando");
-        });
-    }
-    
+    // iOS - activar audio con touch
     if (isiOS) {
         document.addEventListener('touchstart', () => {
             audioController.resumeContext();
-        }, { once: true });
+        });
     }
-});
+}
 
 // ============================================
 // 📊 DIAGNÓSTICO
@@ -1161,30 +1146,27 @@ function mostrarDiagnostico() {
     
     const audioTracksLocal = streamLocal ? streamLocal.getAudioTracks() : [];
     const tieneAudioLocal = audioTracksLocal.some(t => t.enabled);
-    
     const videoContainersCount = videoContainers.size;
     const peersConnected = Array.from(videoContainers.keys()).filter(id => id !== socket.id).length;
-    
-    let audioSenders = 0;
-    let connectionState = 'N/A';
-    if (pc) {
-        connectionState = pc.connectionState || 'N/A';
-        const senders = pc.getSenders();
-        audioSenders = senders.filter(s => s.track && s.track.kind === 'audio').length;
-    }
-    
     const audioContextState = audioController.getContextState();
+    
+    // Obtener estado de las conexiones
+    let connectionStates = '';
+    for (const [id, pc] of peerConnections) {
+        const state = pc.connectionState || 'N/A';
+        const iceState = pc.iceConnectionState || 'N/A';
+        connectionStates += `<div class="info-line"><span class="label">🔗 ${id.substring(0, 6)}:</span><span class="value">${state} (ICE: ${iceState})</span></div>`;
+    }
     
     badge.innerHTML = `
         <div class="diagnostico-header">📊 DIAGNÓSTICO</div>
         <div class="info-line"><span class="label">🔗 Socket ID:</span><span class="value">${socket.id ? socket.id.substring(0, 8) : 'N/A'}</span></div>
-        <div class="info-line"><span class="label">📌 ROL:</span><span class="value ${soyOfertante ? 'success' : 'warning'}">${soyOfertante ? '🟢 OFERTANTE' : rolAsignado ? '🔴 ANSWER' : '⏳ SIN DEFINIR'}</span></div>
-        <div class="info-line"><span class="label">🔗 Estado peer:</span><span class="value">${connectionState}</span></div>
         <div class="info-line"><span class="label">📹 Videos totales:</span><span class="value">${videoContainersCount}</span></div>
         <div class="info-line"><span class="label">👥 Peers conectados:</span><span class="value">${peersConnected}/${MAX_DEVICES - 1}</span></div>
         <div class="info-line"><span class="label">🎤 Micrófono LOCAL:</span><span class="value ${!tieneAudioLocal ? 'error' : ''}">${tieneAudioLocal ? '✅ Activo' : '❌ Sin audio'}</span></div>
-        <div class="info-line"><span class="label">📤 Envío de audio:</span><span class="value ${audioSenders === 0 ? 'error' : ''}">${audioSenders > 0 ? `✅ ${audioSenders} sender` : '❌ Sin sender'}</span></div>
-        <div class="info-line" style="border-bottom: none;"><span class="label">🎚️ AudioContext:</span><span class="value ${audioContextState === 'suspended' ? 'warning' : ''}">${audioContextState}</span></div>
+        <div class="info-line"><span class="label">🎚️ AudioContext:</span><span class="value ${audioContextState === 'suspended' ? 'warning' : ''}">${audioContextState}</span></div>
+        <div class="info-line" style="border-bottom: none;"><span class="label">🔇 Audio silenciado:</span><span class="value">${isAudioMuted ? '✅ Sí' : '❌ No'}</span></div>
+        ${connectionStates}
     `;
     badge.classList.add('visible');
 }
@@ -1197,7 +1179,26 @@ function ocultarDiagnostico() {
 // ============================================
 // 🚀 INICIALIZACIÓN
 // ============================================
+
 // Crear contenedor local
-crearContenedorVideo(socket.id, true);
+if (socket.id) {
+    crearContenedorVideo(socket.id, true);
+}
+
+// Configurar controles
+configurarControles();
+
+// Actualizar estado inicial
+actualizarEstado('🟢 Inicializando...', 'inicializando');
+
+// Evento para cuando el DOM esté completamente cargado
+document.addEventListener('DOMContentLoaded', function() {
+    // Asegurar que el grid tenga al menos el contenedor local
+    if (!videoContainers.has(socket.id) && socket.id) {
+        crearContenedorVideo(socket.id, true);
+    }
+});
+
+console.log('🚀 Aplicación iniciada correctamente');
 
 } // FIN DE iniciarApp()

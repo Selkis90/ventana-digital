@@ -19,78 +19,133 @@ html, body {
 }
 
 /* ============================================
-   VIDEO REMOTO (PANTALLA GRANDE - FONDO)
+   GRID DE VIDEOS
    ============================================ */
-#video-remoto {
+#grid-videos {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    object-fit: cover;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 4px;
     background: #0a0a0a;
+    z-index: 1;
+    padding: 4px;
+}
+
+.video-container {
+    position: relative;
+    background: #1a1a1a;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.video-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #1a1a1a;
+}
+
+.video-container.local {
+    border-color: rgba(0, 170, 255, 0.3);
+}
+
+.video-container.remote {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.video-container.activo {
+    border-color: #00ff88;
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
+}
+
+/* Video en grande (cuando se hace clic) */
+.video-container.grande {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    z-index: 5;
+    border-color: #00aaff !important;
+    box-shadow: 0 0 40px rgba(0, 170, 255, 0.3);
+}
+
+.video-container.grande video {
+    object-fit: contain;
+}
+
+/* Video en pequeño (los demás) */
+.video-container.pequeno {
     z-index: 1;
 }
 
 /* ============================================
-   VIDEO LOCAL (PANTALLA PEQUEÑA - ESQUINA)
+   ETIQUETAS DE VIDEOS
    ============================================ */
-#video {
-    position: fixed;
-    bottom: 100px;
-    right: 15px;
-    width: 140px;
-    height: 105px;
-    object-fit: cover;
+.video-label {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    color: rgba(255, 255, 255, 0.8);
+    padding: 4px 12px;
     border-radius: 12px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
-    z-index: 10;
-    background: #1a1a1a;
-    transition: all 0.3s ease;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    pointer-events: none;
+    z-index: 2;
 }
 
-/* En móviles, video local más pequeño */
-@media (max-width: 480px) {
-    #video {
-        width: 80px;
-        height: 60px;
-        bottom: 85px;
-        right: 8px;
-        border-radius: 8px;
-        border-width: 2px;
-    }
+.video-label.local-label {
+    background: rgba(0, 170, 255, 0.6);
 }
 
-/* En tablets, video local mediano */
-@media (min-width: 481px) and (max-width: 768px) {
-    #video {
-        width: 100px;
-        height: 75px;
-        bottom: 120px;
-        right: 10px;
-        border-radius: 10px;
-    }
+.video-label.remote-label {
+    background: rgba(46, 204, 113, 0.6);
 }
 
-/* En desktop, video local más grande */
-@media (min-width: 769px) {
-    #video {
-        width: 180px;
-        height: 135px;
-        bottom: 110px;
-        right: 20px;
-        border-radius: 14px;
-    }
+/* Indicador de audio activo */
+.audio-indicator {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #00ff88;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
+    z-index: 2;
+    display: none;
 }
 
-/* Hover solo en desktop */
-@media (hover: hover) {
-    #video:hover {
-        transform: scale(1.05);
-        border-color: #00aaff;
-        box-shadow: 0 8px 40px rgba(0, 170, 255, 0.3);
-    }
+.audio-indicator.activo {
+    display: block;
+    animation: pulse-audio 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-audio {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* Indicador de video apagado */
+.video-off-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 40px;
+    opacity: 0.5;
+    z-index: 1;
+    pointer-events: none;
 }
 
 /* ============================================
@@ -119,7 +174,6 @@ html, body {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
-/* Estados */
 #estado.inicializando { 
     background: rgba(255, 165, 0, 0.85);
     border-color: rgba(255, 165, 0, 0.3);
@@ -233,12 +287,10 @@ html, body {
 /* Colores específicos por botón */
 #btn-microfono { background: rgba(52, 152, 219, 0.5); }
 #btn-microfono.activo { background: rgba(52, 152, 219, 0.8); }
-#btn-microfono.inactivo { background: rgba(255, 50, 50, 0.5); }
 #btn-microfono.inactivo { background: rgba(255, 50, 50, 0.7); }
 
 #btn-camara { background: rgba(46, 204, 113, 0.5); }
 #btn-camara.activo { background: rgba(46, 204, 113, 0.8); }
-#btn-camara.inactivo { background: rgba(255, 50, 50, 0.5); }
 #btn-camara.inactivo { background: rgba(255, 50, 50, 0.7); }
 
 #btn-silenciar { background: rgba(241, 196, 15, 0.4); }
@@ -400,72 +452,32 @@ html, body {
 }
 
 /* ============================================
-   BOTÓN DE REPRODUCCIÓN MANUAL
-   ============================================ */
-#btn-play {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 9999;
-    padding: 20px 40px;
-    font-size: 24px;
-    font-weight: bold;
-    background: linear-gradient(135deg, #007bff, #0056b3);
-    color: white;
-    border: none;
-    border-radius: 16px;
-    cursor: pointer;
-    box-shadow: 0 8px 40px rgba(0, 123, 255, 0.5);
-    display: none;
-    transition: all 0.3s ease;
-    letter-spacing: 1px;
-    animation: pulse-play 2s ease-in-out infinite;
-}
-
-#btn-play:hover {
-    transform: translate(-50%, -50%) scale(1.05);
-    box-shadow: 0 8px 60px rgba(0, 123, 255, 0.7);
-}
-
-#btn-play:active {
-    transform: translate(-50%, -50%) scale(0.95);
-}
-
-@keyframes pulse-play {
-    0%, 100% {
-        box-shadow: 0 8px 40px rgba(0, 123, 255, 0.5);
-    }
-    50% {
-        box-shadow: 0 8px 60px rgba(0, 123, 255, 0.8);
-    }
-}
-
-/* Responsive del botón play */
-@media (max-width: 480px) {
-    #btn-play {
-        padding: 14px 24px;
-        font-size: 16px;
-        border-radius: 12px;
-        width: 80%;
-        max-width: 280px;
-    }
-}
-
-@media (min-width: 481px) and (max-width: 768px) {
-    #btn-play {
-        padding: 16px 32px;
-        font-size: 20px;
-        border-radius: 14px;
-    }
-}
-
-/* ============================================
    RESPONSIVE COMPLETO
    ============================================ */
 
 /* MÓVILES PEQUEÑOS (menos de 480px) */
 @media (max-width: 480px) {
+    #grid-videos {
+        gap: 2px;
+        padding: 2px;
+    }
+    
+    .video-container {
+        border-radius: 4px;
+        border-width: 1px;
+    }
+    
+    .video-label {
+        font-size: 8px;
+        padding: 2px 8px;
+        bottom: 5px;
+        left: 5px;
+    }
+    
+    .video-off-indicator {
+        font-size: 24px;
+    }
+    
     .btn-control {
         padding: 6px 10px;
         font-size: 10px;
@@ -513,6 +525,20 @@ html, body {
 
 /* MÓVILES GRANDES Y TABLETS PEQUEÑAS (481-768px) */
 @media (min-width: 481px) and (max-width: 768px) {
+    #grid-videos {
+        gap: 3px;
+        padding: 3px;
+    }
+    
+    .video-container {
+        border-radius: 6px;
+    }
+    
+    .video-label {
+        font-size: 10px;
+        padding: 3px 10px;
+    }
+    
     .btn-control {
         padding: 7px 12px;
         font-size: 11px;
@@ -539,6 +565,15 @@ html, body {
 
 /* TABLETS GRANDES Y DESKTOP PEQUEÑO (769-1024px) */
 @media (min-width: 769px) and (max-width: 1024px) {
+    #grid-videos {
+        gap: 4px;
+        padding: 4px;
+    }
+    
+    .video-container {
+        border-radius: 8px;
+    }
+    
     .btn-control {
         padding: 9px 18px;
         font-size: 13px;
@@ -565,6 +600,27 @@ html, body {
 
 /* DESKTOP GRANDE (1025px+) */
 @media (min-width: 1025px) {
+    #grid-videos {
+        gap: 6px;
+        padding: 6px;
+    }
+    
+    .video-container {
+        border-radius: 12px;
+    }
+    
+    .video-container:hover {
+        border-color: rgba(0, 170, 255, 0.3);
+        transform: scale(1.01);
+    }
+    
+    .video-label {
+        font-size: 13px;
+        padding: 6px 16px;
+        bottom: 15px;
+        left: 15px;
+    }
+    
     .btn-control {
         padding: 10px 22px;
         font-size: 14px;
@@ -612,14 +668,20 @@ html, body {
 /* ============================================
    PANTALLA COMPLETA
    ============================================ */
-#video-remoto:-webkit-full-screen {
-    object-fit: contain;
+#grid-videos:-webkit-full-screen {
     background: #000;
 }
 
-#video-remoto:fullscreen {
-    object-fit: contain;
+#grid-videos:fullscreen {
     background: #000;
+}
+
+.video-container:-webkit-full-screen video {
+    object-fit: contain;
+}
+
+.video-container:fullscreen video {
+    object-fit: contain;
 }
 
 /* ============================================
@@ -631,16 +693,4 @@ html, body {
 
 .visible {
     display: block !important;
-}
-
-/* ============================================
-   ANIMACIONES EXTRA
-   ============================================ */
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-
-.pulse {
-    animation: pulse 1.5s ease-in-out infinite;
 }

@@ -11,10 +11,9 @@ function iniciarApp() {
 // 📱 CONFIGURACIÓN INICIAL
 // ============================================
 const gridVideos = document.getElementById("grid-videos");
-const audioRemoto = document.getElementById("audio-remoto");
 
-if (!gridVideos || !audioRemoto) {
-    console.error('❌ Error: Elementos HTML no encontrados');
+if (!gridVideos) {
+    console.error('❌ Error: Elemento grid-videos no encontrado');
     return;
 }
 
@@ -55,7 +54,7 @@ let currentVolume = 0.3;
 let orquestadorId = null;
 
 // ============================================
-// 🔊 AUDIO CONTROLLER
+// 🔊 AUDIO CONTROLLER (CORREGIDO)
 // ============================================
 class AudioController {
     constructor() {
@@ -94,7 +93,9 @@ class AudioController {
 
     createAudioForPeer(stream, peerId) {
         try {
+            // 🔥 CRÍTICO: NUNCA reproducir el audio local, solo remoto
             if (!stream || stream === streamLocal) return false;
+            
             const audioTracks = stream.getAudioTracks();
             if (audioTracks.length === 0) return false;
             
@@ -112,6 +113,7 @@ class AudioController {
             const vol = this.muted ? 0 : this.volume;
             gainNode.gain.value = vol;
             
+            // 🔥 IMPORTANTE: Usar un filtro para evitar el "zumbido" del micrófono
             const filter = this.globalContext.createBiquadFilter();
             filter.type = 'lowpass';
             filter.frequency.value = isMobile ? 6000 : 8000;
@@ -197,7 +199,7 @@ class AudioController {
 const audioController = new AudioController();
 
 // ============================================
-// 🎵 TRACK SILENCIOSO
+// 🎵 TRACK SILENCIOSO (Para que los demás te escuchen)
 // ============================================
 function crearTrackAudioSilencioso() {
     try {
@@ -230,7 +232,7 @@ function asegurarAudioLocal() {
             audioTracks = streamLocal.getAudioTracks();
         }
     }
-    audioTracks.forEach(track => track.enabled = true);
+    audioTracks.forEach(track => track.enabled = true); // Mantener el audio local ENVIANDO
     return audioTracks.length > 0;
 }
 
@@ -282,7 +284,7 @@ function crearContenedorVideo(id, esLocal = false) {
     video.autoplay = true;
     video.playsInline = true;
     video.webkitPlaysInline = true;
-    if (esLocal) video.muted = true;
+    if (esLocal) video.muted = true; // 🔥 El video local SIEMPRE está mudo
     video.className = 'video-element';
     video.style.width = '100%';
     video.style.height = '100%';
@@ -315,7 +317,6 @@ function crearContenedorVideo(id, esLocal = false) {
     gridVideos.appendChild(container);
     videoContainers.set(id, container);
     
-    // 🔥 ORDENAR SIEMPRE ALFABÉTICAMENTE PARA QUE TODOS VEAN LO MISMO
     ordenarContenedores();
     
     actualizarLayout();
@@ -324,9 +325,7 @@ function crearContenedorVideo(id, esLocal = false) {
     return container;
 }
 
-// 🔥 Nueva función para ordenar los videos de forma IDÉNTICA en todos los dispositivos
 function ordenarContenedores() {
-    // Obtener los contenedores y ordenarlos según su dataset.peerId
     const contenedores = Array.from(gridVideos.children);
     contenedores.sort((a, b) => {
         const idA = a.dataset.peerId || '';
@@ -334,7 +333,6 @@ function ordenarContenedores() {
         return idA.localeCompare(idB);
     });
     
-    // Reinsertar en el orden correcto (alfabético)
     contenedores.forEach(container => {
         gridVideos.appendChild(container);
     });
@@ -492,6 +490,7 @@ function asignarVideo(id, stream, esLocal = false) {
     
     container.classList.add('activo');
     
+    // 🔥 IMPORTANTE: Solo crear audio si NO es el stream local
     if (!esLocal && stream.getAudioTracks().length > 0) {
         audioController.createAudioForPeer(stream, id);
     }
@@ -510,7 +509,7 @@ function asignarVideo(id, stream, esLocal = false) {
             console.log('⏳ Esperando interacción para reproducir video');
         });
     } else {
-        video.muted = true;
+        video.muted = true; // 🔥 El video local SIEMPRE está mudo
         video.play().catch(() => {});
     }
     
@@ -699,7 +698,7 @@ async function iniciarOferta(peerId) {
 }
 
 // ============================================
-// 🔗 CONECTAR CON PEERS (MALLA TOTAL: TODOS SE CONECTAN CON TODOS)
+// 🔗 CONECTAR CON PEERS (MALLA TOTAL)
 // ============================================
 function conectarConPeers(clientes) {
     const conectadosActuales = Array.from(videoContainers.keys()).filter(id => id !== socket.id);
@@ -711,13 +710,11 @@ function conectarConPeers(clientes) {
     
     if (disponibles.length === 0) return;
 
-    // 🔥 MALLA TOTAL: TODOS los dispositivos envían ofertas a todos los demás.
-    // Esto garantiza que si un dispositivo no recibe la oferta del otro, el otro la reciba de este.
     for (const peerId of disponibles) {
         if (videoContainers.size >= MAX_DEVICES) break;
         if (peerConnections.has(peerId)) continue;
         
-        console.log(`🎯 [MALLA TOTAL] Conectando con: ${peerId} (sin importar ID)`);
+        console.log(`🎯 [MALLA TOTAL] Conectando con: ${peerId}`);
         const pc = crearPeerConnection(peerId);
         if (!pc) continue;
         
@@ -928,14 +925,14 @@ async function iniciarCamara() {
             if (silentTrack) streamLocal.addTrack(silentTrack);
         }
         
-        audioTracks.forEach(track => track.enabled = true);
+        audioTracks.forEach(track => track.enabled = true); // 🔥 El audio local SIEMPRE se envía
         
         const container = videoContainers.get(socket.id);
         if (container) {
             const video = container.querySelector('video');
             if (video) {
                 video.srcObject = stream;
-                video.muted = true;
+                video.muted = true; // 🔥 El video local está mudo para ti
                 video.volume = 0;
                 video.style.display = 'block';
                 try { 
@@ -993,7 +990,9 @@ function configurarControles() {
         btnToggleMicrofono.addEventListener('click', () => {
             audioEnabled = !audioEnabled;
             if (streamLocal) {
-                streamLocal.getAudioTracks().forEach(track => track.enabled = audioEnabled);
+                streamLocal.getAudioTracks().forEach(track => {
+                    track.enabled = audioEnabled; // 🔥 Silencia el ENVÍO de tu micrófono
+                });
             }
             btnToggleMicrofono.textContent = audioEnabled ? '🎤 Micrófono' : '🎤 Silenciado';
             btnToggleMicrofono.classList.toggle('activo', audioEnabled);
@@ -1130,9 +1129,9 @@ function mostrarDiagnostico() {
         <div class="info-line"><span class="label">🔗 Socket ID:</span><span class="value">${socket.id ? socket.id.substring(0, 8) : 'N/A'}</span></div>
         <div class="info-line"><span class="label">📹 Videos totales:</span><span class="value">${videoContainersCount}</span></div>
         <div class="info-line"><span class="label">👥 Peers conectados:</span><span class="value">${peersConnected}/${MAX_DEVICES - 1}</span></div>
-        <div class="info-line"><span class="label">🎤 Micrófono LOCAL:</span><span class="value ${!tieneAudioLocal ? 'error' : ''}">${tieneAudioLocal ? '✅ Activo' : '❌ Sin audio'}</span></div>
+        <div class="info-line"><span class="label">🎤 Micrófono LOCAL (ENVÍO):</span><span class="value ${!tieneAudioLocal ? 'error' : ''}">${tieneAudioLocal ? '✅ Activo' : '❌ Silenciado'}</span></div>
         <div class="info-line"><span class="label">🎚️ AudioContext:</span><span class="value ${audioContextState === 'suspended' ? 'warning' : ''}">${audioContextState}</span></div>
-        <div class="info-line" style="border-bottom: none;"><span class="label">🔇 Audio silenciado:</span><span class="value">${isAudioMuted ? '✅ Sí' : '❌ No'}</span></div>
+        <div class="info-line" style="border-bottom: none;"><span class="label">🔇 Audio remoto:</span><span class="value">${isAudioMuted ? '✅ Silenciado' : '❌ Normal'}</span></div>
         ${connectionStates}
     `;
     badge.classList.add('visible');

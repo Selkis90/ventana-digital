@@ -44,6 +44,7 @@ html, body {
     cursor: pointer;
     transition: all 0.3s ease;
     border: 2px solid rgba(255, 255, 255, 0.1);
+    min-height: 100px;
 }
 
 .video-container video {
@@ -51,6 +52,7 @@ html, body {
     height: 100%;
     object-fit: cover;
     background: #1a1a1a;
+    display: block;
 }
 
 .video-container.local {
@@ -66,10 +68,10 @@ html, body {
     box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
 }
 
-/* Video en grande (cuando se hace clic) */
+/* Video en grande */
 .video-container.grande {
-    grid-column: 1 / -1;
-    grid-row: 1 / -1;
+    grid-column: 1 / -1 !important;
+    grid-row: 1 / -1 !important;
     z-index: 5;
     border-color: #00aaff !important;
     box-shadow: 0 0 40px rgba(0, 170, 255, 0.3);
@@ -79,9 +81,16 @@ html, body {
     object-fit: contain;
 }
 
-/* Video en pequeño (los demás) */
+/* Video en pequeño */
 .video-container.pequeno {
     z-index: 1;
+}
+
+.video-container.pequeno .video-label {
+    font-size: 8px;
+    padding: 2px 6px;
+    bottom: 4px;
+    left: 4px;
 }
 
 /* ============================================
@@ -226,7 +235,7 @@ html, body {
     left: 0;
     right: 0;
     z-index: 20;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
     padding: 15px 12px 20px 12px;
     display: flex;
     flex-direction: column;
@@ -242,14 +251,14 @@ html, body {
     align-items: center;
     gap: 8px;
     width: 100%;
-    max-width: 500px;
+    max-width: 600px;
 }
 
 /* ============================================
    BOTONES DE CONTROL
    ============================================ */
 .btn-control {
-    padding: 8px 14px;
+    padding: 8px 16px;
     border: none;
     border-radius: 25px;
     font-size: 12px;
@@ -269,6 +278,7 @@ html, body {
     justify-content: center;
     gap: 5px;
     white-space: nowrap;
+    flex: 0 1 auto;
 }
 
 .btn-control:active {
@@ -278,7 +288,7 @@ html, body {
 /* Hover solo en desktop */
 @media (hover: hover) {
     .btn-control:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.25);
         transform: translateY(-2px);
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     }
@@ -297,8 +307,11 @@ html, body {
 #btn-silenciar.silenciado { background: rgba(255, 50, 50, 0.6); }
 
 #btn-fullscreen { background: rgba(155, 89, 182, 0.4); }
+#btn-fullscreen:hover { background: rgba(155, 89, 182, 0.7); }
+
 #btn-reconectar { background: rgba(255, 165, 0, 0.4); }
-#btn-reconectar:active { background: rgba(255, 165, 0, 0.7); }
+#btn-reconectar:hover { background: rgba(255, 165, 0, 0.7); }
+#btn-reconectar:active { background: rgba(255, 165, 0, 0.9); }
 
 #btn-diagnostico { background: rgba(52, 73, 94, 0.4); }
 #btn-diagnostico.activo { background: rgba(52, 73, 94, 0.8); }
@@ -321,6 +334,7 @@ html, body {
     background: rgba(255, 255, 255, 0.2);
     outline: none;
     transition: all 0.2s ease;
+    flex: 0 1 80px;
 }
 
 #volumen::-webkit-slider-thumb {
@@ -386,10 +400,6 @@ html, body {
     color: rgba(255, 255, 255, 0.5);
 }
 
-.info-conexion .id-destacado {
-    color: rgba(100, 200, 255, 0.7);
-}
-
 /* ============================================
    DIAGNÓSTICO BADGE
    ============================================ */
@@ -398,7 +408,7 @@ html, body {
     top: 60px;
     right: 10px;
     z-index: 50;
-    background: rgba(0, 0, 0, 0.9);
+    background: rgba(0, 0, 0, 0.95);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(0, 255, 136, 0.2);
@@ -407,15 +417,26 @@ html, body {
     color: #00ff88;
     font-size: 10px;
     font-family: 'Courier New', monospace;
-    max-width: 260px;
+    max-width: 280px;
     display: none;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
     line-height: 1.6;
+    max-height: 80vh;
+    overflow-y: auto;
 }
 
 .diagnostico-badge.visible {
     display: block;
     animation: fadeIn 0.3s ease;
+}
+
+.diagnostico-badge .diagnostico-header {
+    font-weight: bold;
+    color: #00ff88;
+    border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+    font-size: 11px;
 }
 
 .diagnostico-badge .info-line {
@@ -428,7 +449,7 @@ html, body {
 }
 
 .diagnostico-badge .label {
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.5);
 }
 
 .diagnostico-badge .value {
@@ -455,7 +476,7 @@ html, body {
    RESPONSIVE COMPLETO
    ============================================ */
 
-/* MÓVILES PEQUEÑOS (menos de 480px) */
+/* MÓVILES PEQUEÑOS */
 @media (max-width: 480px) {
     #grid-videos {
         gap: 2px;
@@ -465,6 +486,7 @@ html, body {
     .video-container {
         border-radius: 4px;
         border-width: 1px;
+        min-height: 60px;
     }
     
     .video-label {
@@ -487,31 +509,32 @@ html, body {
     }
 
     #controles {
-        padding: 10px 8px 12px 8px;
-        gap: 5px;
+        padding: 8px 6px 10px 6px;
+        gap: 4px;
     }
 
     .control-group {
-        gap: 5px;
+        gap: 4px;
     }
 
     #volumen {
-        width: 60px;
+        width: 50px;
+        flex: 0 1 50px;
     }
 
     .volumen-text {
-        font-size: 10px;
-        min-width: 28px;
+        font-size: 9px;
+        min-width: 24px;
     }
 
     .info-conexion {
         font-size: 8px;
         padding: 3px 8px;
-        gap: 8px;
+        gap: 6px;
     }
 
     .info-conexion span {
-        font-size: 8px;
+        font-size: 7px;
     }
 
     .diagnostico-badge {
@@ -523,7 +546,7 @@ html, body {
     }
 }
 
-/* MÓVILES GRANDES Y TABLETS PEQUEÑAS (481-768px) */
+/* MÓVILES GRANDES Y TABLETS PEQUEÑAS */
 @media (min-width: 481px) and (max-width: 768px) {
     #grid-videos {
         gap: 3px;
@@ -532,6 +555,7 @@ html, body {
     
     .video-container {
         border-radius: 6px;
+        min-height: 80px;
     }
     
     .video-label {
@@ -546,15 +570,17 @@ html, body {
     }
 
     #controles {
-        padding: 12px 10px 15px 10px;
+        padding: 10px 8px 12px 8px;
+        gap: 5px;
     }
 
     .control-group {
-        gap: 6px;
+        gap: 5px;
     }
 
     #volumen {
-        width: 70px;
+        width: 60px;
+        flex: 0 1 60px;
     }
 
     .info-conexion {
@@ -563,7 +589,7 @@ html, body {
     }
 }
 
-/* TABLETS GRANDES Y DESKTOP PEQUEÑO (769-1024px) */
+/* TABLETS GRANDES Y DESKTOP PEQUEÑO */
 @media (min-width: 769px) and (max-width: 1024px) {
     #grid-videos {
         gap: 4px;
@@ -572,6 +598,7 @@ html, body {
     
     .video-container {
         border-radius: 8px;
+        min-height: 120px;
     }
     
     .btn-control {
@@ -581,15 +608,16 @@ html, body {
     }
 
     #controles {
-        padding: 18px 20px 20px 20px;
+        padding: 15px 15px 18px 15px;
     }
 
     .control-group {
-        gap: 10px;
+        gap: 8px;
     }
 
     #volumen {
-        width: 100px;
+        width: 80px;
+        flex: 0 1 80px;
     }
 
     .info-conexion {
@@ -598,7 +626,7 @@ html, body {
     }
 }
 
-/* DESKTOP GRANDE (1025px+) */
+/* DESKTOP GRANDE */
 @media (min-width: 1025px) {
     #grid-videos {
         gap: 6px;
@@ -607,6 +635,7 @@ html, body {
     
     .video-container {
         border-radius: 12px;
+        min-height: 150px;
     }
     
     .video-container:hover {
@@ -629,7 +658,7 @@ html, body {
     }
 
     #controles {
-        padding: 20px 30px 22px 30px;
+        padding: 20px 25px 22px 25px;
         gap: 10px;
     }
 
@@ -638,7 +667,8 @@ html, body {
     }
 
     #volumen {
-        width: 140px;
+        width: 120px;
+        flex: 0 1 120px;
     }
 
     .volumen-text {
@@ -659,7 +689,7 @@ html, body {
     .diagnostico-badge {
         top: 70px;
         right: 20px;
-        max-width: 300px;
+        max-width: 320px;
         font-size: 11px;
         padding: 14px 18px;
     }
@@ -673,6 +703,14 @@ html, body {
 }
 
 #grid-videos:fullscreen {
+    background: #000;
+}
+
+.video-container:-webkit-full-screen {
+    background: #000;
+}
+
+.video-container:fullscreen {
     background: #000;
 }
 

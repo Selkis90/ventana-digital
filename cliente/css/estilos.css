@@ -19,7 +19,7 @@ html, body {
 }
 
 /* ============================================
-   GRID DE VIDEOS
+   GRID DE VIDEOS (Base)
    ============================================ */
 #grid-videos {
     position: fixed;
@@ -36,6 +36,13 @@ html, body {
     padding: 4px;
 }
 
+/* Cuando hay 2, 3 o 4 personas, quitamos separaciones para que peguen perfecto */
+body.layout-especial #grid-videos {
+    gap: 0;
+    padding: 0;
+    background: #000;
+}
+
 .video-container {
     position: relative;
     background: #1a1a1a;
@@ -44,7 +51,8 @@ html, body {
     cursor: pointer;
     transition: all 0.3s ease;
     border: 2px solid rgba(255, 255, 255, 0.1);
-    min-height: 100px;
+    min-width: 0;
+    min-height: 0;
 }
 
 .video-container video {
@@ -68,11 +76,17 @@ html, body {
     box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
 }
 
-/* Video en grande */
+/* ============================================
+   ESTILOS PARA VIDEO EN GRANDE (Al hacer clic)
+   ============================================ */
 .video-container.grande {
-    grid-column: 1 / -1 !important;
-    grid-row: 1 / -1 !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
     z-index: 5;
+    border-radius: 0 !important;
     border-color: #00aaff !important;
     box-shadow: 0 0 40px rgba(0, 170, 255, 0.3);
 }
@@ -81,16 +95,19 @@ html, body {
     object-fit: contain;
 }
 
-/* Video en pequeño */
 .video-container.pequeno {
-    z-index: 1;
+    position: absolute !important;
+    width: 25% !important;
+    height: 25% !important;
+    right: 10px !important;
+    bottom: 10px !important;
+    z-index: 10;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
 }
 
 .video-container.pequeno .video-label {
-    font-size: 8px;
-    padding: 2px 6px;
-    bottom: 4px;
-    left: 4px;
+    display: none !important;
 }
 
 /* ============================================
@@ -478,26 +495,11 @@ html, body {
 
 /* MÓVILES PEQUEÑOS */
 @media (max-width: 480px) {
-    #grid-videos {
-        gap: 2px;
-        padding: 2px;
-    }
-    
-    .video-container {
-        border-radius: 4px;
-        border-width: 1px;
-        min-height: 60px;
-    }
-    
-    .video-label {
-        font-size: 8px;
-        padding: 2px 8px;
-        bottom: 5px;
-        left: 5px;
-    }
-    
-    .video-off-indicator {
-        font-size: 24px;
+    .video-container.pequeno {
+        width: 35% !important;
+        height: 35% !important;
+        right: 5px !important;
+        bottom: 5px !important;
     }
     
     .btn-control {
@@ -513,18 +515,9 @@ html, body {
         gap: 4px;
     }
 
-    .control-group {
-        gap: 4px;
-    }
-
     #volumen {
         width: 50px;
         flex: 0 1 50px;
-    }
-
-    .volumen-text {
-        font-size: 9px;
-        min-width: 24px;
     }
 
     .info-conexion {
@@ -532,124 +525,33 @@ html, body {
         padding: 3px 8px;
         gap: 6px;
     }
-
-    .info-conexion span {
-        font-size: 7px;
-    }
-
-    .diagnostico-badge {
-        top: 50px;
-        right: 5px;
-        max-width: 200px;
-        font-size: 9px;
-        padding: 8px 12px;
-    }
 }
 
 /* MÓVILES GRANDES Y TABLETS PEQUEÑAS */
 @media (min-width: 481px) and (max-width: 768px) {
-    #grid-videos {
-        gap: 3px;
-        padding: 3px;
-    }
-    
-    .video-container {
-        border-radius: 6px;
-        min-height: 80px;
-    }
-    
-    .video-label {
-        font-size: 10px;
-        padding: 3px 10px;
-    }
-    
     .btn-control {
         padding: 7px 12px;
         font-size: 11px;
         min-height: 38px;
     }
 
-    #controles {
-        padding: 10px 8px 12px 8px;
-        gap: 5px;
-    }
-
-    .control-group {
-        gap: 5px;
-    }
-
     #volumen {
         width: 60px;
         flex: 0 1 60px;
-    }
-
-    .info-conexion {
-        font-size: 9px;
-        padding: 4px 10px;
     }
 }
 
 /* TABLETS GRANDES Y DESKTOP PEQUEÑO */
 @media (min-width: 769px) and (max-width: 1024px) {
-    #grid-videos {
-        gap: 4px;
-        padding: 4px;
-    }
-    
-    .video-container {
-        border-radius: 8px;
-        min-height: 120px;
-    }
-    
     .btn-control {
         padding: 9px 18px;
         font-size: 13px;
         min-height: 42px;
     }
-
-    #controles {
-        padding: 15px 15px 18px 15px;
-    }
-
-    .control-group {
-        gap: 8px;
-    }
-
-    #volumen {
-        width: 80px;
-        flex: 0 1 80px;
-    }
-
-    .info-conexion {
-        font-size: 10px;
-        padding: 5px 14px;
-    }
 }
 
 /* DESKTOP GRANDE */
 @media (min-width: 1025px) {
-    #grid-videos {
-        gap: 6px;
-        padding: 6px;
-    }
-    
-    .video-container {
-        border-radius: 12px;
-        min-height: 150px;
-    }
-    
-    .video-container:hover {
-        border-color: rgba(0, 170, 255, 0.3);
-        transform: scale(1.01);
-    }
-    
-    .video-label {
-        font-size: 13px;
-        padding: 6px 16px;
-        bottom: 15px;
-        left: 15px;
-    }
-    
     .btn-control {
         padding: 10px 22px;
         font-size: 14px;
@@ -657,23 +559,9 @@ html, body {
         border-radius: 30px;
     }
 
-    #controles {
-        padding: 20px 25px 22px 25px;
-        gap: 10px;
-    }
-
-    .control-group {
-        gap: 12px;
-    }
-
     #volumen {
         width: 120px;
         flex: 0 1 120px;
-    }
-
-    .volumen-text {
-        font-size: 12px;
-        min-width: 36px;
     }
 
     .info-conexion {
@@ -681,54 +569,4 @@ html, body {
         padding: 6px 16px;
         gap: 16px;
     }
-
-    .info-conexion span {
-        font-size: 10px;
-    }
-
-    .diagnostico-badge {
-        top: 70px;
-        right: 20px;
-        max-width: 320px;
-        font-size: 11px;
-        padding: 14px 18px;
-    }
-}
-
-/* ============================================
-   PANTALLA COMPLETA
-   ============================================ */
-#grid-videos:-webkit-full-screen {
-    background: #000;
-}
-
-#grid-videos:fullscreen {
-    background: #000;
-}
-
-.video-container:-webkit-full-screen {
-    background: #000;
-}
-
-.video-container:fullscreen {
-    background: #000;
-}
-
-.video-container:-webkit-full-screen video {
-    object-fit: contain;
-}
-
-.video-container:fullscreen video {
-    object-fit: contain;
-}
-
-/* ============================================
-   UTILIDADES
-   ============================================ */
-.oculto {
-    display: none !important;
-}
-
-.visible {
-    display: block !important;
 }

@@ -41,5 +41,12 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@1.8.0/dist/livekit-client.umd.min.js"></script>
     <script src="js/camara.js"></script>
+    
+    <!-- 🔥 PING PARA EVITAR QUE RENDER SE DUERMA -->
+    <script>
+        setInterval(() => {
+            fetch('/health').catch(() => {});
+        }, 300000); // Cada 5 minutos
+    </script>
 </body>
 </html>

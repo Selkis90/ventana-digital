@@ -6,7 +6,11 @@ const estado = document.getElementById("estado");
 
 let room;
 let isAudioMuted = false;
-let currentVolume = 0.3;
+
+// ============================================
+// MAPA PARA GUARDAR VIDEOS (Evita duplicados)
+// ============================================
+const videoMap = new Map();
 
 // ============================================
 // FUNCIÓN PARA CONECTAR A LIVEKIT
@@ -33,65 +37,49 @@ async function conectarLiveKit() {
         await room.localParticipant.setCameraEnabled(true);
         await room.localParticipant.setMicrophoneEnabled(true);
 
-        // 🔥 4. Mostrar MI video local (usando evento correcto)
-        room.on(LivekitClient.RoomEvent.LocalTrackPublished, () => {
-            setTimeout(() => {
-                mostrarVideoLocal();
-            }, 300); // Pequeño delay para asegurar que el track exista
-        });
+        // 🔥 4. Mostrar MI video (usando método directo, sin trucos)
+        setTimeout(() => {
+            mostrarVideoLocal();
+        }, 500);
 
-        // 🔥 5. Mostrar videos de OTROS participantes (usando evento robusto)
+        // 🔥 5. Evento para agregar videos de otros
         room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
             if (track.kind === 'video') {
-                // Crear el video inmediatamente
-                const videoElement = document.createElement('video');
-                videoElement.autoplay = true;
-                videoElement.playsInline = true;
-                videoElement.id = participant.identity;
-                
-                // 🔥 Usar setTimeout para evitar el error de "could not find track"
-                setTimeout(() => {
-                    try {
-                        videoElement.srcObject = new MediaStream([track.mediaStreamTrack]);
-                    } catch (e) {
-                        console.log("⏳ Track aún no disponible, reintentando...");
-                        setTimeout(() => {
-                            videoElement.srcObject = new MediaStream([track.mediaStreamTrack]);
-                        }, 500);
-                    }
-                }, 200);
-
-                // Crear contenedor con etiqueta
-                const container = document.createElement('div');
-                container.className = 'video-container remote';
-                container.dataset.peerId = participant.identity;
-
-                // Etiqueta con nombre
-                const label = document.createElement('div');
-                label.className = 'video-label';
-                label.textContent = participant.identity.substring(0, 8);
-                container.appendChild(label);
-
-                container.appendChild(videoElement);
-                gridVideos.appendChild(container);
-
-                // 🔥 ORDENAR Y ACTUALIZAR LAYOUT
-                ordenarContenedores();
-                actualizarLayout();
+                agregarVideoRemoto(participant, track);
             }
         });
 
-        // 🔥 6. Cuando un participante se desconecta, eliminar su video
-        room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
-            const contenedor = gridVideos.querySelector(`[data-peer-id="${participant.identity}"]`);
-            if (contenedor) contenedor.remove();
-            ordenarContenedores();
-            actualizarLayout();
+        // 🔥 6. Cuando un track se silencia (alguien apaga cámara)
+        room.on(LivekitClient.RoomEvent.TrackMuted, (publication, participant) => {
+            if (publication.kind === 'video') {
+                const contenedor = videoMap.get(participant.identity);
+                if (contenedor) {
+                    const video = contenedor.querySelector('video');
+                    if (video) video.style.display = 'none';
+                }
+            }
         });
 
-        // 🔥 7. Cuando entra un participante nuevo (para anticipar)
-        room.on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
-            console.log(`🆕 Participante conectado: ${participant.identity}`);
+        // 🔥 7. Cuando un track se reactiva (alguien enciende cámara)
+        room.on(LivekitClient.RoomEvent.TrackUnmuted, (publication, participant) => {
+            if (publication.kind === 'video') {
+                const contenedor = videoMap.get(participant.identity);
+                if (contenedor) {
+                    const video = contenedor.querySelector('video');
+                    if (video) video.style.display = 'block';
+                }
+            }
+        });
+
+        // 🔥 8. Cuando alguien se va, eliminar su video
+        room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
+            const contenedor = videoMap.get(participant.identity);
+            if (contenedor) {
+                contenedor.remove();
+                videoMap.delete(participant.identity);
+            }
+            ordenarContenedores();
+            actualizarLayout();
         });
 
         actualizarEstado("🟢 Conectado a la sala", "conectado");
@@ -103,46 +91,74 @@ async function conectarLiveKit() {
 }
 
 // ============================================
-// MOSTRAR MI VIDEO
+// MOSTRAR MI VIDEO (FUNCIÓN DIRECTA)
 // ============================================
 function mostrarVideoLocal() {
     // Si ya existe, eliminarlo para no duplicar
-    const existing = gridVideos.querySelector('[data-peer-id="mi-video-local"]');
+    const existing = videoMap.get("mi-video-local");
     if (existing) existing.remove();
 
     const localVideo = document.createElement('video');
     localVideo.autoplay = true;
     localVideo.muted = true;
     localVideo.playsInline = true;
-    localVideo.id = "mi-video-local";
+    localVideo.dataset.peerId = "mi-video-local";
 
-    // 🔥 Obtener el track directamente de room.localParticipant
-    const trackPublication = room.localParticipant.getTrackPublication('camera');
-    if (trackPublication && trackPublication.videoTrack) {
-        localVideo.srcObject = new MediaStream([trackPublication.videoTrack.mediaStreamTrack]);
+    // 🔥 CONEXIÓN DIRECTA: Obtener mi track
+    const localTrack = room.localParticipant.getTrackPublication('camera');
+    if (localTrack && localTrack.videoTrack) {
+        localVideo.srcObject = new MediaStream([localTrack.videoTrack.mediaStreamTrack]);
     } else {
-        // 🔥 Si no está listo, esperar un poco
+        // 🔥 Si no está listo, esperar y reintentar
         setTimeout(() => {
-            const trackPublication = room.localParticipant.getTrackPublication('camera');
-            if (trackPublication && trackPublication.videoTrack) {
-                localVideo.srcObject = new MediaStream([trackPublication.videoTrack.mediaStreamTrack]);
+            const localTrack = room.localParticipant.getTrackPublication('camera');
+            if (localTrack && localTrack.videoTrack) {
+                localVideo.srcObject = new MediaStream([localTrack.videoTrack.mediaStreamTrack]);
             }
         }, 500);
     }
 
-    // Etiqueta "Tú"
-    const label = document.createElement('div');
-    label.className = 'video-label local-label';
-    label.textContent = '📷 Tú';
-    localVideo.parentElement?.appendChild(label);
-
     const container = document.createElement('div');
     container.className = 'video-container local';
     container.dataset.peerId = "mi-video-local";
-
-    container.appendChild(label);
     container.appendChild(localVideo);
     gridVideos.appendChild(container);
+
+    // 🔥 Guardar en mapa
+    videoMap.set("mi-video-local", container);
+
+    // 🔥 ORDENAR Y ACTUALIZAR LAYOUT
+    ordenarContenedores();
+    actualizarLayout();
+}
+
+// ============================================
+// AGREGAR VIDEO REMOTO (FUNCIÓN NUEVA)
+// ============================================
+function agregarVideoRemoto(participant, track) {
+    // Si ya existe, no duplicar
+    if (videoMap.has(participant.identity)) {
+        const contenedor = videoMap.get(participant.identity);
+        const video = contenedor.querySelector('video');
+        video.srcObject = new MediaStream([track.mediaStreamTrack]);
+        video.style.display = 'block';
+        return;
+    }
+
+    const videoElement = document.createElement('video');
+    videoElement.autoplay = true;
+    videoElement.playsInline = true;
+    videoElement.dataset.peerId = participant.identity;
+    videoElement.srcObject = new MediaStream([track.mediaStreamTrack]);
+
+    const container = document.createElement('div');
+    container.className = 'video-container remote';
+    container.dataset.peerId = participant.identity;
+    container.appendChild(videoElement);
+    gridVideos.appendChild(container);
+
+    // 🔥 Guardar en mapa
+    videoMap.set(participant.identity, container);
 
     // 🔥 ORDENAR Y ACTUALIZAR LAYOUT
     ordenarContenedores();
@@ -275,11 +291,6 @@ document.getElementById('btn-silenciar').addEventListener('click', () => {
             document.getElementById('btn-silenciar').textContent = '🔇 Silenciar';
         }, 5000);
     }
-});
-
-document.getElementById('volumen').addEventListener('input', (e) => {
-    currentVolume = parseFloat(e.target.value);
-    document.getElementById('volumen-label').textContent = `${Math.round(currentVolume * 100)}%`;
 });
 
 document.getElementById('btn-fullscreen').addEventListener('click', () => {

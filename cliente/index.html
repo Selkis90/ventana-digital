@@ -8,37 +8,38 @@
 </head>
 <body>
     <div id="grid-videos"></div>
-    <div id="estado" class="inicializando">🔄 Inicializando...</div>
     
+    <div id="estado" class="inicializando">🔄 Inicializando...</div>
+
+    <!-- 🔥 CONTROLES CON LAS CLASES CORRECTAS -->
     <div id="controles">
         <div class="control-group">
             <button id="btn-microfono" class="btn-control">🎤 Micrófono</button>
             <button id="btn-camara" class="btn-control">📷 Cámara</button>
             <button id="btn-silenciar" class="btn-control">🔇 Silenciar</button>
         </div>
+        
         <div class="control-group">
             <label for="volumen" class="label-volumen">🔊</label>
             <input type="range" id="volumen" min="0" max="1" step="0.01" value="0.3">
             <span id="volumen-label" class="volumen-text">30%</span>
         </div>
+
         <div class="control-group">
             <button id="btn-fullscreen" class="btn-control">⛶ Pantalla completa</button>
             <button id="btn-reconectar" class="btn-control">🔄 Reconectar</button>
             <button id="btn-diagnostico" class="btn-control">📊 Diagnóstico</button>
         </div>
+
         <div id="info-conexion" class="info-conexion">
             <span id="mi-id">ID: Conectando...</span>
             <span id="peer-conectado">Peer: Ninguno</span>
         </div>
     </div>
 
-    <!-- 🔥 1. Cargar Socket.IO PRIMERO -->
+    <!-- Scripts -->
     <script src="/socket.io/socket.io.js"></script>
-
-    <!-- 🔥 2. Cargar LiveKit Client desde CDN -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@1.8.0/dist/livekit-client.umd.min.js"></script>
-    
-    <!-- 🔥 3. Cargar el camara.js -->
     <script src="js/camara.js"></script>
 </body>
 </html>

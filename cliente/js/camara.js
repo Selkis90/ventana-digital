@@ -42,10 +42,27 @@ async function conectarLiveKit() {
             mostrarVideoLocal();
         }, 500);
 
-        // 🔥 5. Evento para agregar videos de otros
+        // 🔥 5. Evento para agregar videos y AUDIO de otros
         room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
             if (track.kind === 'video') {
                 agregarVideoRemoto(participant, track);
+            }
+            // 🔥🔥🔥 ¡AQUÍ ESTÁ EL AUDIO!
+            if (track.kind === 'audio') {
+                // Crear un elemento de audio que reproduzca el audio del otro participante
+                const audioElement = document.createElement('audio');
+                audioElement.autoplay = true;
+                audioElement.srcObject = new MediaStream([track.mediaStreamTrack]);
+                audioElement.id = `audio-${participant.identity}`;
+                document.body.appendChild(audioElement);
+                
+                // 🔥 Reproducir el audio automáticamente (desbloquear en iOS)
+                audioElement.play().catch(() => {
+                    // Si el navegador bloquea el autoplay, esperar a que el usuario toque la pantalla
+                    document.addEventListener('touchstart', () => {
+                        audioElement.play().catch(() => {});
+                    }, { once: true });
+                });
             }
         });
 
@@ -71,13 +88,17 @@ async function conectarLiveKit() {
             }
         });
 
-        // 🔥 8. Cuando alguien se va, eliminar su video
+        // 🔥 8. Cuando alguien se va, eliminar su video y audio
         room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
             const contenedor = videoMap.get(participant.identity);
             if (contenedor) {
                 contenedor.remove();
                 videoMap.delete(participant.identity);
             }
+            // 🔥 Eliminar audio
+            const audio = document.getElementById(`audio-${participant.identity}`);
+            if (audio) audio.remove();
+            
             ordenarContenedores();
             actualizarLayout();
         });

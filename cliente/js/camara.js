@@ -25,49 +25,73 @@ async function conectarLiveKit() {
         const data = await response.json();
         const token = data.token;
 
-        const livekitUrl = "wss://ventana-digital-scr9uykx.livekit.cloud";
-
         // 2. Conectar a la sala
         room = new LivekitClient.Room();
-        await room.connect(livekitUrl, token);
+        await room.connect("wss://ventana-digital-scr9uykx.livekit.cloud", token);
 
         // 3. Activar cámara y micrófono
         await room.localParticipant.setCameraEnabled(true);
         await room.localParticipant.setMicrophoneEnabled(true);
 
-        // 4. Escuchar cuando se publica MI video local
-        room.on(LivekitClient.RoomEvent.LocalTrackPublished, (publication) => {
-            if (publication.kind === 'video') {
+        // 🔥 4. Mostrar MI video local (usando evento correcto)
+        room.on(LivekitClient.RoomEvent.LocalTrackPublished, () => {
+            setTimeout(() => {
                 mostrarVideoLocal();
-            }
+            }, 300); // Pequeño delay para asegurar que el track exista
         });
 
-        // 5. Escuchar cuando se unen otros participantes (videos remotos)
+        // 🔥 5. Mostrar videos de OTROS participantes (usando evento robusto)
         room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
             if (track.kind === 'video') {
+                // Crear el video inmediatamente
                 const videoElement = document.createElement('video');
                 videoElement.autoplay = true;
                 videoElement.playsInline = true;
-                videoElement.srcObject = new MediaStream([track.mediaStreamTrack]);
-                videoElement.dataset.peerId = participant.identity;
+                videoElement.id = participant.identity;
                 
+                // 🔥 Usar setTimeout para evitar el error de "could not find track"
+                setTimeout(() => {
+                    try {
+                        videoElement.srcObject = new MediaStream([track.mediaStreamTrack]);
+                    } catch (e) {
+                        console.log("⏳ Track aún no disponible, reintentando...");
+                        setTimeout(() => {
+                            videoElement.srcObject = new MediaStream([track.mediaStreamTrack]);
+                        }, 500);
+                    }
+                }, 200);
+
+                // Crear contenedor con etiqueta
                 const container = document.createElement('div');
                 container.className = 'video-container remote';
                 container.dataset.peerId = participant.identity;
+
+                // Etiqueta con nombre
+                const label = document.createElement('div');
+                label.className = 'video-label';
+                label.textContent = participant.identity.substring(0, 8);
+                container.appendChild(label);
+
                 container.appendChild(videoElement);
                 gridVideos.appendChild(container);
-                
-                // 🔥 ORDENAR Y ACTUALIZAR LAYOUT AUTOMÁTICAMENTE
+
+                // 🔥 ORDENAR Y ACTUALIZAR LAYOUT
                 ordenarContenedores();
                 actualizarLayout();
             }
         });
 
+        // 🔥 6. Cuando un participante se desconecta, eliminar su video
         room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
             const contenedor = gridVideos.querySelector(`[data-peer-id="${participant.identity}"]`);
             if (contenedor) contenedor.remove();
             ordenarContenedores();
             actualizarLayout();
+        });
+
+        // 🔥 7. Cuando entra un participante nuevo (para anticipar)
+        room.on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
+            console.log(`🆕 Participante conectado: ${participant.identity}`);
         });
 
         actualizarEstado("🟢 Conectado a la sala", "conectado");
@@ -79,26 +103,48 @@ async function conectarLiveKit() {
 }
 
 // ============================================
-// MOSTRAR MI VIDEO (CON CLASES CSS)
+// MOSTRAR MI VIDEO
 // ============================================
 function mostrarVideoLocal() {
+    // Si ya existe, eliminarlo para no duplicar
+    const existing = gridVideos.querySelector('[data-peer-id="mi-video-local"]');
+    if (existing) existing.remove();
+
     const localVideo = document.createElement('video');
     localVideo.autoplay = true;
     localVideo.muted = true;
     localVideo.playsInline = true;
-    localVideo.dataset.peerId = "mi-video-local";
-    
+    localVideo.id = "mi-video-local";
+
+    // 🔥 Obtener el track directamente de room.localParticipant
     const trackPublication = room.localParticipant.getTrackPublication('camera');
     if (trackPublication && trackPublication.videoTrack) {
         localVideo.srcObject = new MediaStream([trackPublication.videoTrack.mediaStreamTrack]);
+    } else {
+        // 🔥 Si no está listo, esperar un poco
+        setTimeout(() => {
+            const trackPublication = room.localParticipant.getTrackPublication('camera');
+            if (trackPublication && trackPublication.videoTrack) {
+                localVideo.srcObject = new MediaStream([trackPublication.videoTrack.mediaStreamTrack]);
+            }
+        }, 500);
     }
+
+    // Etiqueta "Tú"
+    const label = document.createElement('div');
+    label.className = 'video-label local-label';
+    label.textContent = '📷 Tú';
+    localVideo.parentElement?.appendChild(label);
 
     const container = document.createElement('div');
     container.className = 'video-container local';
     container.dataset.peerId = "mi-video-local";
+
+    container.appendChild(label);
     container.appendChild(localVideo);
     gridVideos.appendChild(container);
 
+    // 🔥 ORDENAR Y ACTUALIZAR LAYOUT
     ordenarContenedores();
     actualizarLayout();
 }
@@ -138,12 +184,14 @@ function actualizarLayout() {
 
     if (total === 0) return;
 
+    // 1 SOLO VIDEO (PANTALLA COMPLETA)
     if (total === 1) {
         containers[0].style.width = '100%';
         containers[0].style.height = '100%';
         return;
     }
 
+    // 2 VIDEOS (50/50)
     if (total === 2) {
         document.body.classList.add('layout-especial');
         containers.forEach((c, i) => {
@@ -158,6 +206,7 @@ function actualizarLayout() {
         return;
     }
 
+    // 3 VIDEOS (1 IZQUIERDA, 2 DERECHA)
     if (total === 3) {
         document.body.classList.add('layout-especial');
         containers.forEach((c, i) => {
@@ -179,6 +228,7 @@ function actualizarLayout() {
         return;
     }
 
+    // 4 VIDEOS (CUADRÍCULA 2x2)
     if (total >= 4) {
         document.body.classList.add('layout-especial');
         containers.forEach((c, i) => {
@@ -242,7 +292,12 @@ document.getElementById('btn-reconectar').addEventListener('click', () => {
 });
 
 document.getElementById('btn-diagnostico').addEventListener('click', () => {
-    alert(`Conectado: ${room ? room.state : 'No conectado'}\nParticipantes: ${room ? room.numParticipants : 0}`);
+    if (!room) {
+        alert('No estás conectado a ninguna sala.');
+        return;
+    }
+    const participantes = room.remoteParticipants.size;
+    alert(`✅ Conectado: ${room.state}\n📊 Participantes en sala: ${participantes}\n🆔 Tu ID: ${room.localParticipant.identity}`);
 });
 
 // Iniciar

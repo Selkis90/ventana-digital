@@ -33,32 +33,30 @@ async function conectarLiveKit() {
         room = new LivekitClient.Room();
         await room.connect("wss://ventana-digital-scr9uykx.livekit.cloud", token);
 
-        // 3. Activar cámara y micrófono
+        // 3. Activar cámara y micrófono (esto dispara el evento LocalTrackPublished)
         await room.localParticipant.setCameraEnabled(true);
         await room.localParticipant.setMicrophoneEnabled(true);
 
-        // 🔥 4. Mostrar MI video (usando método directo, sin trucos)
-        setTimeout(() => {
-            mostrarVideoLocal();
-        }, 500);
+        // 🔥 4. MOSTRAR MI VIDEO: Usando el evento LocalTrackPublished (CORRECTO)
+        room.on(LivekitClient.RoomEvent.LocalTrackPublished, (publication, participant) => {
+            if (publication.kind === 'video' && participant.identity === room.localParticipant.identity) {
+                mostrarVideoLocal();
+            }
+        });
 
-        // 🔥 5. Evento para agregar videos y AUDIO de otros
+        // 🔥 5. Audio de otros participantes
         room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
             if (track.kind === 'video') {
                 agregarVideoRemoto(participant, track);
             }
-            // 🔥🔥🔥 ¡AQUÍ ESTÁ EL AUDIO!
             if (track.kind === 'audio') {
-                // Crear un elemento de audio que reproduzca el audio del otro participante
                 const audioElement = document.createElement('audio');
                 audioElement.autoplay = true;
                 audioElement.srcObject = new MediaStream([track.mediaStreamTrack]);
                 audioElement.id = `audio-${participant.identity}`;
                 document.body.appendChild(audioElement);
                 
-                // 🔥 Reproducir el audio automáticamente (desbloquear en iOS)
                 audioElement.play().catch(() => {
-                    // Si el navegador bloquea el autoplay, esperar a que el usuario toque la pantalla
                     document.addEventListener('touchstart', () => {
                         audioElement.play().catch(() => {});
                     }, { once: true });
@@ -66,7 +64,7 @@ async function conectarLiveKit() {
             }
         });
 
-        // 🔥 6. Cuando un track se silencia (alguien apaga cámara)
+        // 🔥 6. Cuando alguien apaga cámara
         room.on(LivekitClient.RoomEvent.TrackMuted, (publication, participant) => {
             if (publication.kind === 'video') {
                 const contenedor = videoMap.get(participant.identity);
@@ -77,7 +75,7 @@ async function conectarLiveKit() {
             }
         });
 
-        // 🔥 7. Cuando un track se reactiva (alguien enciende cámara)
+        // 🔥 7. Cuando alguien enciende cámara
         room.on(LivekitClient.RoomEvent.TrackUnmuted, (publication, participant) => {
             if (publication.kind === 'video') {
                 const contenedor = videoMap.get(participant.identity);
@@ -88,14 +86,13 @@ async function conectarLiveKit() {
             }
         });
 
-        // 🔥 8. Cuando alguien se va, eliminar su video y audio
+        // 🔥 8. Cuando alguien se va
         room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
             const contenedor = videoMap.get(participant.identity);
             if (contenedor) {
                 contenedor.remove();
                 videoMap.delete(participant.identity);
             }
-            // 🔥 Eliminar audio
             const audio = document.getElementById(`audio-${participant.identity}`);
             if (audio) audio.remove();
             
@@ -112,7 +109,7 @@ async function conectarLiveKit() {
 }
 
 // ============================================
-// MOSTRAR MI VIDEO (FUNCIÓN DIRECTA)
+// MOSTRAR MI VIDEO (USANDO EVENTO CORRECTO)
 // ============================================
 function mostrarVideoLocal() {
     // Si ya existe, eliminarlo para no duplicar
@@ -121,22 +118,14 @@ function mostrarVideoLocal() {
 
     const localVideo = document.createElement('video');
     localVideo.autoplay = true;
-    localVideo.muted = true;
+    localVideo.muted = true; // 🔥 El video local SIEMPRE está mudo
     localVideo.playsInline = true;
     localVideo.dataset.peerId = "mi-video-local";
 
-    // 🔥 CONEXIÓN DIRECTA: Obtener mi track
-    const localTrack = room.localParticipant.getTrackPublication('camera');
-    if (localTrack && localTrack.videoTrack) {
-        localVideo.srcObject = new MediaStream([localTrack.videoTrack.mediaStreamTrack]);
-    } else {
-        // 🔥 Si no está listo, esperar y reintentar
-        setTimeout(() => {
-            const localTrack = room.localParticipant.getTrackPublication('camera');
-            if (localTrack && localTrack.videoTrack) {
-                localVideo.srcObject = new MediaStream([localTrack.videoTrack.mediaStreamTrack]);
-            }
-        }, 500);
+    // 🔥 CORRECCIÓN: Obtener el track directamente del publication (ya existe)
+    const localPublication = room.localParticipant.getTrackPublication('camera');
+    if (localPublication && localPublication.videoTrack) {
+        localVideo.srcObject = new MediaStream([localPublication.videoTrack.mediaStreamTrack]);
     }
 
     const container = document.createElement('div');

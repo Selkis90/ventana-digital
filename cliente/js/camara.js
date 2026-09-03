@@ -4,9 +4,6 @@
 const gridVideos = document.getElementById("grid-videos");
 const estado = document.getElementById("estado");
 
-// 🔥 Esto ya no es necesario para LiveKit, pero lo dejamos para evitar errores
-// const socket = io("https://ventana-digital.onrender.com", { ... });
-
 let room;
 let isAudioMuted = false;
 
@@ -28,7 +25,7 @@ async function conectarLiveKit() {
         const token = data.token;
 
         // Obtener URL del servidor
-        const livekitUrl = "wss://ventana-digital-scr9uykx.livekit.cloud"; // ⚠️ REEMPLAZA ESTO con tu URL exacta
+        const livekitUrl = "wss://ventana-digital-scr9uykx.livekit.cloud";
 
         // 2. Conectar a la sala
         room = new LivekitClient.Room();
@@ -38,10 +35,14 @@ async function conectarLiveKit() {
         await room.localParticipant.setCameraEnabled(true);
         await room.localParticipant.setMicrophoneEnabled(true);
 
-        // Mostrar mi propio video
-        mostrarVideoLocal();
+        // 4. Escuchar cuando se publica MI video local
+        room.on(LivekitClient.RoomEvent.LocalTrackPublished, (publication) => {
+            if (publication.kind === 'video') {
+                mostrarVideoLocal(publication);
+            }
+        });
 
-        // 4. Escuchar cuando se unen otros
+        // 5. Escuchar cuando se unen otros participantes
         room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
             if (track.kind === 'video') {
                 const videoElement = document.createElement('video');
@@ -71,21 +72,19 @@ async function conectarLiveKit() {
 }
 
 // ============================================
-// MOSTRAR MI VIDEO
+// MOSTRAR MI VIDEO LOCAL (CORREGIDO)
 // ============================================
-function mostrarVideoLocal() {
+function mostrarVideoLocal(publication) {
     const localVideo = document.createElement('video');
     localVideo.autoplay = true;
     localVideo.muted = true;
     localVideo.playsInline = true;
     localVideo.id = "mi-video-local";
 
-    room.localParticipant.setCameraEnabled(true).then(() => {
-        const trackPublication = room.localParticipant.getTrackPublication('camera');
-        if (trackPublication && trackPublication.videoTrack) {
-            localVideo.srcObject = new MediaStream([trackPublication.videoTrack.mediaStreamTrack]);
-        }
-    });
+    // 🔥 CORRECCIÓN: Usar el track del publication en lugar de getTrackPublication
+    if (publication && publication.videoTrack) {
+        localVideo.srcObject = new MediaStream([publication.videoTrack.mediaStreamTrack]);
+    }
 
     const container = document.createElement('div');
     container.className = 'video-container local';
@@ -115,8 +114,6 @@ document.getElementById('btn-camara').addEventListener('click', async () => {
 });
 
 document.getElementById('btn-silenciar').addEventListener('click', () => {
-    // Con LiveKit, silenciar a todos no es necesario, el audio llega individual.
-    // Este botón es un extra para silenciar el audio local de tu dispositivo.
     if (room) {
         room.localParticipant.setMicrophoneEnabled(false);
         document.getElementById('btn-silenciar').textContent = '🔊 Activar';

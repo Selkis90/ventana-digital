@@ -24,9 +24,13 @@
         <span id="peer-conectado">Peer: Ninguno</span>
     </div>
 
-    <!-- Cargar LiveKit Client desde CDN (No necesita npm) -->
+    <!-- 🔥 1. Cargar Socket.IO PRIMERO (Para que el servidor siga funcionando) -->
+    <script src="/socket.io/socket.io.js"></script>
+
+    <!-- 🔥 2. Cargar LiveKit Client desde CDN -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@1.8.0/dist/livekit-client.umd.min.js"></script>
     
+    <!-- 🔥 3. Cargar el camara.js (que usa ambos) -->
     <script src="js/camara.js"></script>
 </body>
 </html>

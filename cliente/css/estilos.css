@@ -1,572 +1,256 @@
-/* ============================================
-   RESET Y CONFIGURACIÓN BASE
-   ============================================ */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+// ============================================
+// CONFIGURACIÓN INICIAL
+// ============================================
+const gridVideos = document.getElementById("grid-videos");
+const estado = document.getElementById("estado");
 
-html, body {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: #0a0a0a;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-    touch-action: none;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-}
+let room;
+let isAudioMuted = false;
+let currentVolume = 0.3;
 
-/* ============================================
-   GRID DE VIDEOS (Base)
-   ============================================ */
-#grid-videos {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap: 4px;
-    background: #0a0a0a;
-    z-index: 1;
-    padding: 4px;
-}
+// ============================================
+// FUNCIÓN PARA CONECTAR A LIVEKIT
+// ============================================
+async function conectarLiveKit() {
+    try {
+        const roomName = "sala-principal";
+        const participantName = "Usuario-" + Math.random().toString(36).substring(7);
 
-/* Cuando hay 2, 3 o 4 personas, quitamos separaciones para que peguen perfecto */
-body.layout-especial #grid-videos {
-    gap: 0;
-    padding: 0;
-    background: #000;
-}
+        // 1. Pedir token al servidor
+        const response = await fetch('/get-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomName, participantName })
+        });
+        const data = await response.json();
+        const token = data.token;
 
-.video-container {
-    position: relative;
-    background: #1a1a1a;
-    border-radius: 8px;
-    overflow: hidden;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border: 2px solid rgba(255, 255, 255, 0.1);
-    min-width: 0;
-    min-height: 0;
-}
+        // Obtener URL del servidor
+        const livekitUrl = "wss://ventana-digital-scr9uykx.livekit.cloud"; // ⚠️ Tu URL exacta
 
-.video-container video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    background: #1a1a1a;
-    display: block;
-}
+        // 2. Conectar a la sala
+        room = new LivekitClient.Room();
+        await room.connect(livekitUrl, token);
 
-.video-container.local {
-    border-color: rgba(0, 170, 255, 0.3);
-}
+        // 3. Activar cámara y micrófono
+        await room.localParticipant.setCameraEnabled(true);
+        await room.localParticipant.setMicrophoneEnabled(true);
 
-.video-container.remote {
-    border-color: rgba(255, 255, 255, 0.1);
-}
+        // 4. Escuchar cuando se publica MI video local
+        room.on(LivekitClient.RoomEvent.LocalTrackPublished, (publication) => {
+            if (publication.kind === 'video') {
+                mostrarVideoLocal();
+            }
+        });
 
-.video-container.activo {
-    border-color: #00ff88;
-    box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
-}
+        // 5. Escuchar cuando se unen otros participantes (videos remotos)
+        room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+            if (track.kind === 'video') {
+                const videoElement = document.createElement('video');
+                videoElement.autoplay = true;
+                videoElement.playsInline = true;
+                videoElement.srcObject = new MediaStream([track.mediaStreamTrack]);
+                videoElement.dataset.peerId = participant.identity; // Para ordenarlos
+                
+                const container = document.createElement('div');
+                container.className = 'video-container remote';
+                container.dataset.peerId = participant.identity;
+                container.appendChild(videoElement);
+                gridVideos.appendChild(container);
+                
+                // 🔥 ORDENAR Y ACTUALIZAR LAYOUT AUTOMÁTICAMENTE
+                ordenarContenedores();
+                actualizarLayout();
+            }
+        });
 
-/* ============================================
-   ESTILOS PARA VIDEO EN GRANDE (Al hacer clic)
-   ============================================ */
-.video-container.grande {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    z-index: 5;
-    border-radius: 0 !important;
-    border-color: #00aaff !important;
-    box-shadow: 0 0 40px rgba(0, 170, 255, 0.3);
-}
+        room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
+            const contenedor = gridVideos.querySelector(`[data-peer-id="${participant.identity}"]`);
+            if (contenedor) contenedor.remove();
+            ordenarContenedores();
+            actualizarLayout();
+        });
 
-.video-container.grande video {
-    object-fit: contain;
-}
-
-.video-container.pequeno {
-    position: absolute !important;
-    width: 25% !important;
-    height: 25% !important;
-    right: 10px !important;
-    bottom: 10px !important;
-    z-index: 10;
-    border-radius: 8px !important;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-}
-
-.video-container.pequeno .video-label {
-    display: none !important;
-}
-
-/* ============================================
-   ETIQUETAS DE VIDEOS
-   ============================================ */
-.video-label {
-    position: absolute;
-    bottom: 10px;
-    left: 10px;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    color: rgba(255, 255, 255, 0.8);
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 600;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    pointer-events: none;
-    z-index: 2;
-}
-
-.video-label.local-label {
-    background: rgba(0, 170, 255, 0.6);
-}
-
-.video-label.remote-label {
-    background: rgba(46, 204, 113, 0.6);
-}
-
-/* Indicador de audio activo */
-.audio-indicator {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #00ff88;
-    box-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
-    z-index: 2;
-    display: none;
-}
-
-.audio-indicator.activo {
-    display: block;
-    animation: pulse-audio 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-audio {
-    0%, 100% { opacity: 0.3; transform: scale(0.8); }
-    50% { opacity: 1; transform: scale(1.2); }
-}
-
-/* Indicador de video apagado */
-.video-off-indicator {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 40px;
-    opacity: 0.5;
-    z-index: 1;
-    pointer-events: none;
-}
-
-/* ============================================
-   ESTADO
-   ============================================ */
-#estado {
-    position: fixed;
-    top: 15px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 100;
-    padding: 8px 20px;
-    border-radius: 20px;
-    font-size: 13px;
-    font-weight: 600;
-    color: white;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    text-align: center;
-    white-space: nowrap;
-    transition: all 0.3s ease;
-    pointer-events: none;
-    letter-spacing: 0.3px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
-#estado.inicializando { 
-    background: rgba(255, 165, 0, 0.85);
-    border-color: rgba(255, 165, 0, 0.3);
-}
-#estado.conectado { 
-    background: rgba(0, 200, 80, 0.85);
-    border-color: rgba(0, 200, 80, 0.3);
-}
-#estado.desconectado { 
-    background: rgba(255, 50, 50, 0.85);
-    border-color: rgba(255, 50, 50, 0.3);
-}
-#estado.error { 
-    background: rgba(255, 0, 0, 0.85);
-    border-color: rgba(255, 0, 0, 0.3);
-    animation: parpadeo 0.5s infinite alternate;
-}
-
-@keyframes parpadeo {
-    from { opacity: 1; }
-    to { opacity: 0.5; }
-}
-
-/* Responsive estado */
-@media (max-width: 480px) {
-    #estado {
-        font-size: 10px;
-        padding: 5px 12px;
-        top: 8px;
-        white-space: normal;
-        max-width: 90%;
-        border-radius: 15px;
+        actualizarEstado("🟢 Conectado a la sala", "conectado");
+        document.getElementById('mi-id').textContent = `ID: ${participantName}`;
+    } catch (error) {
+        console.error("❌ Error conectando a LiveKit:", error);
+        actualizarEstado("🔴 Error de conexión", "desconectado");
     }
 }
 
-@media (min-width: 481px) and (max-width: 768px) {
-    #estado {
-        font-size: 11px;
-        padding: 6px 16px;
-        top: 10px;
-    }
-}
-
-/* ============================================
-   CONTROLES
-   ============================================ */
-#controles {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 20;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
-    padding: 15px 12px 20px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    align-items: center;
-    transition: all 0.3s ease;
-}
-
-.control-group {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    max-width: 600px;
-}
-
-/* ============================================
-   BOTONES DE CONTROL
-   ============================================ */
-.btn-control {
-    padding: 8px 16px;
-    border: none;
-    border-radius: 25px;
-    font-size: 12px;
-    font-weight: 600;
-    color: white;
-    background: rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    touch-action: manipulation;
-    min-height: 40px;
-    min-width: 44px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    white-space: nowrap;
-    flex: 0 1 auto;
-}
-
-.btn-control:active {
-    transform: scale(0.92);
-}
-
-/* Hover solo en desktop */
-@media (hover: hover) {
-    .btn-control:hover {
-        background: rgba(255, 255, 255, 0.25);
-        transform: translateY(-2px);
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    }
-}
-
-/* Colores específicos por botón */
-#btn-microfono { background: rgba(52, 152, 219, 0.5); }
-#btn-microfono.activo { background: rgba(52, 152, 219, 0.8); }
-#btn-microfono.inactivo { background: rgba(255, 50, 50, 0.7); }
-
-#btn-camara { background: rgba(46, 204, 113, 0.5); }
-#btn-camara.activo { background: rgba(46, 204, 113, 0.8); }
-#btn-camara.inactivo { background: rgba(255, 50, 50, 0.7); }
-
-#btn-silenciar { background: rgba(241, 196, 15, 0.4); }
-#btn-silenciar.silenciado { background: rgba(255, 50, 50, 0.6); }
-
-#btn-fullscreen { background: rgba(155, 89, 182, 0.4); }
-#btn-fullscreen:hover { background: rgba(155, 89, 182, 0.7); }
-
-#btn-reconectar { background: rgba(255, 165, 0, 0.4); }
-#btn-reconectar:hover { background: rgba(255, 165, 0, 0.7); }
-#btn-reconectar:active { background: rgba(255, 165, 0, 0.9); }
-
-#btn-diagnostico { background: rgba(52, 73, 94, 0.4); }
-#btn-diagnostico.activo { background: rgba(52, 73, 94, 0.8); }
-
-/* ============================================
-   VOLUMEN
-   ============================================ */
-.label-volumen {
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 14px;
-    padding: 0 4px;
-}
-
-#volumen {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 80px;
-    height: 4px;
-    border-radius: 2px;
-    background: rgba(255, 255, 255, 0.2);
-    outline: none;
-    transition: all 0.2s ease;
-    flex: 0 1 80px;
-}
-
-#volumen::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #4CAF50, #2196F3);
-    cursor: pointer;
-    border: 2px solid white;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-    transition: all 0.2s ease;
-}
-
-#volumen::-webkit-slider-thumb:hover {
-    transform: scale(1.1);
-}
-
-#volumen::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #4CAF50, #2196F3);
-    cursor: pointer;
-    border: 2px solid white;
-}
-
-.volumen-text {
-    color: white;
-    font-size: 11px;
-    font-weight: 600;
-    min-width: 32px;
-    text-align: center;
-    background: rgba(255, 255, 255, 0.08);
-    padding: 2px 6px;
-    border-radius: 4px;
-}
-
-/* ============================================
-   INFO DE CONEXIÓN
-   ============================================ */
-.info-conexion {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 12px;
-    font-size: 10px;
-    color: rgba(255, 255, 255, 0.4);
-    background: rgba(0, 0, 0, 0.4);
-    padding: 4px 12px;
-    border-radius: 10px;
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    margin-top: 2px;
-    max-width: 95%;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.info-conexion span {
-    font-family: 'Courier New', monospace;
-    font-size: 9px;
-    color: rgba(255, 255, 255, 0.5);
-}
-
-/* ============================================
-   DIAGNÓSTICO BADGE
-   ============================================ */
-.diagnostico-badge {
-    position: fixed;
-    top: 60px;
-    right: 10px;
-    z-index: 50;
-    background: rgba(0, 0, 0, 0.95);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(0, 255, 136, 0.2);
-    border-radius: 12px;
-    padding: 12px 16px;
-    color: #00ff88;
-    font-size: 10px;
-    font-family: 'Courier New', monospace;
-    max-width: 280px;
-    display: none;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
-    line-height: 1.6;
-    max-height: 80vh;
-    overflow-y: auto;
-}
-
-.diagnostico-badge.visible {
-    display: block;
-    animation: fadeIn 0.3s ease;
-}
-
-.diagnostico-badge .diagnostico-header {
-    font-weight: bold;
-    color: #00ff88;
-    border-bottom: 1px solid rgba(0, 255, 136, 0.2);
-    padding-bottom: 4px;
-    margin-bottom: 4px;
-    font-size: 11px;
-}
-
-.diagnostico-badge .info-line {
-    padding: 2px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.diagnostico-badge .info-line:last-child {
-    border-bottom: none;
-}
-
-.diagnostico-badge .label {
-    color: rgba(255, 255, 255, 0.5);
-}
-
-.diagnostico-badge .value {
-    color: #00ff88;
-    font-weight: bold;
-    float: right;
-    margin-left: 10px;
-}
-
-.diagnostico-badge .value.error {
-    color: #ff4444;
-}
-
-.diagnostico-badge .value.warning {
-    color: #ffaa00;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px) scale(0.95); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-/* ============================================
-   RESPONSIVE COMPLETO
-   ============================================ */
-
-/* MÓVILES PEQUEÑOS */
-@media (max-width: 480px) {
-    .video-container.pequeno {
-        width: 35% !important;
-        height: 35% !important;
-        right: 5px !important;
-        bottom: 5px !important;
-    }
+// ============================================
+// MOSTRAR MI VIDEO
+// ============================================
+function mostrarVideoLocal() {
+    const localVideo = document.createElement('video');
+    localVideo.autoplay = true;
+    localVideo.muted = true; // 🔥 El video local SIEMPRE está mudo
+    localVideo.playsInline = true;
+    localVideo.dataset.peerId = "mi-video-local";
     
-    .btn-control {
-        padding: 6px 10px;
-        font-size: 10px;
-        min-height: 34px;
-        min-width: 36px;
-        border-radius: 20px;
+    const trackPublication = room.localParticipant.getTrackPublication('camera');
+    if (trackPublication && trackPublication.videoTrack) {
+        localVideo.srcObject = new MediaStream([trackPublication.videoTrack.mediaStreamTrack]);
     }
 
-    #controles {
-        padding: 8px 6px 10px 6px;
-        gap: 4px;
+    const container = document.createElement('div');
+    container.className = 'video-container local';
+    container.dataset.peerId = "mi-video-local";
+    container.appendChild(localVideo);
+    gridVideos.appendChild(container);
+
+    // 🔥 ORDENAR Y ACTUALIZAR LAYOUT
+    ordenarContenedores();
+    actualizarLayout();
+}
+
+// ============================================
+// 🔥 ORDENAR Y ACTUALIZAR LAYOUT (COMO TUS EJEMPLOS)
+// ============================================
+function ordenarContenedores() {
+    const contenedores = Array.from(gridVideos.children);
+    contenedores.sort((a, b) => {
+        const idA = a.dataset.peerId || '';
+        const idB = b.dataset.peerId || '';
+        return idA.localeCompare(idB);
+    });
+    contenedores.forEach(container => {
+        gridVideos.appendChild(container);
+    });
+}
+
+function actualizarLayout() {
+    const containers = Array.from(gridVideos.children);
+    const total = containers.length;
+    
+    containers.forEach(c => {
+        c.style.position = 'static';
+        c.style.width = '';
+        c.style.height = '';
+        c.style.left = '';
+        c.style.top = '';
+        c.style.zIndex = '';
+        c.style.borderRadius = '';
+        c.style.boxShadow = '';
+        c.classList.remove('grande', 'pequeno');
+    });
+
+    document.body.classList.remove('layout-especial');
+
+    if (total === 0) return;
+
+    // 1 SOLO VIDEO (PANTALLA COMPLETA)
+    if (total === 1) {
+        containers[0].style.width = '100%';
+        containers[0].style.height = '100%';
+        return;
     }
 
-    #volumen {
-        width: 50px;
-        flex: 0 1 50px;
+    // 2 VIDEOS (50/50)
+    if (total === 2) {
+        document.body.classList.add('layout-especial');
+        containers.forEach((c, i) => {
+            c.style.position = 'absolute';
+            c.style.top = '0';
+            c.style.height = '100%';
+            c.style.width = '50%';
+            c.style.borderRadius = '0';
+            if (i === 0) c.style.left = '0';
+            else c.style.left = '50%';
+        });
+        return;
     }
 
-    .info-conexion {
-        font-size: 8px;
-        padding: 3px 8px;
-        gap: 6px;
+    // 3 VIDEOS (1 IZQUIERDA, 2 DERECHA)
+    if (total === 3) {
+        document.body.classList.add('layout-especial');
+        containers.forEach((c, i) => {
+            c.style.position = 'absolute';
+            c.style.borderRadius = '0';
+            if (i === 0) {
+                c.style.top = '0';
+                c.style.left = '0';
+                c.style.width = '50%';
+                c.style.height = '100%';
+            } else {
+                c.style.left = '50%';
+                c.style.width = '50%';
+                c.style.height = '50%';
+                if (i === 1) c.style.top = '0';
+                else c.style.top = '50%';
+            }
+        });
+        return;
+    }
+
+    // 4 VIDEOS (CUADRÍCULA 2x2)
+    if (total >= 4) {
+        document.body.classList.add('layout-especial');
+        containers.forEach((c, i) => {
+            c.style.position = 'absolute';
+            c.style.width = '50%';
+            c.style.height = '50%';
+            c.style.borderRadius = '0';
+            const col = (i % 2);
+            const row = Math.floor(i / 2);
+            c.style.left = `${col * 50}%`;
+            c.style.top = `${row * 50}%`;
+        });
+        return;
     }
 }
 
-/* MÓVILES GRANDES Y TABLETS PEQUEÑAS */
-@media (min-width: 481px) and (max-width: 768px) {
-    .btn-control {
-        padding: 7px 12px;
-        font-size: 11px;
-        min-height: 38px;
-    }
-
-    #volumen {
-        width: 60px;
-        flex: 0 1 60px;
-    }
+// ============================================
+// ESTADO Y CONTROLES
+// ============================================
+function actualizarEstado(mensaje, tipo) {
+    estado.textContent = mensaje;
+    estado.className = tipo || "inicializando";
 }
 
-/* TABLETS GRANDES Y DESKTOP PEQUEÑO */
-@media (min-width: 769px) and (max-width: 1024px) {
-    .btn-control {
-        padding: 9px 18px;
-        font-size: 13px;
-        min-height: 42px;
-    }
-}
+document.getElementById('btn-microfono').addEventListener('click', () => {
+    if (!room) return;
+    room.localParticipant.setMicrophoneEnabled(!isAudioMuted);
+    isAudioMuted = !isAudioMuted;
+    document.getElementById('btn-microfono').textContent = isAudioMuted ? '🎤 Silenciado' : '🎤 Micrófono';
+});
 
-/* DESKTOP GRANDE */
-@media (min-width: 1025px) {
-    .btn-control {
-        padding: 10px 22px;
-        font-size: 14px;
-        min-height: 46px;
-        border-radius: 30px;
-    }
+document.getElementById('btn-camara').addEventListener('click', async () => {
+    if (!room) return;
+    const enabled = await room.localParticipant.setCameraEnabled(!room.localParticipant.isCameraEnabled());
+    document.getElementById('btn-camara').textContent = enabled ? '📷 Cámara' : '📷 Apagada';
+});
 
-    #volumen {
-        width: 120px;
-        flex: 0 1 120px;
+document.getElementById('btn-silenciar').addEventListener('click', () => {
+    if (room) {
+        room.localParticipant.setMicrophoneEnabled(false);
+        document.getElementById('btn-silenciar').textContent = '🔊 Activar';
+        setTimeout(() => {
+            room.localParticipant.setMicrophoneEnabled(true);
+            document.getElementById('btn-silenciar').textContent = '🔇 Silenciar';
+        }, 5000);
     }
+});
 
-    .info-conexion {
-        font-size: 11px;
-        padding: 6px 16px;
-        gap: 16px;
-    }
-}
+// Control de volumen
+document.getElementById('volumen').addEventListener('input', (e) => {
+    currentVolume = parseFloat(e.target.value);
+    document.getElementById('volumen-label').textContent = `${Math.round(currentVolume * 100)}%`;
+});
+
+document.getElementById('btn-fullscreen').addEventListener('click', () => {
+    if (gridVideos.requestFullscreen) gridVideos.requestFullscreen();
+});
+
+document.getElementById('btn-reconectar').addEventListener('click', () => {
+    if (room) room.disconnect();
+    setTimeout(() => conectarLiveKit(), 1000);
+});
+
+document.getElementById('btn-diagnostico').addEventListener('click', () => {
+    alert(`Conectado: ${room ? room.state : 'No conectado'}\nParticipantes: ${room ? room.numParticipants : 0}`);
+});
+
+// Iniciar
+conectarLiveKit();

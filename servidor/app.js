@@ -3,6 +3,7 @@ const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const { AccessToken } = require('livekit-server-sdk'); // 🔥 AGREGADO
 require('dotenv').config();
 
 const app = express();
@@ -34,6 +35,19 @@ app.use(cors({
     credentials: true 
 }));
 app.use(express.json());
+
+// ============================================
+// 🔥 RUTA PARA GENERAR TOKEN DE LIVEKIT
+// ============================================
+app.post('/get-token', async (req, res) => {
+    const { roomName, participantName } = req.body;
+    const at = new AccessToken(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET, {
+        identity: participantName,
+    });
+    at.addGrant({ roomJoin: true, room: roomName });
+    const token = await at.toJwt();
+    res.json({ token });
+});
 
 // ============================================
 // 🔥 RUTAS DE TWILIO TURN

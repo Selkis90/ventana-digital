@@ -37,25 +37,34 @@ async function conectarLiveKit() {
         await room.localParticipant.setCameraEnabled(true);
         await room.localParticipant.setMicrophoneEnabled(true);
 
-        // 🔥 4. MOSTRAR MI VIDEO: Usando el evento LocalTrackPublished (CORRECTO)
+        // 🔥 4. MOSTRAR MI VIDEO: Usando el evento LocalTrackPublished
         room.on(LivekitClient.RoomEvent.LocalTrackPublished, (publication, participant) => {
             if (publication.kind === 'video' && participant.identity === room.localParticipant.identity) {
                 mostrarVideoLocal();
             }
         });
 
-        // 🔥 5. Audio de otros participantes
+        // 🔥 5. AUDIO DE OTROS PARTICIPANTES (SIN ECO)
         room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+            
+            // SI ES MI PROPIO TRACK, NO HAGO NADA (Evita el bucle)
+            if (participant.identity === room.localParticipant.identity) {
+                return;
+            }
+
             if (track.kind === 'video') {
                 agregarVideoRemoto(participant, track);
             }
+            
             if (track.kind === 'audio') {
+                // 🔥 Crear el audio SOLO si es de OTRO participante
                 const audioElement = document.createElement('audio');
                 audioElement.autoplay = true;
                 audioElement.srcObject = new MediaStream([track.mediaStreamTrack]);
                 audioElement.id = `audio-${participant.identity}`;
                 document.body.appendChild(audioElement);
                 
+                // 🔥 Reproducir el audio automáticamente
                 audioElement.play().catch(() => {
                     document.addEventListener('touchstart', () => {
                         audioElement.play().catch(() => {});
@@ -109,7 +118,7 @@ async function conectarLiveKit() {
 }
 
 // ============================================
-// MOSTRAR MI VIDEO (USANDO EVENTO CORRECTO)
+// MOSTRAR MI VIDEO
 // ============================================
 function mostrarVideoLocal() {
     // Si ya existe, eliminarlo para no duplicar
@@ -122,7 +131,7 @@ function mostrarVideoLocal() {
     localVideo.playsInline = true;
     localVideo.dataset.peerId = "mi-video-local";
 
-    // 🔥 CORRECCIÓN: Obtener el track directamente del publication (ya existe)
+    // 🔥 Obtener el track directamente
     const localPublication = room.localParticipant.getTrackPublication('camera');
     if (localPublication && localPublication.videoTrack) {
         localVideo.srcObject = new MediaStream([localPublication.videoTrack.mediaStreamTrack]);
@@ -143,7 +152,7 @@ function mostrarVideoLocal() {
 }
 
 // ============================================
-// AGREGAR VIDEO REMOTO (FUNCIÓN NUEVA)
+// AGREGAR VIDEO REMOTO
 // ============================================
 function agregarVideoRemoto(participant, track) {
     // Si ya existe, no duplicar
@@ -176,7 +185,7 @@ function agregarVideoRemoto(participant, track) {
 }
 
 // ============================================
-// 🔥 ORDENAR Y ACTUALIZAR LAYOUT (COMO TUS EJEMPLOS)
+// 🔥 ORDENAR Y ACTUALIZAR LAYOUT
 // ============================================
 function ordenarContenedores() {
     const contenedores = Array.from(gridVideos.children);

@@ -1,256 +1,286 @@
-// ============================================
-// CONFIGURACIÓN INICIAL
-// ============================================
-const gridVideos = document.getElementById("grid-videos");
-const estado = document.getElementById("estado");
-
-let room;
-let isAudioMuted = false;
-let currentVolume = 0.3;
-
-// ============================================
-// FUNCIÓN PARA CONECTAR A LIVEKIT
-// ============================================
-async function conectarLiveKit() {
-    try {
-        const roomName = "sala-principal";
-        const participantName = "Usuario-" + Math.random().toString(36).substring(7);
-
-        // 1. Pedir token al servidor
-        const response = await fetch('/get-token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ roomName, participantName })
-        });
-        const data = await response.json();
-        const token = data.token;
-
-        // Obtener URL del servidor
-        const livekitUrl = "wss://ventana-digital-scr9uykx.livekit.cloud"; // ⚠️ Tu URL exacta
-
-        // 2. Conectar a la sala
-        room = new LivekitClient.Room();
-        await room.connect(livekitUrl, token);
-
-        // 3. Activar cámara y micrófono
-        await room.localParticipant.setCameraEnabled(true);
-        await room.localParticipant.setMicrophoneEnabled(true);
-
-        // 4. Escuchar cuando se publica MI video local
-        room.on(LivekitClient.RoomEvent.LocalTrackPublished, (publication) => {
-            if (publication.kind === 'video') {
-                mostrarVideoLocal();
-            }
-        });
-
-        // 5. Escuchar cuando se unen otros participantes (videos remotos)
-        room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
-            if (track.kind === 'video') {
-                const videoElement = document.createElement('video');
-                videoElement.autoplay = true;
-                videoElement.playsInline = true;
-                videoElement.srcObject = new MediaStream([track.mediaStreamTrack]);
-                videoElement.dataset.peerId = participant.identity; // Para ordenarlos
-                
-                const container = document.createElement('div');
-                container.className = 'video-container remote';
-                container.dataset.peerId = participant.identity;
-                container.appendChild(videoElement);
-                gridVideos.appendChild(container);
-                
-                // 🔥 ORDENAR Y ACTUALIZAR LAYOUT AUTOMÁTICAMENTE
-                ordenarContenedores();
-                actualizarLayout();
-            }
-        });
-
-        room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
-            const contenedor = gridVideos.querySelector(`[data-peer-id="${participant.identity}"]`);
-            if (contenedor) contenedor.remove();
-            ordenarContenedores();
-            actualizarLayout();
-        });
-
-        actualizarEstado("🟢 Conectado a la sala", "conectado");
-        document.getElementById('mi-id').textContent = `ID: ${participantName}`;
-    } catch (error) {
-        console.error("❌ Error conectando a LiveKit:", error);
-        actualizarEstado("🔴 Error de conexión", "desconectado");
-    }
+/* ============================================
+   RESET Y CONFIGURACIÓN BASE
+   ============================================ */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
 
-// ============================================
-// MOSTRAR MI VIDEO
-// ============================================
-function mostrarVideoLocal() {
-    const localVideo = document.createElement('video');
-    localVideo.autoplay = true;
-    localVideo.muted = true; // 🔥 El video local SIEMPRE está mudo
-    localVideo.playsInline = true;
-    localVideo.dataset.peerId = "mi-video-local";
-    
-    const trackPublication = room.localParticipant.getTrackPublication('camera');
-    if (trackPublication && trackPublication.videoTrack) {
-        localVideo.srcObject = new MediaStream([trackPublication.videoTrack.mediaStreamTrack]);
-    }
-
-    const container = document.createElement('div');
-    container.className = 'video-container local';
-    container.dataset.peerId = "mi-video-local";
-    container.appendChild(localVideo);
-    gridVideos.appendChild(container);
-
-    // 🔥 ORDENAR Y ACTUALIZAR LAYOUT
-    ordenarContenedores();
-    actualizarLayout();
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0d0d0d;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    touch-action: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
-// ============================================
-// 🔥 ORDENAR Y ACTUALIZAR LAYOUT (COMO TUS EJEMPLOS)
-// ============================================
-function ordenarContenedores() {
-    const contenedores = Array.from(gridVideos.children);
-    contenedores.sort((a, b) => {
-        const idA = a.dataset.peerId || '';
-        const idB = b.dataset.peerId || '';
-        return idA.localeCompare(idB);
-    });
-    contenedores.forEach(container => {
-        gridVideos.appendChild(container);
-    });
+/* ============================================
+   GRID DE VIDEOS (PROFESIONAL)
+   ============================================ */
+#grid-videos {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #0d0d0d;
+    z-index: 1;
+    padding: 0;
 }
 
-function actualizarLayout() {
-    const containers = Array.from(gridVideos.children);
-    const total = containers.length;
-    
-    containers.forEach(c => {
-        c.style.position = 'static';
-        c.style.width = '';
-        c.style.height = '';
-        c.style.left = '';
-        c.style.top = '';
-        c.style.zIndex = '';
-        c.style.borderRadius = '';
-        c.style.boxShadow = '';
-        c.classList.remove('grande', 'pequeno');
-    });
-
-    document.body.classList.remove('layout-especial');
-
-    if (total === 0) return;
-
-    // 1 SOLO VIDEO (PANTALLA COMPLETA)
-    if (total === 1) {
-        containers[0].style.width = '100%';
-        containers[0].style.height = '100%';
-        return;
-    }
-
-    // 2 VIDEOS (50/50)
-    if (total === 2) {
-        document.body.classList.add('layout-especial');
-        containers.forEach((c, i) => {
-            c.style.position = 'absolute';
-            c.style.top = '0';
-            c.style.height = '100%';
-            c.style.width = '50%';
-            c.style.borderRadius = '0';
-            if (i === 0) c.style.left = '0';
-            else c.style.left = '50%';
-        });
-        return;
-    }
-
-    // 3 VIDEOS (1 IZQUIERDA, 2 DERECHA)
-    if (total === 3) {
-        document.body.classList.add('layout-especial');
-        containers.forEach((c, i) => {
-            c.style.position = 'absolute';
-            c.style.borderRadius = '0';
-            if (i === 0) {
-                c.style.top = '0';
-                c.style.left = '0';
-                c.style.width = '50%';
-                c.style.height = '100%';
-            } else {
-                c.style.left = '50%';
-                c.style.width = '50%';
-                c.style.height = '50%';
-                if (i === 1) c.style.top = '0';
-                else c.style.top = '50%';
-            }
-        });
-        return;
-    }
-
-    // 4 VIDEOS (CUADRÍCULA 2x2)
-    if (total >= 4) {
-        document.body.classList.add('layout-especial');
-        containers.forEach((c, i) => {
-            c.style.position = 'absolute';
-            c.style.width = '50%';
-            c.style.height = '50%';
-            c.style.borderRadius = '0';
-            const col = (i % 2);
-            const row = Math.floor(i / 2);
-            c.style.left = `${col * 50}%`;
-            c.style.top = `${row * 50}%`;
-        });
-        return;
-    }
+.video-container {
+    position: relative;
+    background: #1a1a1a;
+    overflow: hidden;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-// ============================================
-// ESTADO Y CONTROLES
-// ============================================
-function actualizarEstado(mensaje, tipo) {
-    estado.textContent = mensaje;
-    estado.className = tipo || "inicializando";
+.video-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #1a1a1a;
+    display: block;
 }
 
-document.getElementById('btn-microfono').addEventListener('click', () => {
-    if (!room) return;
-    room.localParticipant.setMicrophoneEnabled(!isAudioMuted);
-    isAudioMuted = !isAudioMuted;
-    document.getElementById('btn-microfono').textContent = isAudioMuted ? '🎤 Silenciado' : '🎤 Micrófono';
-});
+.video-container.local {
+    border-color: rgba(0, 170, 255, 0.4);
+    box-shadow: 0 4px 20px rgba(0, 170, 255, 0.2);
+}
 
-document.getElementById('btn-camara').addEventListener('click', async () => {
-    if (!room) return;
-    const enabled = await room.localParticipant.setCameraEnabled(!room.localParticipant.isCameraEnabled());
-    document.getElementById('btn-camara').textContent = enabled ? '📷 Cámara' : '📷 Apagada';
-});
+.video-container.remote {
+    border-color: rgba(255, 255, 255, 0.1);
+}
 
-document.getElementById('btn-silenciar').addEventListener('click', () => {
-    if (room) {
-        room.localParticipant.setMicrophoneEnabled(false);
-        document.getElementById('btn-silenciar').textContent = '🔊 Activar';
-        setTimeout(() => {
-            room.localParticipant.setMicrophoneEnabled(true);
-            document.getElementById('btn-silenciar').textContent = '🔇 Silenciar';
-        }, 5000);
+/* ============================================
+   ESTADO (BANNER SUPERIOR)
+   ============================================ */
+#estado {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    padding: 10px 24px;
+    border-radius: 50px;
+    font-size: 13px;
+    font-weight: 600;
+    color: white;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    text-align: center;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    letter-spacing: 0.5px;
+}
+
+#estado.inicializando { 
+    background: rgba(255, 165, 0, 0.9);
+    border-color: rgba(255, 165, 0, 0.3);
+}
+#estado.conectado { 
+    background: rgba(0, 200, 80, 0.9);
+    border-color: rgba(0, 200, 80, 0.3);
+}
+#estado.desconectado { 
+    background: rgba(255, 50, 50, 0.9);
+    border-color: rgba(255, 50, 50, 0.3);
+}
+#estado.error { 
+    background: rgba(255, 0, 0, 0.9);
+    animation: parpadeo 0.5s infinite alternate;
+}
+
+@keyframes parpadeo {
+    from { opacity: 1; }
+    to { opacity: 0.6; }
+}
+
+/* ============================================
+   CONTROLES FLOTANTES (ESTILO ZOOM/MEET)
+   ============================================ */
+#controles {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    background: rgba(20, 20, 20, 0.9);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 15px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    width: auto;
+    max-width: 90%;
+}
+
+.control-group {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+/* ============================================
+   BOTONES REDONDOS (PROFESIONAL)
+   ============================================ */
+.btn-control {
+    width: 50px;
+    height: 50px;
+    border: none;
+    border-radius: 50%;
+    font-size: 20px;
+    color: white;
+    background: rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.btn-control:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1);
+}
+
+.btn-control:active {
+    transform: scale(0.9);
+}
+
+#btn-microfono { background: rgba(52, 152, 219, 0.8); }
+#btn-microfono.activo { background: rgba(52, 152, 219, 1); }
+#btn-microfono.inactivo { background: rgba(231, 76, 60, 0.9); }
+
+#btn-camara { background: rgba(46, 204, 113, 0.8); }
+#btn-camara.activo { background: rgba(46, 204, 113, 1); }
+#btn-camara.inactivo { background: rgba(231, 76, 60, 0.9); }
+
+#btn-silenciar { background: rgba(241, 196, 15, 0.8); }
+
+#btn-fullscreen { background: rgba(155, 89, 182, 0.8); }
+
+#btn-reconectar { background: rgba(255, 165, 0, 0.8); }
+
+#btn-diagnostico { background: rgba(52, 73, 94, 0.8); }
+
+/* ============================================
+   VOLUMEN (MODERNO)
+   ============================================ */
+.label-volumen {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 18px;
+    margin-right: 5px;
+}
+
+#volumen {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100px;
+    height: 6px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.2);
+    outline: none;
+}
+
+#volumen::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    border: 3px solid #3498db;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+#volumen::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    border: 3px solid #3498db;
+}
+
+.volumen-text {
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 35px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 4px 8px;
+    border-radius: 10px;
+}
+
+/* ============================================
+   INFO DE CONEXIÓN
+   ============================================ */
+.info-conexion {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 15px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 6px 15px;
+    border-radius: 15px;
+    margin-top: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.info-conexion span {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+}
+
+/* ============================================
+   RESPONSIVE MÓVILES (ADAPTACIÓN PERFECTA)
+   ============================================ */
+@media (max-width: 480px) {
+    #controles {
+        bottom: 10px;
+        padding: 12px;
+        border-radius: 15px;
+        width: 95%;
     }
-});
 
-// Control de volumen
-document.getElementById('volumen').addEventListener('input', (e) => {
-    currentVolume = parseFloat(e.target.value);
-    document.getElementById('volumen-label').textContent = `${Math.round(currentVolume * 100)}%`;
-});
+    .btn-control {
+        width: 45px;
+        height: 45px;
+        font-size: 18px;
+    }
 
-document.getElementById('btn-fullscreen').addEventListener('click', () => {
-    if (gridVideos.requestFullscreen) gridVideos.requestFullscreen();
-});
+    #volumen {
+        width: 70px;
+    }
 
-document.getElementById('btn-reconectar').addEventListener('click', () => {
-    if (room) room.disconnect();
-    setTimeout(() => conectarLiveKit(), 1000);
-});
+    #estado {
+        font-size: 11px;
+        padding: 8px 16px;
+        top: 10px;
+    }
 
-document.getElementById('btn-diagnostico').addEventListener('click', () => {
-    alert(`Conectado: ${room ? room.state : 'No conectado'}\nParticipantes: ${room ? room.numParticipants : 0}`);
-});
-
-// Iniciar
-conectarLiveKit();
+    #info-conexion {
+        font-size: 9px;
+    }
+}

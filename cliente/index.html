@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Ventana Digital - Videollamada</title>
+    <title>Ventana Digital - Videollamada Pro</title>
     <link rel="stylesheet" href="css/estilos.css">
 </head>
 <body>
@@ -11,12 +11,12 @@
     
     <div id="estado" class="inicializando">🔄 Inicializando...</div>
 
-    <!-- 🔥 CONTROLES CON LAS CLASES CORRECTAS -->
+    <!-- 🔥 CONTROLES FLOTANTES -->
     <div id="controles">
         <div class="control-group">
-            <button id="btn-microfono" class="btn-control">🎤 Micrófono</button>
-            <button id="btn-camara" class="btn-control">📷 Cámara</button>
-            <button id="btn-silenciar" class="btn-control">🔇 Silenciar</button>
+            <button id="btn-microfono" class="btn-control" title="Micrófono">🎤</button>
+            <button id="btn-camara" class="btn-control" title="Cámara">📷</button>
+            <button id="btn-silenciar" class="btn-control" title="Silenciar todo">🔇</button>
         </div>
         
         <div class="control-group">
@@ -26,9 +26,9 @@
         </div>
 
         <div class="control-group">
-            <button id="btn-fullscreen" class="btn-control">⛶ Pantalla completa</button>
-            <button id="btn-reconectar" class="btn-control">🔄 Reconectar</button>
-            <button id="btn-diagnostico" class="btn-control">📊 Diagnóstico</button>
+            <button id="btn-fullscreen" class="btn-control" title="Pantalla completa">⛶</button>
+            <button id="btn-reconectar" class="btn-control" title="Reconectar">🔄</button>
+            <button id="btn-diagnostico" class="btn-control" title="Diagnóstico">📊</button>
         </div>
 
         <div id="info-conexion" class="info-conexion">
@@ -42,11 +42,11 @@
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@1.8.0/dist/livekit-client.umd.min.js"></script>
     <script src="js/camara.js"></script>
     
-    <!-- 🔥 PING PARA EVITAR QUE RENDER SE DUERMA -->
+    <!-- PING PARA EVITAR QUE RENDER SE DUERMA -->
     <script>
         setInterval(() => {
             fetch('/health').catch(() => {});
-        }, 300000); // Cada 5 minutos
+        }, 300000);
     </script>
 </body>
 </html>

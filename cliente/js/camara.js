@@ -4,11 +4,8 @@
 const gridVideos = document.getElementById("grid-videos");
 const estado = document.getElementById("estado");
 
-const socket = io("https://ventana-digital.onrender.com", {
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    autoConnect: true
-});
+// 🔥 Esto ya no es necesario para LiveKit, pero lo dejamos para evitar errores
+// const socket = io("https://ventana-digital.onrender.com", { ... });
 
 let room;
 let isAudioMuted = false;

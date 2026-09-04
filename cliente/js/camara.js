@@ -73,8 +73,9 @@ async function conectarLiveKit() {
         try { await room.localParticipant.setCameraEnabled(true); } catch (error) { console.warn('Cámara:', error); }
         try { await room.localParticipant.setMicrophoneEnabled(true); } catch (error) { console.warn('Mic:', error); }
 
-        // ✅ CORRECCIÓN: room.remoteParticipants es un Map, usar Array.from()
-        Array.from(room.remoteParticipants.values()).forEach(participant => {
+        // ✅ CORRECCIÓN: Iterar el Map de participantes usando Array.from()
+        Array.from(room.remoteParticipants.keys()).forEach(participantId => {
+            const participant = room.remoteParticipants.get(participantId);
             agregarParticipante(participant);
         });
 
@@ -85,7 +86,6 @@ async function conectarLiveKit() {
     } catch (error) {
         console.error('ERROR LIVEKIT:', error);
         actualizarEstado('Error de conexión', 'error');
-        // alert('No fue posible conectarse a la videollamada.\n\n' + error.message);
     } finally {
         conectando = false;
     }
@@ -119,7 +119,6 @@ function registrarEventosLiveKit() {
         eliminarTrackRemoto(track, participant);
     });
 
-    // ✅ CORRECCIÓN: Este evento ya da acceso al publication directamente
     room.on(LivekitClient.RoomEvent.LocalTrackPublished, (publication) => {
         if (publication.kind === LivekitClient.Track.Kind.Video) {
             mostrarVideoLocal(publication);
@@ -144,7 +143,9 @@ function registrarEventosLiveKit() {
 
 function agregarParticipante(participant) {
     if (!participant) return;
-    participant.trackPublications.forEach(publication => {
+
+    // ✅ CORRECCIÓN: trackPublications es un Map, iterar con .forEach((value, key) => ...)
+    participant.trackPublications.forEach((publication, trackSid) => {
         if (publication.isSubscribed && publication.track) {
             if (publication.track.kind === LivekitClient.Track.Kind.Video) {
                 agregarVideoRemoto(publication.track, participant);
@@ -245,7 +246,7 @@ function eliminarParticipante(participant) {
     }
 }
 
-// ✅ CORRECCIÓN: Usar el publication que llega del evento, NO buscar en participant
+// ✅ CORRECCIÓN: Usar el publication que llega del evento
 function mostrarVideoLocal(publication) {
     if (!publication || !publication.videoTrack) return;
 

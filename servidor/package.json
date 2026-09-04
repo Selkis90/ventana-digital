@@ -1,24 +1,28 @@
 {
-  "name": "ventana-digital-server",
+  "name": "ventana-digital",
   "version": "1.0.0",
-  "description": "Servidor WebSocket + TURN para Ventana Digital",
-  "main": "app.js",
+  "description": "Sistema de videollamadas y comunicación en tiempo real con LiveKit",
+  "main": "servidor/app.js",
   "scripts": {
-    "start": "node app.js",
-    "dev": "nodemon app.js"
+    "start": "node servidor/app.js",
+    "dev": "node servidor/app.js",
+    "test": "echo \"No tests specified\" && exit 0"
   },
+  "keywords": [
+    "webrtc",
+    "livekit",
+    "video",
+    "audio",
+    "videollamada",
+    "socket.io"
+  ],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
     "cors": "^2.8.5",
-    "dotenv": "^17.4.2",
-    "express": "^4.18.2",
-    "livekit-server-sdk": "^2.0.0",
-    "socket.io": "^4.7.2",
-    "twilio": "^5.13.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
-  },
-  "engines": {
-    "node": ">=16.0.0"
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "livekit-server-sdk": "^2.15.0",
+    "socket.io": "^4.8.1"
   }
 }

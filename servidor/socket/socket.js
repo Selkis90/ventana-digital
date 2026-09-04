@@ -1,79 +1,281 @@
-module.exports = (io) => {
-    const clientes = new Map();
+// ============================================================
+// SOCKET.IO - VENTANA DIGITAL
+// ============================================================
+// LiveKit se encarga de:
+// - Audio
+// - Video
+// - WebRTC
+// - ICE
+// - Reconexión de medios
+//
+// Socket.IO queda únicamente para:
+// - Detectar clientes conectados
+// - Informar estado
+// - Identificar al orquestador
+// - Funciones auxiliares de la aplicación
+// ============================================================
 
-    io.on('connection', (socket) => {
-        console.log(`✅ Cliente conectado: ${socket.id}`);
-        console.log(`📊 Total sockets en servidor: ${io.sockets.sockets.size}`);
-        
-        clientes.set(socket.id, {
+const clientes = new Map();
+
+let orquestadorId = null;
+
+
+// ============================================================
+// INICIALIZAR SOCKET.IO
+// ============================================================
+
+function inicializarSocket(io) {
+
+    console.log("🔌 Inicializando Socket.IO...");
+
+
+    // --------------------------------------------------------
+    // NUEVA CONEXIÓN
+    // --------------------------------------------------------
+
+    io.on("connection", (socket) => {
+
+        console.log(`🟢 Cliente conectado: ${socket.id}`);
+
+
+        // ----------------------------------------------------
+        // REGISTRAR CLIENTE
+        // ----------------------------------------------------
+
+        const cliente = {
             id: socket.id,
-            connectedAt: new Date().toISOString(),
-            ip: socket.handshake.address
-        });
+            conectado: new Date().toISOString()
+        };
 
-        const listaClientes = Array.from(clientes.keys());
+        clientes.set(socket.id, cliente);
 
-        // 🔥 LO MÁS IMPORTANTE: Decirle a cada cliente quién es el ORQUESTADOR (El primero)
-        const orquestadorId = listaClientes[0];
-        io.emit('actualizar-orquestador', { orquestadorId: orquestadorId });
-        io.emit('clientes-conectados', listaClientes);
-        
-        socket.broadcast.emit('nuevo-cliente', { 
+
+        // ----------------------------------------------------
+        // PRIMER CLIENTE = ORQUESTADOR
+        // ----------------------------------------------------
+
+        if (!orquestadorId) {
+
+            orquestadorId = socket.id;
+
+            console.log(`👑 Orquestador asignado: ${orquestadorId}`);
+
+        }
+
+
+        // ----------------------------------------------------
+        // ENVIAR IDENTIDAD AL CLIENTE
+        // ----------------------------------------------------
+
+        socket.emit("identidad", {
             id: socket.id,
-            timestamp: new Date().toISOString()
+            orquestador: socket.id === orquestadorId
         });
 
-        socket.on('offer', (data) => {
-            if (clientes.has(data.target)) {
-                io.to(data.target).emit('offer', { from: socket.id, offer: data.offer });
-            }
+
+        // ----------------------------------------------------
+        // ACTUALIZAR LISTA DE CLIENTES
+        // ----------------------------------------------------
+
+        emitirClientes(io);
+
+
+        // ----------------------------------------------------
+        // SOLICITUD DE CLIENTES CONECTADOS
+        // ----------------------------------------------------
+
+        socket.on("clientes-conectados", () => {
+
+            socket.emit("lista-clientes", obtenerClientes());
+
         });
 
-        socket.on('answer', (data) => {
-            if (clientes.has(data.target)) {
-                io.to(data.target).emit('answer', { from: socket.id, answer: data.answer });
-            }
-        });
 
-        socket.on('ice-candidate', (data) => {
-            if (clientes.has(data.target)) {
-                io.to(data.target).emit('ice-candidate', { from: socket.id, candidate: data.candidate });
-            }
-        });
+        // ----------------------------------------------------
+        // PING
+        // ----------------------------------------------------
 
-        socket.on('clientes-conectados', () => {
-            const sockets = io.sockets.sockets;
-            const toDelete = [];
-            
-            clientes.forEach((client, id) => {
-                if (!sockets.has(id)) toDelete.push(id);
+        socket.on("ping-servidor", () => {
+
+            socket.emit("pong-servidor", {
+                timestamp: Date.now()
             });
-            
-            toDelete.forEach(id => clientes.delete(id));
-            
-            const lista = Array.from(clientes.keys());
-            // Actualizar orquestador si el primero se fue
-            const nuevoOrquestador = lista[0];
-            io.emit('actualizar-orquestador', { orquestadorId: nuevoOrquestador });
-            io.emit('clientes-conectados', lista);
+
         });
 
-        socket.on('ping', () => {
-            socket.emit('pong');
+
+        // También aceptamos "ping" por compatibilidad
+        socket.on("ping", () => {
+
+            socket.emit("pong", {
+                timestamp: Date.now()
+            });
+
         });
 
-        socket.on('disconnect', () => {
+
+        // ----------------------------------------------------
+        // DESCONEXIÓN
+        // ----------------------------------------------------
+
+        socket.on("disconnect", (reason) => {
+
+            console.log(
+                `🔴 Cliente desconectado: ${socket.id} - ${reason}`
+            );
+
+
             clientes.delete(socket.id);
-            const lista = Array.from(clientes.keys());
-            
-            // 🔥 Si el orquestador se fue, el siguiente toma su lugar
-            const nuevoOrquestador = lista[0];
-            io.emit('actualizar-orquestador', { orquestadorId: nuevoOrquestador });
-            io.emit('cliente-desconectado', { id: socket.id });
-            io.emit('clientes-conectados', lista);
+
+
+            // ------------------------------------------------
+            // SI ERA EL ORQUESTADOR
+            // ASIGNAR UNO NUEVO
+            // ------------------------------------------------
+
+            if (socket.id === orquestadorId) {
+
+                orquestadorId = null;
+
+                const siguiente = clientes.keys().next();
+
+                if (!siguiente.done) {
+
+                    orquestadorId = siguiente.value;
+
+                    console.log(
+                        `👑 Nuevo orquestador: ${orquestadorId}`
+                    );
+
+
+                    const nuevoOrquestador =
+                        io.sockets.sockets.get(orquestadorId);
+
+                    if (nuevoOrquestador) {
+
+                        nuevoOrquestador.emit("identidad", {
+                            id: orquestadorId,
+                            orquestador: true
+                        });
+
+                    }
+
+                } else {
+
+                    console.log("ℹ️ No hay clientes para asignar como orquestador");
+
+                }
+
+            }
+
+
+            // ------------------------------------------------
+            // ACTUALIZAR CLIENTES
+            // ------------------------------------------------
+
+            emitirClientes(io);
+
         });
+
     });
 
-    console.log('📡 Socket.IO configurado correctamente');
-    return { clientes };
+
+    console.log("✅ Socket.IO listo");
+
+}
+
+
+// ============================================================
+// OBTENER CLIENTES
+// ============================================================
+
+function obtenerClientes() {
+
+    return Array.from(clientes.values()).map(cliente => ({
+
+        id: cliente.id,
+        conectado: cliente.conectado,
+        orquestador: cliente.id === orquestadorId
+
+    }));
+
+}
+
+
+// ============================================================
+// EMITIR LISTA DE CLIENTES
+// ============================================================
+
+function emitirClientes(io) {
+
+    const lista = obtenerClientes();
+
+
+    io.emit("lista-clientes", lista);
+
+
+    io.emit("clientes-actualizados", {
+
+        clientes: lista,
+        total: lista.length,
+        orquestador: orquestadorId
+
+    });
+
+
+    console.log(
+        `👥 Clientes conectados: ${lista.length}`
+    );
+
+}
+
+
+// ============================================================
+// OBTENER ESTADO
+// ============================================================
+
+function obtenerEstado() {
+
+    return {
+
+        total: clientes.size,
+
+        clientes: obtenerClientes(),
+
+        orquestador: orquestadorId
+
+    };
+
+}
+
+
+// ============================================================
+// LIMPIAR CLIENTES
+// ============================================================
+
+function limpiarClientes() {
+
+    clientes.clear();
+
+    orquestadorId = null;
+
+    console.log("🧹 Lista de clientes limpiada");
+
+}
+
+
+// ============================================================
+// EXPORTAR
+// ============================================================
+
+module.exports = {
+
+    inicializarSocket,
+
+    obtenerClientes,
+
+    obtenerEstado,
+
+    limpiarClientes
+
 };

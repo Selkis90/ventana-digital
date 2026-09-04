@@ -1,52 +1,213 @@
+```html
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Ventana Digital - Videollamada Pro</title>
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    >
+
+    <meta name="theme-color" content="#0d0d0d">
+
+    <title>Ventana Digital - Videollamada</title>
+
+    <!-- Estilos principales -->
     <link rel="stylesheet" href="css/estilos.css">
 </head>
+
 <body>
-    <div id="grid-videos"></div>
-    
-    <div id="estado" class="inicializando">🔄 Inicializando...</div>
 
-    <!-- 🔥 CONTROLES FLOTANTES -->
-    <div id="controles">
-        <div class="control-group">
-            <button id="btn-microfono" class="btn-control" title="Micrófono">🎤</button>
-            <button id="btn-camara" class="btn-control" title="Cámara">📷</button>
-            <button id="btn-silenciar" class="btn-control" title="Silenciar todo">🔇</button>
-        </div>
-        
-        <div class="control-group">
-            <label for="volumen" class="label-volumen">🔊</label>
-            <input type="range" id="volumen" min="0" max="1" step="0.01" value="0.3">
-            <span id="volumen-label" class="volumen-text">30%</span>
-        </div>
+    <!-- ==================================================
+         CONTENEDOR PRINCIPAL DE VIDEOS
+         ================================================== -->
+    <main id="grid-videos">
+        <!--
+            Los videos se agregan dinámicamente desde camara.js.
+        -->
+    </main>
 
-        <div class="control-group">
-            <button id="btn-fullscreen" class="btn-control" title="Pantalla completa">⛶</button>
-            <button id="btn-reconectar" class="btn-control" title="Reconectar">🔄</button>
-            <button id="btn-diagnostico" class="btn-control" title="Diagnóstico">📊</button>
-        </div>
 
-        <div id="info-conexion" class="info-conexion">
-            <span id="mi-id">ID: Conectando...</span>
-            <span id="peer-conectado">Peer: Ninguno</span>
-        </div>
+    <!-- ==================================================
+         ESTADO DE LA CONEXIÓN
+         ================================================== -->
+    <div
+        id="estado"
+        class="inicializando"
+        role="status"
+        aria-live="polite"
+    >
+        🔄 Inicializando...
     </div>
 
-    <!-- Scripts -->
+
+    <!-- ==================================================
+         CONTROLES
+         ================================================== -->
+    <section id="controles">
+
+        <!-- CONTROLES PRINCIPALES -->
+        <div class="control-group">
+
+            <button
+                id="btn-microfono"
+                class="btn-control"
+                type="button"
+                title="Activar o silenciar micrófono"
+                aria-label="Micrófono"
+            >
+                🎤
+            </button>
+
+            <button
+                id="btn-camara"
+                class="btn-control"
+                type="button"
+                title="Activar o apagar cámara"
+                aria-label="Cámara"
+            >
+                📷
+            </button>
+
+            <button
+                id="btn-silenciar"
+                class="btn-control"
+                type="button"
+                title="Silenciar temporalmente el micrófono"
+                aria-label="Silenciar"
+            >
+                🔇
+            </button>
+
+        </div>
+
+
+        <!-- ==================================================
+             CONTROL DE VOLUMEN
+             ================================================== -->
+        <div class="control-group volumen-group">
+
+            <label
+                for="volumen"
+                class="label-volumen"
+                title="Volumen"
+            >
+                🔊
+            </label>
+
+            <input
+                type="range"
+                id="volumen"
+                min="0"
+                max="1"
+                step="0.01"
+                value="0.30"
+                aria-label="Volumen"
+            >
+
+            <span
+                id="volumen-label"
+                class="volumen-text"
+            >
+                30%
+            </span>
+
+        </div>
+
+
+        <!-- ==================================================
+             CONTROLES SECUNDARIOS
+             ================================================== -->
+        <div class="control-group">
+
+            <button
+                id="btn-fullscreen"
+                class="btn-control"
+                type="button"
+                title="Pantalla completa"
+                aria-label="Pantalla completa"
+            >
+                ⛶
+            </button>
+
+            <button
+                id="btn-reconectar"
+                class="btn-control"
+                type="button"
+                title="Reconectar"
+                aria-label="Reconectar"
+            >
+                🔄
+            </button>
+
+            <button
+                id="btn-diagnostico"
+                class="btn-control"
+                type="button"
+                title="Diagnóstico"
+                aria-label="Diagnóstico"
+            >
+                📊
+            </button>
+
+        </div>
+
+
+        <!-- ==================================================
+             INFORMACIÓN DE CONEXIÓN
+             ================================================== -->
+        <div
+            id="info-conexion"
+            class="info-conexion"
+        >
+
+            <span id="mi-id">
+                ID: Conectando...
+            </span>
+
+            <span id="peer-conectado">
+                Participantes: 0
+            </span>
+
+        </div>
+
+    </section>
+
+
+    <!-- ==================================================
+         SOCKET.IO
+         ================================================== -->
     <script src="/socket.io/socket.io.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/livekit-client@1.8.0/dist/livekit-client.umd.min.js"></script>
+
+
+    <!-- ==================================================
+         LIVEKIT CLIENT
+         ================================================== -->
+    <script
+        src="https://cdn.jsdelivr.net/npm/livekit-client@1.8.0/dist/livekit-client.umd.min.js"
+    ></script>
+
+
+    <!-- ==================================================
+         LÓGICA PRINCIPAL
+         ================================================== -->
     <script src="js/camara.js"></script>
-    
-    <!-- PING PARA EVITAR QUE RENDER SE DUERMA -->
+
+
+    <!-- ==================================================
+         HEALTH CHECK
+         Mantiene activa la aplicación en el servidor.
+         ================================================== -->
     <script>
         setInterval(() => {
-            fetch('/health').catch(() => {});
+            fetch('/health', {
+                method: 'GET',
+                cache: 'no-store'
+            }).catch(() => {});
         }, 300000);
     </script>
+
 </body>
 </html>
+```

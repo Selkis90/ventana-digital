@@ -61,7 +61,7 @@ const peerConectado =
 
 
 /* =========================================================
-   VARIABLES
+   VARIABLES GLOBALES
    ========================================================= */
 
 let room = null;
@@ -76,28 +76,25 @@ let volumenActual = 0.30;
 
 
 /*
-    Mapa de videos.
+    Videos:
 
-    Clave:
-        identidad del participante
-
-    Valor:
-        contenedor HTML
+    identidad -> contenedor HTML
 */
 const videoMap = new Map();
 
 
 /*
-    Mapa de audios.
+    Audios:
 
-    Esto es MUY importante para evitar
-    crear varios <audio> para el mismo participante.
+    identidad -> elemento <audio>
 */
 const audioMap = new Map();
 
 
 /*
-    Guarda los tracks de audio remoto.
+    Tracks de audio:
+
+    identidad -> LiveKit AudioTrack
 */
 const audioTrackMap = new Map();
 
@@ -119,7 +116,7 @@ function actualizarEstado(mensaje, tipo = 'inicializando') {
 
 
 /* =========================================================
-   OBTENER IDENTIDAD
+   IDENTIDAD
    ========================================================= */
 
 function generarIdentidad() {
@@ -134,12 +131,16 @@ function generarIdentidad() {
 
 
 /* =========================================================
-   CONECTAR A LIVEKIT
+   CONECTAR LIVEKIT
    ========================================================= */
 
 async function conectarLiveKit() {
 
     if (conectando) {
+        console.warn(
+            '⚠️ Ya existe una conexión en proceso.'
+        );
+
         return;
     }
 
@@ -154,7 +155,7 @@ async function conectarLiveKit() {
 
 
         /* -------------------------------------------------
-           Limpiar conexión anterior
+           Cerrar conexión anterior
            ------------------------------------------------- */
 
         if (room) {
@@ -162,6 +163,7 @@ async function conectarLiveKit() {
             try {
                 room.disconnect();
             } catch (error) {
+
                 console.warn(
                     'Error cerrando conexión anterior:',
                     error
@@ -176,32 +178,41 @@ async function conectarLiveKit() {
 
 
         /* -------------------------------------------------
-           Crear identidad
+           Generar identidad
            ------------------------------------------------- */
 
         const participantName =
             generarIdentidad();
 
 
+        console.log(
+            '🆔 Identidad generada:',
+            participantName
+        );
+
+
         /* -------------------------------------------------
-           Solicitar token al servidor
+           Solicitar token
            ------------------------------------------------- */
 
         const response =
-            await fetch('/get-token', {
+            await fetch(
+                '/get-token',
+                {
+                    method: 'POST',
 
-                method: 'POST',
+                    headers: {
+                        'Content-Type':
+                            'application/json'
+                    },
 
-                headers: {
-                    'Content-Type':
-                        'application/json'
-                },
-
-                body: JSON.stringify({
-                    roomName: ROOM_NAME,
-                    participantName
-                })
-            });
+                    body: JSON.stringify({
+                        roomName: ROOM_NAME,
+                        participantName:
+                            participantName
+                    })
+                }
+            );
 
 
         if (!response.ok) {
@@ -216,7 +227,10 @@ async function conectarLiveKit() {
             await response.json();
 
 
-        if (!data || !data.token) {
+        if (
+            !data ||
+            !data.token
+        ) {
 
             throw new Error(
                 'El servidor no devolvió un token válido.'
@@ -224,8 +238,13 @@ async function conectarLiveKit() {
         }
 
 
+        console.log(
+            '✅ Token LiveKit recibido.'
+        );
+
+
         /* -------------------------------------------------
-           Crear sala LiveKit
+           Crear sala
            ------------------------------------------------- */
 
         room =
@@ -236,7 +255,7 @@ async function conectarLiveKit() {
 
 
         /* -------------------------------------------------
-           Registrar eventos ANTES de conectar
+           Registrar eventos
            ------------------------------------------------- */
 
         registrarEventosLiveKit();
@@ -256,18 +275,25 @@ async function conectarLiveKit() {
 
 
         console.log(
-            '✅ Conectado a LiveKit'
+            '========================================='
         );
 
+        console.log(
+            '🟢 CONECTADO A LIVEKIT'
+        );
 
         console.log(
             '🆔 Identidad:',
             room.localParticipant.identity
         );
 
+        console.log(
+            '========================================='
+        );
+
 
         /* -------------------------------------------------
-           Información del usuario
+           Mostrar identidad
            ------------------------------------------------- */
 
         if (miId) {
@@ -286,6 +312,10 @@ async function conectarLiveKit() {
             await room.localParticipant
                 .setCameraEnabled(true);
 
+            console.log(
+                '📷 Cámara activada.'
+            );
+
         } catch (error) {
 
             console.warn(
@@ -301,7 +331,7 @@ async function conectarLiveKit() {
 
 
         /* -------------------------------------------------
-           Activar micrófono con cancelación de eco
+           Activar micrófono
            ------------------------------------------------- */
 
         try {
@@ -318,6 +348,10 @@ async function conectarLiveKit() {
 
             audioMuted = false;
 
+            console.log(
+                '🎤 Micrófono activado.'
+            );
+
         } catch (error) {
 
             console.warn(
@@ -330,14 +364,14 @@ async function conectarLiveKit() {
 
 
         /* -------------------------------------------------
-           Procesar participantes que YA estaban conectados
+           Procesar participantes existentes
            ------------------------------------------------- */
 
         room.remoteParticipants.forEach(
-            participante => {
+            participant => {
 
                 procesarParticipanteExistente(
-                    participante
+                    participant
                 );
             }
         );
@@ -476,12 +510,8 @@ function registrarEventosLiveKit() {
             );
 
 
-            /*
-                NUNCA reproducimos nuestros propios
-                tracks remotos.
-            */
-
             if (
+                room &&
                 participant.identity ===
                 room.localParticipant.identity
             ) {
@@ -629,15 +659,12 @@ function registrarEventosLiveKit() {
 
 
     /* =====================================================
-       LOCAL TRACK PUBLICADO
+       TRACK LOCAL PUBLICADO
        ===================================================== */
 
     room.on(
         LivekitClient.RoomEvent.LocalTrackPublished,
-        (
-            publication,
-            participant
-        ) => {
+        publication => {
 
             console.log(
                 '📹 Track local publicado:',
@@ -657,14 +684,12 @@ function registrarEventosLiveKit() {
 
 
     /* =====================================================
-       LOCAL TRACK DESPUBLICADO
+       TRACK LOCAL DESPUBLICADO
        ===================================================== */
 
     room.on(
         LivekitClient.RoomEvent.LocalTrackUnpublished,
-        (
-            publication
-        ) => {
+        publication => {
 
             console.log(
                 '📴 Track local despublicado:',
@@ -777,7 +802,7 @@ function registrarEventosLiveKit() {
         () => {
 
             console.log(
-                '🟢 LiveKit reconectado'
+                '🟢 LiveKit reconectado.'
             );
 
 
@@ -819,12 +844,17 @@ function registrarEventosLiveKit() {
 
 
 /* =========================================================
-   PROCESAR PARTICIPANTE EXISTENTE
+   PARTICIPANTE EXISTENTE
    ========================================================= */
 
 function procesarParticipanteExistente(
     participant
 ) {
+
+    if (!participant) {
+        return;
+    }
+
 
     participant.trackPublications.forEach(
         publication => {
@@ -878,10 +908,10 @@ function reconstruirParticipantes() {
 
 
     room.remoteParticipants.forEach(
-        participante => {
+        participant => {
 
             procesarParticipanteExistente(
-                participante
+                participant
             );
         }
     );
@@ -899,7 +929,7 @@ function reconstruirParticipantes() {
 
 function mostrarVideoLocal() {
 
-    if (!room) {
+    if (!room || !gridVideos) {
         return;
     }
 
@@ -945,11 +975,16 @@ function mostrarVideoLocal() {
         const video =
             document.createElement('video');
 
-        video.autoplay = true;
 
-        video.muted = true;
+        video.autoplay =
+            true;
 
-        video.playsInline = true;
+        video.muted =
+            true;
+
+        video.playsInline =
+            true;
+
 
         video.setAttribute(
             'playsinline',
@@ -957,7 +992,10 @@ function mostrarVideoLocal() {
         );
 
 
-        container.appendChild(video);
+        container.appendChild(
+            video
+        );
+
 
         gridVideos.appendChild(
             container
@@ -1016,11 +1054,20 @@ function agregarVideoRemoto(
     track
 ) {
 
+    if (
+        !participant ||
+        !track ||
+        !gridVideos
+    ) {
+        return;
+    }
+
+
     const id =
         participant.identity;
 
 
-    if (!id || !track) {
+    if (!id) {
         return;
     }
 
@@ -1028,11 +1075,6 @@ function agregarVideoRemoto(
     let container =
         videoMap.get(id);
 
-
-    /*
-        Si ya existe el participante,
-        reutilizamos el mismo contenedor.
-    */
 
     if (!container) {
 
@@ -1049,9 +1091,13 @@ function agregarVideoRemoto(
         const video =
             document.createElement('video');
 
-        video.autoplay = true;
 
-        video.playsInline = true;
+        video.autoplay =
+            true;
+
+        video.playsInline =
+            true;
+
 
         video.setAttribute(
             'playsinline',
@@ -1077,7 +1123,6 @@ function agregarVideoRemoto(
             id,
             container
         );
-
     }
 
 
@@ -1092,19 +1137,17 @@ function agregarVideoRemoto(
     }
 
 
-    /*
-        Evitamos recrear innecesariamente
-        el MediaStream.
-    */
-
-    const stream =
-        new MediaStream([
-            track.mediaStreamTrack
-        ]);
+    if (
+        !track.mediaStreamTrack
+    ) {
+        return;
+    }
 
 
     video.srcObject =
-        stream;
+        new MediaStream([
+            track.mediaStreamTrack
+        ]);
 
 
     video.style.display =
@@ -1216,7 +1259,8 @@ function eliminarVideo(id) {
             video.pause();
         } catch (error) {}
 
-        video.srcObject = null;
+        video.srcObject =
+            null;
     }
 
 
@@ -1236,11 +1280,19 @@ function agregarAudioRemoto(
     track
 ) {
 
+    if (
+        !participant ||
+        !track
+    ) {
+        return;
+    }
+
+
     const id =
         participant.identity;
 
 
-    if (!id || !track) {
+    if (!id) {
         return;
     }
 
@@ -1252,13 +1304,22 @@ function agregarAudioRemoto(
 
 
     /*
-        Si ya existe un audio anterior,
-        lo eliminamos primero.
-
-        Esto evita duplicaciones y eco.
+        Eliminamos cualquier audio anterior
+        del mismo participante.
     */
 
     eliminarAudio(id);
+
+
+    if (!track.mediaStreamTrack) {
+
+        console.warn(
+            '⚠️ El track de audio no tiene MediaStreamTrack:',
+            id
+        );
+
+        return;
+    }
 
 
     const audio =
@@ -1269,9 +1330,12 @@ function agregarAudioRemoto(
         `audio-${id}`;
 
 
-    audio.autoplay = true;
+    audio.autoplay =
+        true;
 
-    audio.playsInline = true;
+    audio.playsInline =
+        true;
+
 
     audio.setAttribute(
         'playsinline',
@@ -1287,15 +1351,17 @@ function agregarAudioRemoto(
         id;
 
 
-    /*
-        IMPORTANTE:
-        Solo reproducimos el track remoto.
-    */
-
     audio.srcObject =
         new MediaStream([
             track.mediaStreamTrack
         ]);
+
+
+    /*
+        No usamos muted=true.
+        Este es el audio que debe escuchar
+        el usuario remoto.
+    */
 
 
     document.body.appendChild(
@@ -1315,39 +1381,71 @@ function agregarAudioRemoto(
     );
 
 
-    audio.play().catch(
-        error => {
-
-            console.warn(
-                `Autoplay bloqueado para ${id}:`,
-                error
-            );
-
-
-            /*
-                Algunos navegadores requieren
-                interacción del usuario.
-            */
-
-            const activarAudio =
-                () => {
-
-                    audio.play()
-                        .catch(
-                            () => {}
-                        );
-                };
-
-
-            document.addEventListener(
-                'click',
-                activarAudio,
-                {
-                    once: true
-                }
-            );
-        }
+    reproducirAudio(
+        audio,
+        id
     );
+}
+
+
+/* =========================================================
+   REPRODUCIR AUDIO
+   ========================================================= */
+
+function reproducirAudio(
+    audio,
+    id
+) {
+
+    if (!audio) {
+        return;
+    }
+
+
+    audio.play()
+        .then(
+            () => {
+
+                console.log(
+                    '🔊 Audio reproduciendo:',
+                    id
+                );
+            }
+        )
+        .catch(
+            error => {
+
+                console.warn(
+                    `⚠️ Autoplay bloqueado para ${id}:`,
+                    error
+                );
+
+
+                /*
+                    Intentamos activar el audio
+                    después de una interacción
+                    del usuario.
+                */
+
+                const activarAudio =
+                    () => {
+
+                        audio.play()
+                            .catch(
+                                () => {}
+                            );
+                    };
+
+
+                document.addEventListener(
+                    'click',
+                    activarAudio,
+                    {
+                        once: true
+                    }
+                );
+            }
+        );
 }
 
 
@@ -1384,10 +1482,14 @@ function eliminarAudio(id) {
 
 
 /* =========================================================
-   ELIMINAR TODOS LOS MEDIOS
+   LIMPIAR TODOS LOS MEDIOS
    ========================================================= */
 
 function limpiarTodosLosMedios() {
+
+    /* -----------------------------------------------------
+       VIDEOS
+       ----------------------------------------------------- */
 
     videoMap.forEach(
         container => {
@@ -1404,6 +1506,7 @@ function limpiarTodosLosMedios() {
                     video.pause();
                 } catch (error) {}
 
+
                 video.srcObject =
                     null;
             }
@@ -1416,6 +1519,10 @@ function limpiarTodosLosMedios() {
 
     videoMap.clear();
 
+
+    /* -----------------------------------------------------
+       AUDIOS
+       ----------------------------------------------------- */
 
     audioMap.forEach(
         audio => {
@@ -1436,12 +1543,13 @@ function limpiarTodosLosMedios() {
 
     audioMap.clear();
 
+
     audioTrackMap.clear();
 }
 
 
 /* =========================================================
-   ACTUALIZAR PARTICIPANTES
+   PARTICIPANTES
    ========================================================= */
 
 function actualizarParticipantes() {
@@ -1463,7 +1571,7 @@ function actualizarParticipantes() {
 
 
 /* =========================================================
-   ACTUALIZAR LAYOUT
+   LAYOUT
    ========================================================= */
 
 function actualizarLayout() {
@@ -1495,12 +1603,6 @@ function actualizarLayout() {
     }
 
 
-    /*
-        1 VIDEO
-        ─────────────────
-        1 × 1
-    */
-
     if (total === 1) {
 
         gridVideos.style.gridTemplateColumns =
@@ -1512,12 +1614,6 @@ function actualizarLayout() {
         return;
     }
 
-
-    /*
-        2 VIDEOS
-        ─────────────────
-        2 × 1
-    */
 
     if (total === 2) {
 
@@ -1531,12 +1627,6 @@ function actualizarLayout() {
     }
 
 
-    /*
-        3-4 VIDEOS
-        ─────────────────
-        2 × 2
-    */
-
     if (total <= 4) {
 
         gridVideos.style.gridTemplateColumns =
@@ -1548,12 +1638,6 @@ function actualizarLayout() {
         return;
     }
 
-
-    /*
-        5-6 VIDEOS
-        ─────────────────
-        3 × 2
-    */
 
     if (total <= 6) {
 
@@ -1567,12 +1651,6 @@ function actualizarLayout() {
     }
 
 
-    /*
-        7-9 VIDEOS
-        ─────────────────
-        3 × 3
-    */
-
     if (total <= 9) {
 
         gridVideos.style.gridTemplateColumns =
@@ -1585,12 +1663,6 @@ function actualizarLayout() {
     }
 
 
-    /*
-        10-12 VIDEOS
-        ─────────────────
-        4 × 3
-    */
-
     if (total <= 12) {
 
         gridVideos.style.gridTemplateColumns =
@@ -1602,14 +1674,6 @@ function actualizarLayout() {
         return;
     }
 
-
-    /*
-        MÁS DE 12
-
-        Calculamos automáticamente
-        una cuadrícula suficientemente
-        grande.
-    */
 
     const columnas =
         Math.ceil(
@@ -1633,7 +1697,7 @@ function actualizarLayout() {
 
 
 /* =========================================================
-   ACTUALIZAR BOTONES
+   BOTONES
    ========================================================= */
 
 function actualizarBotones() {
@@ -1794,7 +1858,7 @@ if (btnCamara) {
 
 
 /* =========================================================
-   SILENCIAR TEMPORALMENTE
+   SILENCIAR 5 SEGUNDOS
    ========================================================= */
 
 if (btnSilenciar) {
@@ -1816,7 +1880,8 @@ if (btnSilenciar) {
                     );
 
 
-                audioMuted = true;
+                audioMuted =
+                    true;
 
 
                 btnSilenciar.textContent =
@@ -1860,7 +1925,7 @@ if (btnSilenciar) {
                         } catch (error) {
 
                             console.warn(
-                                'No se pudo reactivar el micrófono:',
+                                '⚠️ No se pudo reactivar el micrófono:',
                                 error
                             );
                         }
@@ -1894,6 +1959,11 @@ if (volumen) {
         );
 
 
+    if (Number.isNaN(volumenActual)) {
+        volumenActual = 0.30;
+    }
+
+
     volumen.addEventListener(
         'input',
         () => {
@@ -1904,6 +1974,11 @@ if (volumen) {
                 );
 
 
+            if (Number.isNaN(volumenActual)) {
+                volumenActual = 0.30;
+            }
+
+
             if (volumenLabel) {
 
                 volumenLabel.textContent =
@@ -1912,10 +1987,6 @@ if (volumen) {
                     )}%`;
             }
 
-
-            /*
-                Actualizar TODOS los audios remotos.
-            */
 
             audioMap.forEach(
                 audio => {
@@ -1940,6 +2011,11 @@ if (btnFullscreen) {
         async () => {
 
             try {
+
+                if (!gridVideos) {
+                    return;
+                }
+
 
                 if (
                     !document.fullscreenElement
@@ -1981,7 +2057,8 @@ if (btnReconectar) {
             }
 
 
-            reconectando = true;
+            reconectando =
+                true;
 
 
             try {
@@ -1996,22 +2073,31 @@ if (btnReconectar) {
 
                     try {
                         room.disconnect();
-                    } catch (error) {}
+                    } catch (error) {
+
+                        console.warn(
+                            'Error desconectando:',
+                            error
+                        );
+                    }
                 }
 
 
-                room = null;
+                room =
+                    null;
 
 
                 limpiarTodosLosMedios();
 
 
                 await new Promise(
-                    resolve =>
+                    resolve => {
+
                         setTimeout(
                             resolve,
                             500
-                        )
+                        );
+                    }
                 );
 
 
@@ -2020,7 +2106,8 @@ if (btnReconectar) {
 
             } finally {
 
-                reconectando = false;
+                reconectando =
+                    false;
             }
         }
     );
@@ -2102,7 +2189,7 @@ window.addEventListener(
 
 
 /* =========================================================
-   VISIBILIDAD DE LA PÁGINA
+   VISIBILIDAD
    ========================================================= */
 
 document.addEventListener(
@@ -2127,45 +2214,53 @@ document.addEventListener(
    INICIALIZACIÓN
    ========================================================= */
 
-document.addEventListener(
-    'DOMContentLoaded',
-    () => {
+function iniciarCamara() {
 
-        actualizarEstado(
-            '🔄 Inicializando...',
-            'inicializando'
-        );
+    console.log(
+        '========================================='
+    );
 
+    console.log(
+        '🎥 VENTANA DIGITAL - CAMARA.JS'
+    );
 
-        actualizarLayout();
-
-
-        conectarLiveKit();
-    }
-);
+    console.log(
+        '========================================='
+    );
 
 
-/*
-    Por seguridad, si el script se carga después
-    de DOMContentLoaded, también intentamos conectar.
-*/
+    actualizarEstado(
+        '🔄 Inicializando...',
+        'inicializando'
+    );
+
+
+    actualizarLayout();
+
+
+    conectarLiveKit();
+}
+
+
+/* =========================================================
+   DOM READY
+   ========================================================= */
 
 if (
     document.readyState ===
-    'interactive' ||
-    document.readyState ===
-    'complete'
+    'loading'
 ) {
 
-    setTimeout(
-        () => {
-
-            if (!room && !conectando) {
-                conectarLiveKit();
-            }
-
-        },
-        0
+    document.addEventListener(
+        'DOMContentLoaded',
+        iniciarCamara,
+        {
+            once: true
+        }
     );
+
+} else {
+
+    iniciarCamara();
 }
 ```

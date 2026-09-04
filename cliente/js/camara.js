@@ -24,7 +24,6 @@ let volumenActual = 0.30;
 
 const videoMap = new Map();
 const audioMap = new Map();
-const audioTrackMap = new Map();
 
 function actualizarEstado(texto, tipo = '') {
     if (!estado) return;
@@ -71,10 +70,13 @@ async function conectarLiveKit() {
 
         if (miId) miId.textContent = participantName;
 
-        try { await room.localParticipant.setCameraEnabled(true); } catch (error) { console.warn(error); }
-        try { await room.localParticipant.setMicrophoneEnabled(true); } catch (error) { console.warn(error); }
+        try { await room.localParticipant.setCameraEnabled(true); } catch (error) { console.warn('Cámara:', error); }
+        try { await room.localParticipant.setMicrophoneEnabled(true); } catch (error) { console.warn('Mic:', error); }
 
-        room.remoteParticipants.forEach(participant => agregarParticipante(participant));
+        // ✅ CORRECCIÓN: room.remoteParticipants es un Map, usar Array.from()
+        Array.from(room.remoteParticipants.values()).forEach(participant => {
+            agregarParticipante(participant);
+        });
 
         actualizarEstado('Conectado', 'conectado');
         if (peerConectado) peerConectado.textContent = room.remoteParticipants.size > 0 ? 'Conectado' : 'Esperando participante...';
@@ -83,7 +85,7 @@ async function conectarLiveKit() {
     } catch (error) {
         console.error('ERROR LIVEKIT:', error);
         actualizarEstado('Error de conexión', 'error');
-        alert('No fue posible conectarse a la videollamada.\n\n' + error.message);
+        // alert('No fue posible conectarse a la videollamada.\n\n' + error.message);
     } finally {
         conectando = false;
     }
@@ -117,9 +119,10 @@ function registrarEventosLiveKit() {
         eliminarTrackRemoto(track, participant);
     });
 
-    room.on(LivekitClient.RoomEvent.LocalTrackPublished, publication => {
+    // ✅ CORRECCIÓN: Este evento ya da acceso al publication directamente
+    room.on(LivekitClient.RoomEvent.LocalTrackPublished, (publication) => {
         if (publication.kind === LivekitClient.Track.Kind.Video) {
-            mostrarVideoLocal();
+            mostrarVideoLocal(publication);
         }
     });
 
@@ -155,8 +158,6 @@ function agregarParticipante(participant) {
 
 function agregarVideoRemoto(track, participant) {
     const identity = participant.identity;
-
-    // Si el track es mío, ignorar (evita bucle)
     if (identity === room.localParticipant.identity) return;
 
     let video = videoMap.get(identity);
@@ -180,7 +181,7 @@ function agregarVideoRemoto(track, participant) {
 function agregarAudioRemoto(track, participant) {
     const identity = participant.identity;
 
-    // 🔥 CRÍTICO: Si el track es mío, NO crear audio (elimina bucle)
+    // ✅ CORRECCIÓN: Evita el bucle de audio
     if (identity === room.localParticipant.identity) return;
 
     let audio = audioMap.get(identity);
@@ -194,7 +195,6 @@ function agregarAudioRemoto(track, participant) {
         audioMap.set(identity, audio);
     }
 
-    audioTrackMap.set(identity, track);
     const stream = new MediaStream();
     stream.addTrack(track.mediaStreamTrack);
     audio.srcObject = stream;
@@ -221,7 +221,6 @@ function eliminarTrackRemoto(track, participant) {
             audio.remove();
             audioMap.delete(identity);
         }
-        audioTrackMap.delete(identity);
     }
 
     actualizarLayout();
@@ -244,21 +243,11 @@ function eliminarParticipante(participant) {
         audio.remove();
         audioMap.delete(identity);
     }
-
-    audioTrackMap.delete(identity);
 }
 
-function mostrarVideoLocal() {
-    if (!room) return;
-
-    const participant = room.localParticipant;
-    const publication = participant.getTrackPublication(LivekitClient.Track.Source.Camera);
-
-    if (!publication || !publication.videoTrack) {
-        const anterior = document.getElementById('video-local');
-        if (anterior) anterior.remove();
-        return;
-    }
+// ✅ CORRECCIÓN: Usar el publication que llega del evento, NO buscar en participant
+function mostrarVideoLocal(publication) {
+    if (!publication || !publication.videoTrack) return;
 
     let video = document.getElementById('video-local');
     if (!video) {
@@ -290,7 +279,6 @@ function limpiarVideos() {
     });
     videoMap.clear();
     audioMap.clear();
-    audioTrackMap.clear();
 }
 
 function actualizarParticipanteRemoto() {

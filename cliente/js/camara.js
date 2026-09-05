@@ -29,8 +29,8 @@ let conectando = false;
 let reconectando = false;
 let audioMuted = false;
 
-// ✅ SOLUCIÓN 1: VOLUMEN POR DEFECTO AL 100%
-let volumenActual = 1.0;
+// ✅ SOLUCIÓN 1: VOLUMEN POR DEFECTO AL 100% (CORREGIDO)
+let volumenActual = 1.0; // ✅ AHORA 100% (antes estaba en 0)
 
 let reconexionTimeout = null;
 let intentosReconexion = 0;
@@ -796,6 +796,11 @@ function agregarAudioRemotoConGanancia(track, participant) {
         // ✅ Aplicar volumen a todos los audios
         actualizarVolumen();
         
+        // ✅ EXPONER GLOBALMENTE
+        window.audioMap = audioMap;
+        window.room = room;
+        window.volumenActual = volumenActual;
+        
         return audioInfo;
         
     } catch (error) {
@@ -865,6 +870,11 @@ function agregarAudioRemotoFallback(track, participant) {
             console.error('❌ Error en fallback de audio HTML5:', e);
         }
     }
+    
+    // ✅ EXPONER GLOBALMENTE
+    window.audioMap = audioMap;
+    window.room = room;
+    window.volumenActual = volumenActual;
 }
 
 // ============================================================
@@ -900,6 +910,9 @@ function actualizarVolumen() {
     if (volumenLabel) {
         volumenLabel.textContent = Math.round(volumenActual * 100) + '%';
     }
+    
+    // ✅ EXPONER GLOBALMENTE
+    window.volumenActual = volumenActual;
 }
 
 // ============================================================
@@ -1431,15 +1444,46 @@ document.addEventListener('click', async () => {
 }, { once: false });
 
 // ============================================================
+// ✅ EXPONER VARIABLES GLOBALES PARA DIAGNÓSTICO
+// ============================================================
+
+// ✅ Hacer accesibles globalmente para diagnóstico en consola
+window.room = room;
+window.audioMap = audioMap;
+window.videoMap = videoMap;
+window.volumenActual = volumenActual;
+window.agregarAudioRemotoConGanancia = agregarAudioRemotoConGanancia;
+window.forzarReanudacionAudio = forzarReanudacionAudio;
+window.actualizarVolumen = actualizarVolumen;
+
+// ✅ Actualizar referencias cuando cambien
+const originalConectar = conectarLiveKit;
+conectarLiveKit = async function() {
+    await originalConectar.call(this);
+    window.room = room;
+    window.audioMap = audioMap;
+    window.videoMap = videoMap;
+    window.volumenActual = volumenActual;
+};
+
+// ✅ Actualizar cada vez que cambie el volumen
+const originalActualizarVolumen = actualizarVolumen;
+actualizarVolumen = function() {
+    originalActualizarVolumen.call(this);
+    window.volumenActual = volumenActual;
+};
+
+// ============================================================
 // INICIALIZACIÓN
 // ============================================================
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 4.4 - Reconexión Total');
+    console.log('📋 Versión: 4.5 - Diagnóstico Total');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');
+    console.log('🔍 Variables expuestas globalmente para diagnóstico');
     
     // ✅ INICIAR MONITOR DE INTERNET
     iniciarMonitorInternet();
@@ -1455,8 +1499,18 @@ async function iniciarCamara() {
     actualizarLayout();
     await conectarLiveKit();
     
+    // ✅ Exponer variables globalmente
+    window.room = room;
+    window.audioMap = audioMap;
+    window.videoMap = videoMap;
+    window.volumenActual = volumenActual;
+    window.agregarAudioRemotoConGanancia = agregarAudioRemotoConGanancia;
+    window.forzarReanudacionAudio = forzarReanudacionAudio;
+    window.actualizarVolumen = actualizarVolumen;
+    
     setTimeout(() => {
         console.log('✅ Sistema listo - Presiona "Diagnóstico" para ver detalles');
+        console.log('🔍 Variables globales disponibles: room, audioMap, videoMap, volumenActual');
         // ✅ Intentar reanudar audio automáticamente
         forzarReanudacionAudio();
     }, 2000);

@@ -10,18 +10,23 @@
 
 :root {
     --bg-primary: #08080e;
-    --bg-panel: rgba(12, 12, 25, 0.85);
-    --border-panel: rgba(255, 255, 255, 0.06);
+    --bg-secondary: #0f0f1a;
+    --bg-panel: rgba(12, 12, 28, 0.88);
+    --border-panel: rgba(255, 255, 255, 0.05);
     --text-primary: #ffffff;
-    --text-secondary: rgba(255, 255, 255, 0.5);
+    --text-secondary: rgba(255, 255, 255, 0.55);
     --text-muted: rgba(255, 255, 255, 0.25);
     --blue: #4f8cf7;
+    --blue-glow: rgba(79, 140, 247, 0.25);
     --green: #34c759;
+    --green-glow: rgba(52, 199, 89, 0.25);
     --red: #ff3b30;
+    --red-glow: rgba(255, 59, 48, 0.25);
     --orange: #ff9500;
     --purple: #af52de;
     --shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
     --radius: 12px;
+    --radius-sm: 8px;
     --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -30,14 +35,14 @@ html, body {
     height: 100%;
     overflow: hidden;
     background: var(--bg-primary);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     touch-action: manipulation;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
 }
 
 /* ============================================================
-   LOADING
+   LOADING OVERLAY
    ============================================================ */
 
 #loading-overlay {
@@ -65,8 +70,8 @@ html, body {
 }
 
 .spinner {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border: 2.5px solid rgba(79, 140, 247, 0.1);
     border-top-color: var(--blue);
     border-radius: 50%;
@@ -93,7 +98,7 @@ html, body {
 }
 
 /* ============================================================
-   GRID VIDEOS
+   GRID DE VIDEOS
    ============================================================ */
 
 #grid-videos {
@@ -102,12 +107,11 @@ html, body {
     width: 100vw;
     height: 100vh;
     display: grid;
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr;
-    gap: 2px;
     background: var(--bg-primary);
     z-index: 1;
     overflow: hidden;
+    gap: 2px;
+    padding: 0;
 }
 
 #grid-videos video {
@@ -116,10 +120,13 @@ html, body {
     height: 100%;
     object-fit: cover;
     background: #0a0a12;
+    min-width: 0;
+    min-height: 0;
 }
 
 #grid-videos video.video-local {
     border: 2px solid rgba(79, 140, 247, 0.25);
+    box-shadow: inset 0 0 40px rgba(79, 140, 247, 0.03);
 }
 
 #grid-videos video.video-remoto {
@@ -127,7 +134,7 @@ html, body {
 }
 
 /* ============================================================
-   ESTADO - MÁS PEQUEÑO
+   ESTADO DE CONEXIÓN
    ============================================================ */
 
 #estado {
@@ -147,6 +154,7 @@ html, body {
     border: 1px solid rgba(255, 255, 255, 0.04);
     box-shadow: var(--shadow);
     transition: var(--transition);
+    pointer-events: none;
 }
 
 .estado-indicador {
@@ -160,13 +168,13 @@ html, body {
 .estado-conectado .estado-indicador {
     background: var(--green);
     animation: none;
-    box-shadow: 0 0 10px rgba(52, 199, 89, 0.3);
+    box-shadow: 0 0 12px rgba(52, 199, 89, 0.3);
 }
 
 .estado-error .estado-indicador {
     background: var(--red);
     animation: pulse-dot 0.6s ease-in-out infinite;
-    box-shadow: 0 0 10px rgba(255, 59, 48, 0.3);
+    box-shadow: 0 0 12px rgba(255, 59, 48, 0.3);
 }
 
 @keyframes pulse-dot {
@@ -179,6 +187,7 @@ html, body {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.2px;
+    white-space: nowrap;
 }
 
 /* ============================================================
@@ -210,13 +219,15 @@ html, body {
 }
 
 /* ============================================================
-   FILA DE CONTROLES
+   FILAS DE CONTROLES
    ============================================================ */
 
 .controles-fila {
     display: flex;
     align-items: center;
     gap: 4px;
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
 .controles-fila-inferior {
@@ -225,6 +236,8 @@ html, body {
     gap: 8px;
     padding-top: 4px;
     border-top: 1px solid rgba(255, 255, 255, 0.04);
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
 .separador {
@@ -235,7 +248,7 @@ html, body {
 }
 
 /* ============================================================
-   BOTONES - MÁS PEQUEÑOS
+   BOTONES DE CONTROL
    ============================================================ */
 
 .btn-control {
@@ -251,6 +264,7 @@ html, body {
     cursor: pointer;
     transition: var(--transition);
     position: relative;
+    flex-shrink: 0;
 }
 
 .btn-control svg {
@@ -270,7 +284,15 @@ html, body {
     transform: scale(0.92);
 }
 
-/* Estados de botones */
+.btn-control:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.3);
+    outline-offset: 2px;
+}
+
+/* ============================================================
+   ESTADOS DE BOTONES
+   ============================================================ */
+
 #btn-microfono {
     background: rgba(79, 140, 247, 0.15);
     color: var(--blue);
@@ -376,6 +398,7 @@ html, body {
     cursor: pointer;
     font-size: 12px;
     transition: var(--transition);
+    flex-shrink: 0;
 }
 
 .btn-diagnostico:hover {
@@ -384,7 +407,7 @@ html, body {
 }
 
 /* ============================================================
-   VOLUMEN - COMPACTO
+   CONTROL DE VOLUMEN
    ============================================================ */
 
 .control-volumen {
@@ -392,12 +415,14 @@ html, body {
     align-items: center;
     gap: 6px;
     flex: 1;
+    min-width: 80px;
     max-width: 140px;
 }
 
 .icono-volumen {
     font-size: 12px;
     color: var(--text-muted);
+    flex-shrink: 0;
 }
 
 #volumen {
@@ -410,6 +435,7 @@ html, body {
     outline: none;
     cursor: pointer;
     transition: var(--transition);
+    min-width: 40px;
 }
 
 #volumen::-webkit-slider-thumb {
@@ -437,6 +463,12 @@ html, body {
     border: none;
 }
 
+#volumen::-moz-range-track {
+    height: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+}
+
 .texto-volumen {
     min-width: 28px;
     color: var(--text-secondary);
@@ -444,10 +476,11 @@ html, body {
     font-weight: 600;
     text-align: center;
     font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
 }
 
 /* ============================================================
-   INFO CONEXIÓN - COMPACTA
+   INFO DE CONEXIÓN
    ============================================================ */
 
 .info-conexion {
@@ -458,6 +491,8 @@ html, body {
     border-radius: 6px;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.02);
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
 .info-item {
@@ -482,12 +517,12 @@ html, body {
 }
 
 /* ============================================================
-   RESPONSIVE
+   RESPONSIVE - TABLET (768px - 1024px)
    ============================================================ */
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     #estado {
-        top: 10px;
+        top: 12px;
         padding: 4px 12px;
         gap: 6px;
     }
@@ -497,8 +532,64 @@ html, body {
     }
 
     #panel-controles {
-        bottom: 12px;
-        max-width: calc(100vw - 14px);
+        bottom: 14px;
+        max-width: calc(100vw - 16px);
+        border-radius: 10px;
+    }
+
+    .panel-inner {
+        padding: 6px 10px;
+        gap: 5px;
+    }
+
+    .btn-control {
+        width: 32px;
+        height: 32px;
+    }
+
+    .btn-control svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    .control-volumen {
+        max-width: 120px;
+        min-width: 60px;
+    }
+
+    .texto-volumen {
+        font-size: 9px;
+        min-width: 24px;
+    }
+}
+
+/* ============================================================
+   RESPONSIVE - MÓVIL GRANDE (481px - 767px)
+   ============================================================ */
+
+@media (max-width: 767px) {
+    #grid-videos {
+        gap: 1.5px;
+    }
+
+    #estado {
+        top: 10px;
+        padding: 4px 10px;
+        gap: 5px;
+    }
+
+    .estado-texto {
+        font-size: 10px;
+    }
+
+    .estado-indicador {
+        width: 5px;
+        height: 5px;
+    }
+
+    #panel-controles {
+        bottom: 10px;
+        max-width: calc(100vw - 12px);
         border-radius: 10px;
     }
 
@@ -513,12 +604,17 @@ html, body {
     }
 
     .btn-control svg {
-        width: 14px;
-        height: 14px;
+        width: 13px;
+        height: 13px;
     }
 
     .controles-fila {
         gap: 3px;
+    }
+
+    .controles-fila-inferior {
+        gap: 6px;
+        padding-top: 4px;
     }
 
     .separador {
@@ -528,20 +624,25 @@ html, body {
 
     .control-volumen {
         max-width: 100px;
+        min-width: 50px;
     }
 
     .texto-volumen {
         font-size: 9px;
-        min-width: 24px;
+        min-width: 22px;
+    }
+
+    .info-conexion {
+        padding: 2px 6px;
+        gap: 4px;
     }
 
     .info-item {
         font-size: 9px;
     }
 
-    .info-conexion {
-        padding: 2px 6px;
-        gap: 4px;
+    .info-divider {
+        height: 10px;
     }
 
     .btn-diagnostico {
@@ -554,6 +655,10 @@ html, body {
         font-size: 10px;
     }
 }
+
+/* ============================================================
+   RESPONSIVE - MÓVIL PEQUEÑO (321px - 480px)
+   ============================================================ */
 
 @media (max-width: 480px) {
     #grid-videos {
@@ -587,8 +692,8 @@ html, body {
     }
 
     .btn-control {
-        width: 26px;
-        height: 26px;
+        width: 28px;
+        height: 28px;
     }
 
     .btn-control svg {
@@ -600,18 +705,24 @@ html, body {
         gap: 2px;
     }
 
+    .controles-fila-inferior {
+        gap: 4px;
+        padding-top: 3px;
+    }
+
     .separador {
         height: 16px;
         margin: 0;
     }
 
     .control-volumen {
-        max-width: 70px;
+        max-width: 80px;
+        min-width: 40px;
         gap: 4px;
     }
 
     #volumen {
-        height: 2px;
+        min-width: 30px;
     }
 
     #volumen::-webkit-slider-thumb {
@@ -619,9 +730,14 @@ html, body {
         height: 10px;
     }
 
+    #volumen::-moz-range-thumb {
+        width: 10px;
+        height: 10px;
+    }
+
     .texto-volumen {
         font-size: 8px;
-        min-width: 20px;
+        min-width: 18px;
     }
 
     .info-conexion {
@@ -636,7 +752,7 @@ html, body {
     }
 
     .info-divider {
-        height: 10px;
+        height: 8px;
     }
 
     .btn-diagnostico {
@@ -648,17 +764,42 @@ html, body {
     .icono-volumen {
         font-size: 9px;
     }
-
-    .controles-fila-inferior {
-        gap: 4px;
-        padding-top: 3px;
-    }
 }
 
-@media (max-width: 360px) {
+/* ============================================================
+   RESPONSIVE - MÓVIL MUY PEQUEÑO (≤ 320px)
+   ============================================================ */
+
+@media (max-width: 320px) {
+    #estado {
+        top: 6px;
+        padding: 2px 8px;
+        gap: 4px;
+    }
+
+    .estado-texto {
+        font-size: 8px;
+    }
+
+    .estado-indicador {
+        width: 4px;
+        height: 4px;
+    }
+
+    #panel-controles {
+        bottom: 6px;
+        max-width: calc(100vw - 8px);
+        border-radius: 6px;
+    }
+
+    .panel-inner {
+        padding: 4px 6px;
+        gap: 3px;
+    }
+
     .btn-control {
-        width: 22px;
-        height: 22px;
+        width: 24px;
+        height: 24px;
     }
 
     .btn-control svg {
@@ -666,27 +807,80 @@ html, body {
         height: 10px;
     }
 
-    .control-volumen {
-        max-width: 55px;
+    .controles-fila {
+        gap: 2px;
     }
 
-    .info-item {
-        font-size: 7px;
+    .controles-fila-inferior {
+        gap: 3px;
+        padding-top: 2px;
+    }
+
+    .separador {
+        height: 14px;
+    }
+
+    .control-volumen {
+        max-width: 60px;
+        min-width: 30px;
+        gap: 3px;
+    }
+
+    #volumen {
+        min-width: 20px;
+    }
+
+    #volumen::-webkit-slider-thumb {
+        width: 8px;
+        height: 8px;
+    }
+
+    #volumen::-moz-range-thumb {
+        width: 8px;
+        height: 8px;
     }
 
     .texto-volumen {
         font-size: 7px;
-        min-width: 16px;
+        min-width: 14px;
     }
 
-    .panel-inner {
-        padding: 4px 6px;
-        gap: 3px;
+    .info-conexion {
+        padding: 1px 3px;
+        gap: 2px;
+    }
+
+    .info-item {
+        font-size: 7px;
+        gap: 1px;
+    }
+
+    .info-divider {
+        height: 6px;
+    }
+
+    .btn-diagnostico {
+        width: 16px;
+        height: 16px;
+        font-size: 8px;
+    }
+
+    .icono-volumen {
+        font-size: 8px;
+    }
+
+    .loading-text {
+        font-size: 12px;
+    }
+
+    .spinner {
+        width: 32px;
+        height: 32px;
     }
 }
 
 /* ============================================================
-   FULLSCREEN
+   PANTALLA COMPLETA
    ============================================================ */
 
 #grid-videos:fullscreen {
@@ -697,28 +891,24 @@ html, body {
     background: #000;
 }
 
-/* ============================================================
-   ACCESIBILIDAD
-   ============================================================ */
-
-@media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-    }
+#grid-videos:fullscreen video {
+    border-radius: 0;
 }
+
+/* ============================================================
+   MODO CLARO (prefers-color-scheme: light)
+   ============================================================ */
 
 @media (prefers-color-scheme: light) {
     :root {
         --bg-primary: #f0f0f5;
+        --bg-secondary: #e8e8ef;
         --bg-panel: rgba(255, 255, 255, 0.92);
         --border-panel: rgba(0, 0, 0, 0.04);
         --text-primary: #1a1a1a;
         --text-secondary: rgba(0, 0, 0, 0.5);
         --text-muted: rgba(0, 0, 0, 0.3);
+        --shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
     }
 
     #estado {
@@ -739,8 +929,34 @@ html, body {
         background: rgba(0, 0, 0, 0.06);
     }
 
+    #btn-fullscreen {
+        background: rgba(0, 0, 0, 0.03);
+        color: var(--text-secondary);
+    }
+
+    #btn-fullscreen:hover {
+        background: rgba(0, 0, 0, 0.06);
+    }
+
+    #btn-reconectar {
+        background: rgba(255, 149, 0, 0.08);
+    }
+
+    #btn-reconectar:hover {
+        background: rgba(255, 149, 0, 0.15);
+    }
+
+    .btn-diagnostico {
+        color: var(--text-muted);
+    }
+
+    .btn-diagnostico:hover {
+        color: var(--text-secondary);
+        background: rgba(0, 0, 0, 0.04);
+    }
+
     .info-item {
-        color: rgba(0, 0, 0, 0.5);
+        color: var(--text-secondary);
     }
 
     .info-valor {
@@ -761,26 +977,289 @@ html, body {
     }
 
     .texto-volumen {
-        color: rgba(0, 0, 0, 0.5);
+        color: var(--text-secondary);
     }
 
     .icono-volumen {
-        color: rgba(0, 0, 0, 0.3);
+        color: var(--text-muted);
     }
 
     .separador {
         background: rgba(0, 0, 0, 0.06);
     }
 
-    .btn-diagnostico {
-        color: rgba(0, 0, 0, 0.3);
-    }
-
-    .btn-diagnostico:hover {
-        color: rgba(0, 0, 0, 0.5);
-    }
-
     #grid-videos video {
         background: #e8e8ef;
+    }
+
+    #grid-videos video.video-local {
+        border-color: rgba(79, 140, 247, 0.3);
+    }
+
+    .loading-text {
+        color: var(--text-secondary);
+    }
+
+    .loading-subtext {
+        color: var(--text-muted);
+    }
+
+    #btn-microfono {
+        background: rgba(79, 140, 247, 0.12);
+    }
+
+    #btn-microfono:hover {
+        background: rgba(79, 140, 247, 0.2);
+    }
+
+    #btn-camara {
+        background: rgba(52, 199, 89, 0.1);
+    }
+
+    #btn-camara:hover {
+        background: rgba(52, 199, 89, 0.18);
+    }
+
+    #btn-silenciar {
+        background: rgba(255, 149, 0, 0.1);
+    }
+
+    #btn-silenciar:hover {
+        background: rgba(255, 149, 0, 0.18);
+    }
+
+    #btn-compartir {
+        background: rgba(175, 82, 222, 0.1);
+    }
+
+    #btn-compartir:hover {
+        background: rgba(175, 82, 222, 0.18);
+    }
+}
+
+/* ============================================================
+   ACCESIBILIDAD - REDUCIR MOVIMIENTO
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    .spinner {
+        animation-duration: 0.01ms !important;
+    }
+
+    .estado-indicador {
+        animation: none !important;
+    }
+
+    #btn-silenciar.activo {
+        animation: none !important;
+    }
+}
+
+/* ============================================================
+   ORIENTACIÓN - PAISAJE EN MÓVIL
+   ============================================================ */
+
+@media (orientation: landscape) and (max-height: 500px) {
+    #estado {
+        top: 6px;
+        padding: 3px 10px;
+    }
+
+    .estado-texto {
+        font-size: 9px;
+    }
+
+    #panel-controles {
+        bottom: 6px;
+        max-width: calc(100vw - 16px);
+    }
+
+    .panel-inner {
+        padding: 4px 10px;
+        gap: 4px;
+    }
+
+    .btn-control {
+        width: 28px;
+        height: 28px;
+    }
+
+    .btn-control svg {
+        width: 12px;
+        height: 12px;
+    }
+
+    .control-volumen {
+        max-width: 100px;
+    }
+
+    .info-item {
+        font-size: 8px;
+    }
+
+    #grid-videos {
+        gap: 1px;
+    }
+}
+
+/* ============================================================
+   PANTALLAS GRANDES (4K, UltraWide)
+   ============================================================ */
+
+@media (min-width: 1920px) {
+    #grid-videos {
+        gap: 4px;
+    }
+
+    #estado {
+        top: 24px;
+        padding: 8px 24px;
+        gap: 12px;
+    }
+
+    .estado-texto {
+        font-size: 14px;
+    }
+
+    .estado-indicador {
+        width: 10px;
+        height: 10px;
+    }
+
+    #panel-controles {
+        bottom: 32px;
+        max-width: calc(100vw - 48px);
+        border-radius: 16px;
+    }
+
+    .panel-inner {
+        padding: 14px 24px;
+        gap: 10px;
+    }
+
+    .btn-control {
+        width: 44px;
+        height: 44px;
+    }
+
+    .btn-control svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    .controles-fila {
+        gap: 8px;
+    }
+
+    .control-volumen {
+        max-width: 200px;
+        min-width: 120px;
+    }
+
+    #volumen {
+        height: 4px;
+    }
+
+    #volumen::-webkit-slider-thumb {
+        width: 16px;
+        height: 16px;
+    }
+
+    #volumen::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+    }
+
+    .texto-volumen {
+        font-size: 13px;
+        min-width: 40px;
+    }
+
+    .info-item {
+        font-size: 13px;
+    }
+
+    .separador {
+        height: 32px;
+    }
+
+    .info-divider {
+        height: 18px;
+    }
+
+    .icono-volumen {
+        font-size: 16px;
+    }
+}
+
+/* ============================================================
+   PANTALLAS GRANDES (1440px - 1919px)
+   ============================================================ */
+
+@media (min-width: 1440px) and (max-width: 1919px) {
+    #grid-videos {
+        gap: 3px;
+    }
+
+    #estado {
+        top: 20px;
+        padding: 6px 20px;
+        gap: 10px;
+    }
+
+    .estado-texto {
+        font-size: 13px;
+    }
+
+    .estado-indicador {
+        width: 8px;
+        height: 8px;
+    }
+
+    #panel-controles {
+        bottom: 24px;
+        max-width: calc(100vw - 40px);
+        border-radius: 14px;
+    }
+
+    .panel-inner {
+        padding: 12px 20px;
+        gap: 8px;
+    }
+
+    .btn-control {
+        width: 40px;
+        height: 40px;
+    }
+
+    .btn-control svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .control-volumen {
+        max-width: 160px;
+        min-width: 100px;
+    }
+
+    .texto-volumen {
+        font-size: 12px;
+        min-width: 36px;
+    }
+
+    .info-item {
+        font-size: 12px;
+    }
+
+    .info-divider {
+        height: 16px;
     }
 }

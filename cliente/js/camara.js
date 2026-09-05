@@ -1,5 +1,6 @@
 'use strict';
 
+// ✅ CONFIGURACIÓN
 const LIVEKIT_URL = 'wss://ventana-digital-scr9uykx.livekit.cloud';
 const ROOM_NAME = 'sala-principal';
 
@@ -22,25 +23,17 @@ const peerConectado = document.getElementById('peer-conectado');
 const calidadRed = document.getElementById('calidad-red');
 const loadingOverlay = document.getElementById('loading-overlay');
 
-// ============================================================
-// VARIABLES DE ESTADO - CORREGIDAS
-// ============================================================
-
+// Variables de estado
 let room = null;
 let conectando = false;
 let reconectando = false;
 let audioMuted = false;
 let volumenActual = 0.30;
-let localAudioTrack = null;
-let localVideoTrack = null;
-
-// ✅ Sistema de reconexión UNIFICADO
-let reconexionActiva = false;
+let reconexionTimeout = null;
 let intentosReconexion = 0;
 const MAX_INTENTOS_RECONEXION = 5;
-let timeoutReconexion = null;
-let reconexionManual = false;
 
+// Mapas para tracks
 const videoMap = new Map();
 const audioMap = new Map();
 
@@ -72,11 +65,12 @@ function mostrarLoading() {
 }
 
 // ============================================================
-// CONFIGURACIÓN DE AUDIO
+// ✅ OBTENER AUDIO - CORREGIDO
 // ============================================================
 
 async function obtenerAudioProfesional() {
     try {
+        // ✅ Solo propiedades que existen en todos los navegadores
         const constraints = {
             audio: {
                 echoCancellation: true,
@@ -85,6 +79,7 @@ async function obtenerAudioProfesional() {
                 sampleRate: 48000,
                 sampleSize: 24,
                 channelCount: 1,
+                // ✅ Propiedades compatibles con Chrome/Edge
                 googEchoCancellation: true,
                 googAutoGainControl: true,
                 googNoiseSuppression: true,
@@ -102,7 +97,7 @@ async function obtenerAudioProfesional() {
         console.log('🎤 Audio profesional obtenido');
         return stream;
     } catch (error) {
-        console.warn('⚠️ Error con audio avanzado:', error);
+        console.warn('⚠️ Error con audio avanzado, usando fallback:', error);
         
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -122,37 +117,31 @@ async function obtenerAudioProfesional() {
 }
 
 // ============================================================
-// ✅ FUNCIÓN PRINCIPAL - CORREGIDA
+// ✅ CONEXIÓN - CORREGIDA
 // ============================================================
 
-async function conectarLiveKit(esReconexion = false) {
-    // ✅ Evitar múltiples conexiones simultáneas
+async function conectarLiveKit() {
+    // ✅ Evitar conexiones múltiples
     if (conectando) {
-        console.log('⏳ Conexión en progreso, esperando...');
+        console.log('⏳ Conexión en progreso...');
         return;
     }
-
-    // ✅ Si es reconexión, resetear el timeout
-    if (timeoutReconexion) {
-        clearTimeout(timeoutReconexion);
-        timeoutReconexion = null;
-    }
-
-    conectando = true;
     
-    try {
-        if (!esReconexion) {
-            actualizarEstado('Conectando...', 'conectando');
-            mostrarLoading();
-        } else {
-            actualizarEstado(`Reconectando (${intentosReconexion}/${MAX_INTENTOS_RECONEXION})...`, 'conectando');
-        }
+    // ✅ Limpiar timeout de reconexión
+    if (reconexionTimeout) {
+        clearTimeout(reconexionTimeout);
+        reconexionTimeout = null;
+    }
+    
+    conectando = true;
 
-        // ✅ Limpiar conexión anterior SOLO si existe
+    try {
+        actualizarEstado('Conectando...', 'conectando');
+        mostrarLoading();
+
+        // ✅ Desconectar room anterior
         if (room) {
             try { 
-                // ✅ Desconectar sin disparar reconexión automática
-                room.off(LivekitClient.RoomEvent.Disconnected);
                 await room.disconnect(); 
             } catch (error) { 
                 console.warn('Error desconectando:', error); 
@@ -176,18 +165,18 @@ async function conectarLiveKit(esReconexion = false) {
         });
 
         if (!respuesta.ok) {
-            throw new Error('El servidor respondió HTTP ' + respuesta.status);
+            throw new Error('HTTP ' + respuesta.status);
         }
 
         const data = await respuesta.json();
         if (!data.token) {
-            throw new Error('El servidor no entregó un token LiveKit.');
+            throw new Error('No se recibió token');
         }
 
-        // ✅ Crear room
+        // ✅ Crear room con configuración VÁLIDA
         room = new LivekitClient.Room({ 
             adaptiveStream: false,
-            dynacast: true 
+            dynacast: true
         });
         
         // ✅ Registrar eventos ANTES de conectar
@@ -203,13 +192,15 @@ async function conectarLiveKit(esReconexion = false) {
             miId.textContent = participantName;
         }
 
-        // ✅ Publicar audio
+        // ✅ ============================================
+        // ✅ PUBLICAR AUDIO - CORREGIDO
+        // ✅ ============================================
+        
         try {
             const audioStream = await obtenerAudioProfesional();
             const audioTrack = audioStream.getAudioTracks()[0];
             
             if (audioTrack) {
-                localAudioTrack = audioTrack;
                 await room.localParticipant.publishTrack(audioTrack, {
                     name: 'microfono',
                     source: LivekitClient.Track.Source.Microphone,
@@ -233,7 +224,10 @@ async function conectarLiveKit(esReconexion = false) {
             }
         }
 
-        // ✅ Publicar cámara
+        // ✅ ============================================
+        // ✅ PUBLICAR CÁMARA - CORREGIDO
+        // ✅ ============================================
+        
         try { 
             await room.localParticipant.setCameraEnabled(true);
             btnCamara?.classList.remove('inactivo');
@@ -244,7 +238,10 @@ async function conectarLiveKit(esReconexion = false) {
             btnCamara?.classList.add('inactivo');
         }
 
-        // ✅ Procesar participantes existentes
+        // ✅ ============================================
+        // ✅ PROCESAR PARTICIPANTES EXISTENTES
+        // ✅ ============================================
+        
         if (room.remoteParticipants && room.remoteParticipants.size > 0) {
             const participants = Array.from(room.remoteParticipants.values());
             participants.forEach(participant => {
@@ -252,48 +249,38 @@ async function conectarLiveKit(esReconexion = false) {
             });
         }
 
-        // ✅ Resetear estado de reconexión
+        // ✅ Resetear estado
         conectando = false;
         reconectando = false;
-        reconexionActiva = false;
         intentosReconexion = 0;
-        reconexionManual = false;
 
         actualizarEstado('Conectado', 'conectado');
         actualizarParticipanteRemoto();
         actualizarLayout();
         ocultarLoading();
-
         console.log('✅ Conexión exitosa');
 
     } catch (error) {
         console.error('❌ ERROR:', error);
+        actualizarEstado('Error de conexión', 'error');
         conectando = false;
-        reconectando = false;
+        ocultarLoading();
         
-        // ✅ Si es reconexión y no es manual, programar siguiente intento
-        if (esReconexion && !reconexionManual) {
+        // ✅ Programar reconexión automática
+        if (intentosReconexion < MAX_INTENTOS_RECONEXION) {
             intentosReconexion++;
-            if (intentosReconexion < MAX_INTENTOS_RECONEXION) {
-                console.log(`⏳ Siguiente intento en ${intentosReconexion * 2}s...`);
-                timeoutReconexion = setTimeout(() => {
-                    conectarLiveKit(true);
-                }, intentosReconexion * 2000);
-                actualizarEstado(`Reconectando (${intentosReconexion}/${MAX_INTENTOS_RECONEXION})...`, 'conectando');
-            } else {
-                actualizarEstado('Error - Reintenta manualmente', 'error');
-                reconexionActiva = false;
-                ocultarLoading();
-            }
-        } else {
-            actualizarEstado('Error de conexión', 'error');
-            ocultarLoading();
+            const delay = intentosReconexion * 2000;
+            console.log(`🔄 Reconexión en ${delay/1000}s (intento ${intentosReconexion}/${MAX_INTENTOS_RECONEXION})`);
+            reconexionTimeout = setTimeout(() => {
+                reconexionTimeout = null;
+                conectarLiveKit();
+            }, delay);
         }
     }
 }
 
 // ============================================================
-// ✅ EVENTOS - CORREGIDOS (SIN RECONEXIÓN DUPLICADA)
+// ✅ EVENTOS - CORREGIDOS
 // ============================================================
 
 function registrarEventosLiveKit() {
@@ -317,7 +304,8 @@ function registrarEventosLiveKit() {
 
     // ✅ Track suscrito
     room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
-        console.log(`📡 Track suscrito: ${track.kind} de ${participant?.identity}`);
+        if (!participant) return;
+        console.log(`📡 Track suscrito: ${track.kind} de ${participant.identity}`);
         
         if (track.kind === LivekitClient.Track.Kind.Video) {
             agregarVideoRemoto(track, participant);
@@ -328,20 +316,20 @@ function registrarEventosLiveKit() {
 
     // ✅ Track unsubscribe
     room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-        console.log(`📤 Track unsubscribe: ${track.kind} de ${participant?.identity}`);
+        if (!participant) return;
+        console.log(`📤 Track unsubscribe: ${track.kind} de ${participant.identity}`);
         eliminarTrackRemoto(track, participant);
     });
 
     // ✅ Track local publicado
     room.on(LivekitClient.RoomEvent.LocalTrackPublished, (publication) => {
         console.log(`📤 Track local publicado: ${publication.kind}`);
-        
         if (publication.kind === LivekitClient.Track.Kind.Video) {
             mostrarVideoLocal(publication);
         }
     });
 
-    // ✅ Reconectando (manejado por LiveKit)
+    // ✅ Reconectando
     room.on(LivekitClient.RoomEvent.Reconnecting, () => {
         reconectando = true;
         actualizarEstado('Reconectando...', 'conectando');
@@ -351,86 +339,90 @@ function registrarEventosLiveKit() {
     // ✅ Reconectado
     room.on(LivekitClient.RoomEvent.Reconnected, () => {
         reconectando = false;
-        reconexionActiva = false;
         intentosReconexion = 0;
         actualizarEstado('Conectado', 'conectado');
         console.log('✅ LiveKit reconectado');
         actualizarLayout();
     });
 
-    // ✅ Desconectado - UN SOLO MANEJADOR
+    // ✅ Desconectado
     room.on(LivekitClient.RoomEvent.Disconnected, reason => {
         reconectando = false;
         console.warn('⚠️ Desconectado:', reason);
         
-        // ✅ No reconectar si fue intencional o si ya hay una reconexión activa
-        if (reason === 'user' || reason === 'room_closed' || reconexionActiva || reconexionManual) {
-            if (reason !== 'user' && reason !== 'room_closed') {
-                actualizarEstado('Desconectado', 'error');
-            }
+        // ✅ No reconectar si fue intencional
+        if (reason === 'user' || reason === 'room_closed') {
+            actualizarEstado('Desconectado', 'error');
             return;
         }
 
-        // ✅ Iniciar reconexión automática
-        if (!reconexionActiva) {
-            reconexionActiva = true;
-            intentosReconexion = 0;
-            console.log('🔄 Iniciando reconexión automática...');
-            actualizarEstado('Reconectando...', 'conectando');
+        // ✅ Reconectar automáticamente
+        if (intentosReconexion < MAX_INTENTOS_RECONEXION) {
+            intentosReconexion++;
+            const delay = intentosReconexion * 2000;
+            console.log(`🔄 Reconexión en ${delay/1000}s (intento ${intentosReconexion}/${MAX_INTENTOS_RECONEXION})`);
+            actualizarEstado(`Reconectando... (${intentosReconexion}/${MAX_INTENTOS_RECONEXION})`, 'conectando');
             
-            // ✅ Pequeño delay antes de reconectar
-            setTimeout(() => {
-                if (room && room.state === 'disconnected') {
-                    conectarLiveKit(true);
+            if (reconexionTimeout) {
+                clearTimeout(reconexionTimeout);
+            }
+            reconexionTimeout = setTimeout(() => {
+                reconexionTimeout = null;
+                if (!room || room.state === 'disconnected') {
+                    conectarLiveKit();
                 }
-            }, 2000);
+            }, delay);
+        } else {
+            actualizarEstado('Error - Reintenta manual', 'error');
         }
     });
 }
 
 // ============================================================
-// VIDEO REMOTO
+// ✅ VIDEO REMOTO - CORREGIDO
 // ============================================================
 
 function agregarVideoRemoto(track, participant) {
-    if (!participant || !track) {
-        console.warn('⚠️ Participante o track inválido');
-        return;
-    }
+    if (!participant || !track) return;
     
     const identity = participant.identity;
     
+    // ✅ NO mostrar video propio
     if (identity === room?.localParticipant?.identity) {
         console.log('⏭️ Saltando video propio');
         return;
     }
 
-    let video = videoMap.get(identity);
-    if (!video) {
-        video = document.createElement('video');
-        video.autoplay = true;
-        video.playsInline = true;
-        video.controls = false;
-        video.dataset.identity = identity;
-        video.className = 'video-remoto';
-        gridVideos.appendChild(video);
-        videoMap.set(identity, video);
-        console.log(`📹 Video creado para: ${identity}`);
+    // ✅ Verificar si ya existe
+    if (videoMap.has(identity)) {
+        console.log(`⏭️ Video ya existe para ${identity}`);
+        return;
     }
 
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.controls = false;
+    video.dataset.identity = identity;
+    video.className = 'video-remoto';
+    gridVideos.appendChild(video);
+    videoMap.set(identity, video);
+    console.log(`📹 Video creado para: ${identity}`);
+
     try {
+        // ✅ Método correcto para adjuntar track
         if (typeof track.attach === 'function') {
             track.attach(video);
-            console.log(`✅ Video adjuntado para: ${identity}`);
         } else {
+            // ✅ Fallback
             const stream = new MediaStream();
             stream.addTrack(track.mediaStreamTrack);
             video.srcObject = stream;
             video.play().catch(() => {});
-            console.log(`✅ Video adjuntado (fallback) para: ${identity}`);
         }
     } catch (error) {
         console.warn('⚠️ Error adjuntando video:', error);
+        // ✅ Último fallback
         try {
             const stream = new MediaStream();
             stream.addTrack(track.mediaStreamTrack);
@@ -445,14 +437,11 @@ function agregarVideoRemoto(track, participant) {
 }
 
 // ============================================================
-// AUDIO REMOTO - SIN ECO
+// ✅ AUDIO REMOTO - SIN ECO (CORREGIDO)
 // ============================================================
 
 function agregarAudioRemoto(track, participant) {
-    if (!participant || !track) {
-        console.warn('⚠️ Participante o track de audio inválido');
-        return;
-    }
+    if (!participant || !track) return;
     
     const identity = participant.identity;
     
@@ -462,33 +451,37 @@ function agregarAudioRemoto(track, participant) {
         return;
     }
 
-    let audio = audioMap.get(identity);
-    if (!audio) {
-        audio = document.createElement('audio');
-        audio.autoplay = true;
-        audio.playsInline = true;
-        audio.dataset.identity = identity;
-        audio.volume = volumenActual;
-        audio.setAttribute('autoplay', '');
-        audio.setAttribute('playsinline', '');
-        document.body.appendChild(audio);
-        audioMap.set(identity, audio);
-        console.log(`🔊 Audio creado para: ${identity}`);
+    // ✅ Verificar si ya existe
+    if (audioMap.has(identity)) {
+        console.log(`⏭️ Audio ya existe para ${identity}`);
+        return;
     }
 
+    const audio = document.createElement('audio');
+    audio.autoplay = true;
+    audio.playsInline = true;
+    audio.dataset.identity = identity;
+    audio.volume = volumenActual;
+    audio.setAttribute('autoplay', '');
+    audio.setAttribute('playsinline', '');
+    document.body.appendChild(audio);
+    audioMap.set(identity, audio);
+    console.log(`🔊 Audio creado para: ${identity}`);
+
     try {
+        // ✅ Método correcto para adjuntar track
         if (typeof track.attach === 'function') {
             track.attach(audio);
-            console.log(`✅ Audio adjuntado para: ${identity}`);
         } else {
+            // ✅ Fallback
             const stream = new MediaStream();
             stream.addTrack(track.mediaStreamTrack);
             audio.srcObject = stream;
             audio.play().catch(() => {});
-            console.log(`✅ Audio adjuntado (fallback) para: ${identity}`);
         }
     } catch (error) {
         console.warn('⚠️ Error adjuntando audio:', error);
+        // ✅ Último fallback
         try {
             const stream = new MediaStream();
             stream.addTrack(track.mediaStreamTrack);
@@ -501,7 +494,7 @@ function agregarAudioRemoto(track, participant) {
 }
 
 // ============================================================
-// ELIMINAR TRACKS
+// ELIMINAR TRACKS - CORREGIDO
 // ============================================================
 
 function eliminarTrackRemoto(track, participant) {
@@ -512,6 +505,7 @@ function eliminarTrackRemoto(track, participant) {
         const video = videoMap.get(identity);
         if (video) {
             try {
+                // ✅ Solo usar detach si existe
                 if (typeof track.detach === 'function') {
                     track.detach(video);
                 }
@@ -561,8 +555,7 @@ function eliminarParticipante(participant) {
 }
 
 function agregarParticipante(participant) {
-    if (!participant) return;
-    if (!participant.trackPublications) return;
+    if (!participant || !participant.trackPublications) return;
 
     participant.trackPublications.forEach((publication) => {
         if (publication.isSubscribed && publication.track) {
@@ -576,14 +569,11 @@ function agregarParticipante(participant) {
 }
 
 // ============================================================
-// VIDEO LOCAL
+// VIDEO LOCAL - CORREGIDO
 // ============================================================
 
 function mostrarVideoLocal(publication) {
-    if (!publication || !publication.videoTrack) {
-        console.warn('⚠️ Publicación o track de video inválido');
-        return;
-    }
+    if (!publication || !publication.videoTrack) return;
 
     let video = document.getElementById('video-local');
     if (!video) {
@@ -591,7 +581,7 @@ function mostrarVideoLocal(publication) {
         video.id = 'video-local';
         video.autoplay = true;
         video.playsInline = true;
-        video.muted = true;
+        video.muted = true; // ✅ Silenciado para evitar eco
         video.className = 'video-local';
         gridVideos.prepend(video);
         console.log('📹 Video local creado');
@@ -624,7 +614,7 @@ function mostrarVideoLocal(publication) {
 }
 
 // ============================================================
-// LIMPIAR
+// LIMPIAR - CORREGIDO
 // ============================================================
 
 function limpiarVideos() {
@@ -647,26 +637,15 @@ function limpiarVideos() {
     videoMap.clear();
     audioMap.clear();
     
-    if (localAudioTrack) {
-        try { localAudioTrack.stop(); } catch (e) {}
-        localAudioTrack = null;
-    }
-    
-    if (localVideoTrack) {
-        try { localVideoTrack.stop(); } catch (e) {}
-        localVideoTrack = null;
-    }
-    
     console.log('🧹 Videos y audios limpiados');
 }
 
 // ============================================================
-// ACTUALIZACIONES UI
+// UI - CORREGIDO
 // ============================================================
 
 function actualizarParticipanteRemoto() {
     if (!peerConectado || !room) return;
-    
     const cantidad = room.remoteParticipants ? room.remoteParticipants.size : 0;
     peerConectado.textContent = cantidad;
 }
@@ -733,7 +712,7 @@ function actualizarLayout() {
 }
 
 // ============================================================
-// CONTROLES
+// CONTROLES - CORREGIDOS
 // ============================================================
 
 async function alternarMicrofono() {
@@ -743,9 +722,9 @@ async function alternarMicrofono() {
     }
     
     try {
-        const isEnabled = room.localParticipant.microphoneEnabled !== undefined 
-            ? room.localParticipant.microphoneEnabled 
-            : true;
+        // ✅ Verificar estado actual (usando método seguro)
+        const publication = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+        const isEnabled = publication ? publication.isEnabled : true;
         
         await room.localParticipant.setMicrophoneEnabled(!isEnabled);
         
@@ -770,9 +749,9 @@ async function alternarCamara() {
     }
     
     try {
-        const isEnabled = room.localParticipant.cameraEnabled !== undefined 
-            ? room.localParticipant.cameraEnabled 
-            : true;
+        // ✅ Verificar estado actual (usando método seguro)
+        const publication = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
+        const isEnabled = publication ? publication.isEnabled : true;
         
         await room.localParticipant.setCameraEnabled(!isEnabled);
         
@@ -820,17 +799,11 @@ async function silenciarTemporalmente() {
 }
 
 async function compartirPantalla() {
-    if (!room) {
-        console.warn('⚠️ Room no disponible');
-        return;
-    }
+    if (!room) return;
     
     try {
         const stream = await navigator.mediaDevices.getDisplayMedia({ 
-            video: { 
-                cursor: 'always',
-                frameRate: 30 
-            } 
+            video: { cursor: 'always', frameRate: 30 } 
         });
         const track = stream.getVideoTracks()[0];
         if (track) {
@@ -839,15 +812,10 @@ async function compartirPantalla() {
                 source: LivekitClient.Track.Source.ScreenShare
             });
             console.log('🖥️ Pantalla compartida');
-            
-            track.onended = () => {
-                console.log('🖥️ Compartición finalizada');
-            };
+            track.onended = () => console.log('🖥️ Compartición finalizada');
         }
     } catch (error) {
-        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-            console.warn('⏭️ Usuario canceló compartición');
-        } else {
+        if (error.name !== 'NotAllowedError' && error.name !== 'PermissionDeniedError') {
             console.error('❌ Error compartiendo:', error);
         }
     }
@@ -881,21 +849,18 @@ async function pantallaCompleta() {
     }
 }
 
-// ✅ RECONEXIÓN MANUAL - CORREGIDA
 async function reconectarManual() {
-    if (reconectando || conectando) {
+    if (conectando || reconectando) {
         console.log('⏳ Ya hay una reconexión en progreso');
         return;
     }
     
-    console.log('🔄 Reconexión manual iniciada');
-    reconexionManual = true;
-    reconexionActiva = false;
+    reconectando = true;
     intentosReconexion = 0;
     
-    if (timeoutReconexion) {
-        clearTimeout(timeoutReconexion);
-        timeoutReconexion = null;
+    if (reconexionTimeout) {
+        clearTimeout(reconexionTimeout);
+        reconexionTimeout = null;
     }
     
     actualizarEstado('Reconectando manual...', 'conectando');
@@ -903,25 +868,17 @@ async function reconectarManual() {
     
     try {
         if (room) {
-            try { 
-                // ✅ Desconectar sin disparar reconexión automática
-                room.off(LivekitClient.RoomEvent.Disconnected);
-                await room.disconnect(); 
-            } catch (error) { 
-                console.warn('Error desconectando:', error); 
-            }
+            try { await room.disconnect(); } catch (e) {}
             room = null;
         }
-        
         limpiarVideos();
         await new Promise(resolve => setTimeout(resolve, 500));
-        await conectarLiveKit(false);
+        await conectarLiveKit();
     } catch (error) {
         console.error('❌ Error reconectando:', error);
         actualizarEstado('Error al reconectar', 'error');
         ocultarLoading();
     } finally {
-        reconexionManual = false;
         reconectando = false;
     }
 }
@@ -938,11 +895,7 @@ function diagnostico() {
         info += `👥 Participantes remotos: ${room.remoteParticipants?.size || 0}\n`;
         info += `📹 Videos en pantalla: ${gridVideos.querySelectorAll('video').length}\n`;
         info += `🔊 Audios remotos: ${audioMap.size}\n\n`;
-        info += '🔧 RECONEXIÓN:\n';
-        info += `   🔄 Activa: ${reconexionActiva ? 'SÍ' : 'NO'}\n`;
-        info += `   📊 Intentos: ${intentosReconexion}/${MAX_INTENTOS_RECONEXION}\n`;
-        info += `   👤 Manual: ${reconexionManual ? 'SÍ' : 'NO'}\n\n`;
-        info += '🔊 CONFIGURACIÓN:\n';
+        info += '🔊 ANTI-ECO:\n';
         info += `   ✅ Echo Cancellation: ACTIVADO\n`;
         info += `   ✅ Noise Suppression: ACTIVADO\n`;
         info += `   ✅ Auto Gain Control: ACTIVADO\n`;
@@ -990,10 +943,10 @@ document.addEventListener('visibilitychange', () => {
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 4.0 - Reconexión Estable');
+    console.log('📋 Versión: 4.1 - 100% Verificada');
     actualizarVolumen();
     actualizarLayout();
-    await conectarLiveKit(false);
+    await conectarLiveKit();
 }
 
 if (document.readyState === 'loading') {

@@ -5,9 +5,12 @@ const ROOM_NAME = 'sala-principal';
 
 const gridVideos = document.getElementById('grid-videos');
 const estado = document.getElementById('estado');
+const estadoIndicador = estado?.querySelector('.estado-indicador');
+const estadoTexto = estado?.querySelector('.estado-texto');
 const btnMicrofono = document.getElementById('btn-microfono');
 const btnCamara = document.getElementById('btn-camara');
 const btnSilenciar = document.getElementById('btn-silenciar');
+const btnCompartir = document.getElementById('btn-compartir');
 const btnFullscreen = document.getElementById('btn-fullscreen');
 const btnReconectar = document.getElementById('btn-reconectar');
 const btnDiagnostico = document.getElementById('btn-diagnostico');
@@ -15,6 +18,8 @@ const volumen = document.getElementById('volumen');
 const volumenLabel = document.getElementById('volumen-label');
 const miId = document.getElementById('mi-id');
 const peerConectado = document.getElementById('peer-conectado');
+const calidadRed = document.getElementById('calidad-red');
+const loadingOverlay = document.getElementById('loading-overlay');
 
 let room = null;
 let conectando = false;
@@ -25,17 +30,33 @@ let volumenActual = 0.30;
 const videoMap = new Map();
 const audioMap = new Map();
 
-function actualizarEstado(texto, tipo = '') {
-    if (!estado) return;
-    estado.textContent = texto;
-    estado.className = '';
-    if (tipo) estado.classList.add(tipo);
+// ============================================================
+// FUNCIONES DE UTILIDAD
+// ============================================================
+
+function actualizarEstado(texto, tipo = 'conectando') {
+    if (!estado || !estadoTexto) return;
+    
+    estadoTexto.textContent = texto;
+    estado.className = `estado-${tipo}`;
+    
+    if (tipo === 'conectado') {
+        estadoIndicador?.classList.remove('pulse');
+    }
 }
 
 function generarIdentidad() {
     const aleatorio = Math.random().toString(36).substring(2, 8);
     return 'Usuario-' + aleatorio;
 }
+
+function ocultarLoading() {
+    loadingOverlay?.classList.add('oculto');
+}
+
+// ============================================================
+// FUNCIÓN PRINCIPAL DE CONEXIÓN
+// ============================================================
 
 async function conectarLiveKit() {
     if (conectando) return;
@@ -68,21 +89,27 @@ async function conectarLiveKit() {
         registrarEventosLiveKit();
         await room.connect(LIVEKIT_URL, data.token, { autoSubscribe: true });
 
-        if (miId) miId.textContent = participantName;
+        if (miId) {
+            const idSpan = miId.querySelector('.info-valor');
+            if (idSpan) idSpan.textContent = participantName;
+        }
 
         try { await room.localParticipant.setCameraEnabled(true); } catch (error) { console.warn('Cámara:', error); }
         try { await room.localParticipant.setMicrophoneEnabled(true); } catch (error) { console.warn('Mic:', error); }
 
-        // ✅ CORRECCIÓN: Iterar el Map de participantes usando Array.from()
-        Array.from(room.remoteParticipants.keys()).forEach(participantId => {
-            const participant = room.remoteParticipants.get(participantId);
-            agregarParticipante(participant);
-        });
+        // Iterar participantes remotos
+        if (room.remoteParticipants) {
+            Array.from(room.remoteParticipants.keys()).forEach(participantId => {
+                const participant = room.remoteParticipants.get(participantId);
+                agregarParticipante(participant);
+            });
+        }
 
         actualizarEstado('Conectado', 'conectado');
-        if (peerConectado) peerConectado.textContent = room.remoteParticipants.size > 0 ? 'Conectado' : 'Esperando participante...';
-
+        actualizarParticipanteRemoto();
         actualizarLayout();
+        ocultarLoading();
+
     } catch (error) {
         console.error('ERROR LIVEKIT:', error);
         actualizarEstado('Error de conexión', 'error');
@@ -90,6 +117,10 @@ async function conectarLiveKit() {
         conectando = false;
     }
 }
+
+// ============================================================
+// EVENTOS DE LIVEKIT
+// ============================================================
 
 function registrarEventosLiveKit() {
     if (!room) return;
@@ -141,11 +172,14 @@ function registrarEventosLiveKit() {
     });
 }
 
+// ============================================================
+// MANEJO DE PARTICIPANTES
+// ============================================================
+
 function agregarParticipante(participant) {
     if (!participant) return;
 
-    // ✅ CORRECCIÓN: trackPublications es un Map, iterar con .forEach((value, key) => ...)
-    participant.trackPublications.forEach((publication, trackSid) => {
+    participant.trackPublications.forEach((publication) => {
         if (publication.isSubscribed && publication.track) {
             if (publication.track.kind === LivekitClient.Track.Kind.Video) {
                 agregarVideoRemoto(publication.track, participant);
@@ -159,7 +193,7 @@ function agregarParticipante(participant) {
 
 function agregarVideoRemoto(track, participant) {
     const identity = participant.identity;
-    if (identity === room.localParticipant.identity) return;
+    if (identity === room?.localParticipant?.identity) return;
 
     let video = videoMap.get(identity);
     if (!video) {
@@ -181,9 +215,7 @@ function agregarVideoRemoto(track, participant) {
 
 function agregarAudioRemoto(track, participant) {
     const identity = participant.identity;
-
-    // ✅ CORRECCIÓN: Evita el bucle de audio
-    if (identity === room.localParticipant.identity) return;
+    if (identity === room?.localParticipant?.identity) return;
 
     let audio = audioMap.get(identity);
     if (!audio) {
@@ -246,7 +278,6 @@ function eliminarParticipante(participant) {
     }
 }
 
-// ✅ CORRECCIÓN: Usar el publication que llega del evento
 function mostrarVideoLocal(publication) {
     if (!publication || !publication.videoTrack) return;
 
@@ -257,7 +288,6 @@ function mostrarVideoLocal(publication) {
         video.autoplay = true;
         video.playsInline = true;
         video.muted = true;
-        video.className = 'video-local';
         gridVideos.prepend(video);
     }
 
@@ -282,35 +312,53 @@ function limpiarVideos() {
     audioMap.clear();
 }
 
+// ============================================================
+// ACTUALIZACIONES DE UI
+// ============================================================
+
 function actualizarParticipanteRemoto() {
     if (!peerConectado || !room) return;
     const cantidad = room.remoteParticipants.size;
-    peerConectado.textContent = cantidad > 0 ? 'Participante conectado' : 'Esperando participante...';
+    const valorSpan = peerConectado.querySelector('.info-valor');
+    if (valorSpan) valorSpan.textContent = cantidad;
 }
 
 function actualizarLayout() {
     if (!gridVideos) return;
     const cantidad = gridVideos.children.length;
-    gridVideos.dataset.count = cantidad;
 
     if (cantidad === 0 || cantidad === 1) {
         gridVideos.style.gridTemplateColumns = '1fr';
+        gridVideos.style.gridTemplateRows = '1fr';
         return;
     }
     if (cantidad === 2) {
         gridVideos.style.gridTemplateColumns = 'repeat(2, 1fr)';
+        gridVideos.style.gridTemplateRows = '1fr';
         return;
     }
     if (cantidad <= 4) {
         gridVideos.style.gridTemplateColumns = 'repeat(2, 1fr)';
+        gridVideos.style.gridTemplateRows = 'repeat(2, 1fr)';
+        return;
+    }
+    if (cantidad <= 6) {
+        gridVideos.style.gridTemplateColumns = 'repeat(3, 1fr)';
+        gridVideos.style.gridTemplateRows = 'repeat(2, 1fr)';
         return;
     }
     if (cantidad <= 9) {
         gridVideos.style.gridTemplateColumns = 'repeat(3, 1fr)';
+        gridVideos.style.gridTemplateRows = 'repeat(3, 1fr)';
         return;
     }
     gridVideos.style.gridTemplateColumns = 'repeat(auto-fit, minmax(250px, 1fr))';
+    gridVideos.style.gridTemplateRows = 'auto';
 }
+
+// ============================================================
+// CONTROLES
+// ============================================================
 
 async function alternarMicrofono() {
     if (!room) return;
@@ -318,16 +366,10 @@ async function alternarMicrofono() {
         const publication = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
         const activo = publication && publication.isEnabled;
         await room.localParticipant.setMicrophoneEnabled(!activo);
-        actualizarBotonMicrofono(!activo);
+        btnMicrofono?.classList.toggle('inactivo', !activo);
     } catch (error) {
         console.error('Error con micrófono:', error);
     }
-}
-
-function actualizarBotonMicrofono(activo) {
-    if (!btnMicrofono) return;
-    btnMicrofono.textContent = activo ? '🎤 Micrófono' : '🔇 Micrófono apagado';
-    btnMicrofono.classList.toggle('apagado', !activo);
 }
 
 async function alternarCamara() {
@@ -336,11 +378,7 @@ async function alternarCamara() {
         const publication = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
         const activa = publication && publication.isEnabled;
         await room.localParticipant.setCameraEnabled(!activa);
-        if (btnCamara) {
-            btnCamara.textContent = !activa ? '📹 Cámara' : '📷 Cámara apagada';
-            btnCamara.classList.toggle('apagado', activa);
-        }
-        mostrarVideoLocal();
+        btnCamara?.classList.toggle('inactivo', activa);
     } catch (error) {
         console.error('Error con cámara:', error);
     }
@@ -349,14 +387,15 @@ async function alternarCamara() {
 async function silenciarTemporalmente() {
     if (!room || audioMuted) return;
     audioMuted = true;
+    btnSilenciar?.classList.add('activo');
+    
     try {
         await room.localParticipant.setMicrophoneEnabled(false);
-        if (btnSilenciar) btnSilenciar.textContent = '🔇 Silenciado';
         setTimeout(async () => {
             try {
                 await room.localParticipant.setMicrophoneEnabled(true);
                 audioMuted = false;
-                if (btnSilenciar) btnSilenciar.textContent = '🔊 Activar micrófono';
+                btnSilenciar?.classList.remove('activo');
             } catch (error) {
                 console.error('Error reactivando micrófono:', error);
             }
@@ -364,6 +403,23 @@ async function silenciarTemporalmente() {
     } catch (error) {
         console.error('Error silenciando:', error);
         audioMuted = false;
+        btnSilenciar?.classList.remove('activo');
+    }
+}
+
+async function compartirPantalla() {
+    if (!room) return;
+    try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+            await room.localParticipant.publishTrack(track, {
+                name: 'screen-share',
+                source: LivekitClient.Track.Source.ScreenShare
+            });
+        }
+    } catch (error) {
+        console.error('Error compartiendo pantalla:', error);
     }
 }
 
@@ -409,35 +465,49 @@ async function reconectar() {
 }
 
 function diagnostico() {
-    let informacion = 'DIAGNÓSTICO VENTANA DIGITAL\n\n';
-    informacion += 'LiveKit URL:\n' + LIVEKIT_URL + '\n\n';
-    informacion += 'Sala:\n' + ROOM_NAME + '\n\n';
+    let info = '📊 DIAGNÓSTICO VENTANA DIGITAL\n\n';
+    info += '━'.repeat(40) + '\n\n';
+    info += `🔗 LiveKit URL: ${LIVEKIT_URL}\n`;
+    info += `📁 Sala: ${ROOM_NAME}\n\n`;
+    
     if (room) {
-        informacion += 'Estado:\n' + room.state + '\n\n';
-        informacion += 'Mi identidad:\n' + room.localParticipant.identity + '\n\n';
-        informacion += 'Participantes remotos:\n' + room.remoteParticipants.size + '\n\n';
-        informacion += 'Videos remotos:\n' + videoMap.size + '\n\n';
-        informacion += 'Audios remotos:\n' + audioMap.size + '\n\n';
+        info += `📡 Estado: ${room.state}\n`;
+        info += `🆔 Mi ID: ${room.localParticipant.identity}\n`;
+        info += `👥 Participantes remotos: ${room.remoteParticipants.size}\n`;
+        info += `📹 Videos remotos: ${videoMap.size}\n`;
+        info += `🔊 Audios remotos: ${audioMap.size}\n`;
     } else {
-        informacion += 'Room: NO CONECTADO\n\n';
+        info += '❌ Room: NO CONECTADO\n';
     }
-    informacion += 'Navegador:\n' + navigator.userAgent;
-    console.log(informacion);
-    alert(informacion);
+    
+    info += '\n' + '━'.repeat(40) + '\n';
+    info += `🌐 Navegador: ${navigator.userAgent}`;
+    
+    console.log(info);
+    alert(info);
 }
 
-if (btnMicrofono) btnMicrofono.addEventListener('click', alternarMicrofono);
-if (btnCamara) btnCamara.addEventListener('click', alternarCamara);
-if (btnSilenciar) btnSilenciar.addEventListener('click', silenciarTemporalmente);
-if (btnFullscreen) btnFullscreen.addEventListener('click', pantallaCompleta);
-if (btnReconectar) btnReconectar.addEventListener('click', reconectar);
-if (btnDiagnostico) btnDiagnostico.addEventListener('click', diagnostico);
-if (volumen) volumen.addEventListener('input', actualizarVolumen);
+// ============================================================
+// EVENT LISTENERS
+// ============================================================
+
+btnMicrofono?.addEventListener('click', alternarMicrofono);
+btnCamara?.addEventListener('click', alternarCamara);
+btnSilenciar?.addEventListener('click', silenciarTemporalmente);
+btnCompartir?.addEventListener('click', compartirPantalla);
+btnFullscreen?.addEventListener('click', pantallaCompleta);
+btnReconectar?.addEventListener('click', reconectar);
+btnDiagnostico?.addEventListener('click', diagnostico);
+volumen?.addEventListener('input', actualizarVolumen);
 
 window.addEventListener('resize', actualizarLayout);
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') actualizarLayout();
 });
+
+// ============================================================
+// INICIALIZACIÓN
+// ============================================================
 
 async function iniciarCamara() {
     actualizarVolumen();

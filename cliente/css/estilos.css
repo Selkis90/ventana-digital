@@ -10,24 +10,19 @@
 
 :root {
     --bg-primary: #08080e;
-    --bg-secondary: #0f0f1a;
-    --bg-panel: rgba(18, 18, 35, 0.92);
+    --bg-panel: rgba(12, 12, 25, 0.85);
     --border-panel: rgba(255, 255, 255, 0.06);
     --text-primary: #ffffff;
     --text-secondary: rgba(255, 255, 255, 0.5);
-    --text-muted: rgba(255, 255, 255, 0.3);
+    --text-muted: rgba(255, 255, 255, 0.25);
     --blue: #4f8cf7;
-    --blue-glow: rgba(79, 140, 247, 0.3);
     --green: #34c759;
-    --green-glow: rgba(52, 199, 89, 0.3);
     --red: #ff3b30;
-    --red-glow: rgba(255, 59, 48, 0.3);
     --orange: #ff9500;
     --purple: #af52de;
-    --shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
-    --radius: 16px;
-    --radius-sm: 10px;
-    --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    --shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+    --radius: 12px;
+    --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html, body {
@@ -42,22 +37,6 @@ html, body {
 }
 
 /* ============================================================
-   SCROLLBAR
-   ============================================================ */
-
-::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-}
-::-webkit-scrollbar-track {
-    background: transparent;
-}
-::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
-    border-radius: 10px;
-}
-
-/* ============================================================
    LOADING
    ============================================================ */
 
@@ -69,7 +48,7 @@ html, body {
     align-items: center;
     justify-content: center;
     background: var(--bg-primary);
-    transition: opacity 0.6s ease, visibility 0.6s ease;
+    transition: opacity 0.5s ease, visibility 0.5s ease;
 }
 
 #loading-overlay.oculto {
@@ -82,17 +61,16 @@ html, body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 20px;
+    gap: 16px;
 }
 
 .spinner {
-    width: 52px;
-    height: 52px;
-    border: 3px solid rgba(79, 140, 247, 0.1);
+    width: 40px;
+    height: 40px;
+    border: 2.5px solid rgba(79, 140, 247, 0.1);
     border-top-color: var(--blue);
     border-radius: 50%;
-    animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-    box-shadow: 0 0 30px rgba(79, 140, 247, 0.1);
+    animation: spin 0.7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 @keyframes spin {
@@ -101,14 +79,14 @@ html, body {
 
 .loading-text {
     color: var(--text-secondary);
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 500;
     letter-spacing: 0.3px;
 }
 
 .loading-subtext {
     color: var(--text-muted);
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 300;
     letter-spacing: 4px;
     text-transform: uppercase;
@@ -141,40 +119,39 @@ html, body {
 }
 
 #grid-videos video.video-local {
-    border: 2px solid rgba(79, 140, 247, 0.3);
-    box-shadow: inset 0 0 30px rgba(79, 140, 247, 0.05);
+    border: 2px solid rgba(79, 140, 247, 0.25);
 }
 
 #grid-videos video.video-remoto {
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.03);
 }
 
 /* ============================================================
-   ESTADO
+   ESTADO - MÁS PEQUEÑO
    ============================================================ */
 
 #estado {
     position: fixed;
-    top: 20px;
+    top: 14px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 100;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 20px;
-    border-radius: 50px;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    gap: 8px;
+    padding: 5px 14px;
+    border-radius: 30px;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.04);
     box-shadow: var(--shadow);
     transition: var(--transition);
 }
 
 .estado-indicador {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--orange);
     animation: pulse-dot 1.5s ease-in-out infinite;
@@ -183,13 +160,13 @@ html, body {
 .estado-conectado .estado-indicador {
     background: var(--green);
     animation: none;
-    box-shadow: 0 0 12px rgba(52, 199, 89, 0.4);
+    box-shadow: 0 0 10px rgba(52, 199, 89, 0.3);
 }
 
 .estado-error .estado-indicador {
     background: var(--red);
     animation: pulse-dot 0.6s ease-in-out infinite;
-    box-shadow: 0 0 12px rgba(255, 59, 48, 0.4);
+    box-shadow: 0 0 10px rgba(255, 59, 48, 0.3);
 }
 
 @keyframes pulse-dot {
@@ -199,26 +176,26 @@ html, body {
 
 .estado-texto {
     color: #fff;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.2px;
 }
 
 /* ============================================================
-   PANEL CONTROLES
+   PANEL DE CONTROLES - COMPACTO
    ============================================================ */
 
 #panel-controles {
     position: fixed;
     left: 50%;
-    bottom: 28px;
+    bottom: 16px;
     transform: translateX(-50%);
     z-index: 100;
     width: auto;
-    max-width: calc(100vw - 32px);
+    max-width: calc(100vw - 20px);
     background: var(--bg-panel);
-    backdrop-filter: blur(30px);
-    -webkit-backdrop-filter: blur(30px);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     border: 1px solid var(--border-panel);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
@@ -228,30 +205,42 @@ html, body {
 .panel-inner {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    padding: 14px 22px;
+    gap: 6px;
+    padding: 8px 12px;
 }
 
 /* ============================================================
-   CONTROLES
+   FILA DE CONTROLES
    ============================================================ */
 
-.controles-principales {
+.controles-fila {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 4px;
 }
 
-.controles-secundarios {
+.controles-fila-inferior {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
+
+.separador {
+    width: 1px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 0 2px;
+}
+
+/* ============================================================
+   BOTONES - MÁS PEQUEÑOS
+   ============================================================ */
 
 .btn-control {
-    width: 46px;
-    height: 46px;
+    width: 34px;
+    height: 34px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -265,8 +254,8 @@ html, body {
 }
 
 .btn-control svg {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
     stroke: currentColor;
     stroke-width: 2;
     fill: none;
@@ -279,20 +268,6 @@ html, body {
 
 .btn-control:active {
     transform: scale(0.92);
-}
-
-.btn-badge {
-    position: absolute;
-    bottom: -4px;
-    right: -4px;
-    font-size: 7px;
-    font-weight: 700;
-    text-transform: uppercase;
-    background: rgba(0, 0, 0, 0.6);
-    padding: 1px 5px;
-    border-radius: 6px;
-    letter-spacing: 0.3px;
-    color: var(--text-muted);
 }
 
 /* Estados de botones */
@@ -388,36 +363,46 @@ html, body {
     background: rgba(255, 149, 0, 0.2);
 }
 
-#btn-diagnostico {
+.btn-diagnostico {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
     background: rgba(255, 255, 255, 0.02);
     color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    transition: var(--transition);
 }
 
-#btn-diagnostico:hover {
+.btn-diagnostico:hover {
     background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
 }
 
 /* ============================================================
-   VOLUMEN
+   VOLUMEN - COMPACTO
    ============================================================ */
 
 .control-volumen {
     display: flex;
     align-items: center;
-    gap: 10px;
-    width: 100%;
-    max-width: 180px;
-    padding: 2px 0;
+    gap: 6px;
+    flex: 1;
+    max-width: 140px;
 }
 
 .icono-volumen {
-    font-size: 14px;
+    font-size: 12px;
     color: var(--text-muted);
 }
 
 #volumen {
     flex: 1;
-    height: 3px;
+    height: 2px;
     appearance: none;
     -webkit-appearance: none;
     background: rgba(255, 255, 255, 0.08);
@@ -430,12 +415,12 @@ html, body {
 #volumen::-webkit-slider-thumb {
     appearance: none;
     -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     background: var(--blue);
     cursor: pointer;
-    box-shadow: 0 0 20px rgba(79, 140, 247, 0.3);
+    box-shadow: 0 0 12px rgba(79, 140, 247, 0.2);
     transition: var(--transition);
 }
 
@@ -444,8 +429,8 @@ html, body {
 }
 
 #volumen::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     background: var(--blue);
     cursor: pointer;
@@ -453,40 +438,36 @@ html, body {
 }
 
 .texto-volumen {
-    min-width: 34px;
+    min-width: 28px;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 600;
     text-align: center;
     font-variant-numeric: tabular-nums;
 }
 
 /* ============================================================
-   INFO CONEXIÓN
+   INFO CONEXIÓN - COMPACTA
    ============================================================ */
 
-#info-conexion {
+.info-conexion {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 5px 14px;
-    border-radius: var(--radius-sm);
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 6px;
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.02);
 }
 
 .info-item {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 3px;
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
-}
-
-.info-icon {
-    font-size: 12px;
-    opacity: 0.5;
+    white-space: nowrap;
 }
 
 .info-valor {
@@ -496,8 +477,8 @@ html, body {
 
 .info-divider {
     width: 1px;
-    height: 16px;
-    background: rgba(255, 255, 255, 0.05);
+    height: 12px;
+    background: rgba(255, 255, 255, 0.04);
 }
 
 /* ============================================================
@@ -506,65 +487,71 @@ html, body {
 
 @media (max-width: 768px) {
     #estado {
-        top: 12px;
-        padding: 6px 14px;
-        gap: 8px;
+        top: 10px;
+        padding: 4px 12px;
+        gap: 6px;
     }
 
     .estado-texto {
-        font-size: 11px;
-    }
-
-    #panel-controles {
-        bottom: 16px;
-        max-width: calc(100vw - 16px);
-        border-radius: 14px;
-    }
-
-    .panel-inner {
-        padding: 10px 14px;
-        gap: 8px;
-    }
-
-    .btn-control {
-        width: 40px;
-        height: 40px;
-    }
-
-    .btn-control svg {
-        width: 17px;
-        height: 17px;
-    }
-
-    .controles-principales {
-        gap: 8px;
-    }
-
-    .controles-secundarios {
-        gap: 5px;
-    }
-
-    .control-volumen {
-        max-width: 140px;
-    }
-
-    .btn-badge {
-        display: none;
-    }
-
-    #info-conexion {
-        padding: 4px 10px;
-        gap: 8px;
-        flex-wrap: wrap;
-        justify-content: center;
-    }
-
-    .info-item {
         font-size: 10px;
     }
 
-    .info-divider {
-        display: none;
+    #panel-controles {
+        bottom: 12px;
+        max-width: calc(100vw - 14px);
+        border-radius: 10px;
+    }
+
+    .panel-inner {
+        padding: 6px 10px;
+        gap: 5px;
+    }
+
+    .btn-control {
+        width: 30px;
+        height: 30px;
+    }
+
+    .btn-control svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    .controles-fila {
+        gap: 3px;
+    }
+
+    .separador {
+        height: 20px;
+        margin: 0 1px;
+    }
+
+    .control-volumen {
+        max-width: 100px;
+    }
+
+    .texto-volumen {
+        font-size: 9px;
+        min-width: 24px;
+    }
+
+    .info-item {
+        font-size: 9px;
+    }
+
+    .info-conexion {
+        padding: 2px 6px;
+        gap: 4px;
+    }
+
+    .btn-diagnostico {
+        width: 22px;
+        height: 22px;
+        font-size: 10px;
+    }
+
+    .icono-volumen {
+        font-size: 10px;
     }
 }
 
@@ -573,95 +560,128 @@ html, body {
         gap: 1px;
     }
 
+    #estado {
+        top: 8px;
+        padding: 3px 10px;
+        gap: 5px;
+    }
+
+    .estado-texto {
+        font-size: 9px;
+    }
+
+    .estado-indicador {
+        width: 5px;
+        height: 5px;
+    }
+
     #panel-controles {
-        bottom: 10px;
+        bottom: 8px;
         max-width: calc(100vw - 10px);
-        border-radius: 12px;
+        border-radius: 8px;
     }
 
     .panel-inner {
-        padding: 8px 10px;
-        gap: 6px;
-    }
-
-    .btn-control {
-        width: 36px;
-        height: 36px;
-    }
-
-    .btn-control svg {
-        width: 15px;
-        height: 15px;
-    }
-
-    .controles-principales {
-        gap: 6px;
-    }
-
-    .controles-secundarios {
+        padding: 5px 8px;
         gap: 4px;
     }
 
-    .control-volumen {
-        max-width: 110px;
-        gap: 6px;
+    .btn-control {
+        width: 26px;
+        height: 26px;
     }
 
-    .icono-volumen {
-        font-size: 12px;
-    }
-
-    #volumen::-webkit-slider-thumb {
+    .btn-control svg {
         width: 12px;
         height: 12px;
     }
 
-    .texto-volumen {
-        font-size: 10px;
-        min-width: 28px;
+    .controles-fila {
+        gap: 2px;
     }
 
-    #info-conexion {
-        padding: 3px 8px;
-        gap: 5px;
+    .separador {
+        height: 16px;
+        margin: 0;
+    }
+
+    .control-volumen {
+        max-width: 70px;
+        gap: 4px;
+    }
+
+    #volumen {
+        height: 2px;
+    }
+
+    #volumen::-webkit-slider-thumb {
+        width: 10px;
+        height: 10px;
+    }
+
+    .texto-volumen {
+        font-size: 8px;
+        min-width: 20px;
+    }
+
+    .info-conexion {
+        padding: 1px 4px;
+        gap: 3px;
+        border-radius: 4px;
     }
 
     .info-item {
+        font-size: 8px;
+        gap: 2px;
+    }
+
+    .info-divider {
+        height: 10px;
+    }
+
+    .btn-diagnostico {
+        width: 18px;
+        height: 18px;
         font-size: 9px;
-        gap: 3px;
     }
 
-    .info-icon {
-        font-size: 10px;
+    .icono-volumen {
+        font-size: 9px;
     }
 
-    .estado-texto {
-        font-size: 10px;
-    }
-
-    .estado-indicador {
-        width: 6px;
-        height: 6px;
+    .controles-fila-inferior {
+        gap: 4px;
+        padding-top: 3px;
     }
 }
 
 @media (max-width: 360px) {
     .btn-control {
-        width: 32px;
-        height: 32px;
+        width: 22px;
+        height: 22px;
     }
 
     .btn-control svg {
-        width: 13px;
-        height: 13px;
-    }
-
-    .controles-principales {
-        gap: 4px;
+        width: 10px;
+        height: 10px;
     }
 
     .control-volumen {
-        max-width: 80px;
+        max-width: 55px;
+    }
+
+    .info-item {
+        font-size: 7px;
+    }
+
+    .texto-volumen {
+        font-size: 7px;
+        min-width: 16px;
+    }
+
+    .panel-inner {
+        padding: 4px 6px;
+        gap: 3px;
     }
 }
 
@@ -694,7 +714,6 @@ html, body {
 @media (prefers-color-scheme: light) {
     :root {
         --bg-primary: #f0f0f5;
-        --bg-secondary: #e8e8ef;
         --bg-panel: rgba(255, 255, 255, 0.92);
         --border-panel: rgba(0, 0, 0, 0.04);
         --text-primary: #1a1a1a;
@@ -711,23 +730,6 @@ html, body {
         color: #1a1a1a;
     }
 
-    .info-item {
-        color: rgba(0, 0, 0, 0.5);
-    }
-
-    .info-valor {
-        color: #1a1a1a;
-    }
-
-    #info-conexion {
-        background: rgba(0, 0, 0, 0.02);
-        border-color: rgba(0, 0, 0, 0.03);
-    }
-
-    .info-divider {
-        background: rgba(0, 0, 0, 0.05);
-    }
-
     .btn-control {
         background: rgba(0, 0, 0, 0.03);
         color: #1a1a1a;
@@ -737,13 +739,21 @@ html, body {
         background: rgba(0, 0, 0, 0.06);
     }
 
-    .btn-badge {
-        background: rgba(255, 255, 255, 0.8);
-        color: rgba(0, 0, 0, 0.4);
+    .info-item {
+        color: rgba(0, 0, 0, 0.5);
     }
 
-    .control-volumen {
+    .info-valor {
+        color: #1a1a1a;
+    }
+
+    .info-conexion {
         background: rgba(0, 0, 0, 0.02);
+        border-color: rgba(0, 0, 0, 0.02);
+    }
+
+    .info-divider {
+        background: rgba(0, 0, 0, 0.04);
     }
 
     #volumen {
@@ -758,19 +768,19 @@ html, body {
         color: rgba(0, 0, 0, 0.3);
     }
 
-    #grid-videos video {
-        background: #e8e8ef;
+    .separador {
+        background: rgba(0, 0, 0, 0.06);
     }
 
-    .loading-text {
-        color: rgba(0, 0, 0, 0.5);
-    }
-
-    .loading-subtext {
+    .btn-diagnostico {
         color: rgba(0, 0, 0, 0.3);
     }
 
-    #grid-videos video.video-local {
-        border-color: rgba(79, 140, 247, 0.4);
+    .btn-diagnostico:hover {
+        color: rgba(0, 0, 0, 0.5);
+    }
+
+    #grid-videos video {
+        background: #e8e8ef;
     }
 }

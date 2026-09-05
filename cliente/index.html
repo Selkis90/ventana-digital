@@ -22,46 +22,43 @@
     <!-- Grid de videos -->
     <main id="grid-videos"></main>
 
-    <!-- Estado -->
+    <!-- Estado - Más pequeño -->
     <div id="estado" class="estado-conectando">
         <span class="estado-indicador"></span>
         <span class="estado-texto">Conectando...</span>
     </div>
 
-    <!-- Panel de controles -->
+    <!-- Panel de controles COMPACTO -->
     <div id="panel-controles">
         <div class="panel-inner">
             
-            <!-- Controles principales -->
-            <div class="controles-principales">
-                <button id="btn-microfono" class="btn-control" data-tooltip="Micrófono">
+            <!-- Fila superior: Botones principales -->
+            <div class="controles-fila">
+                <button id="btn-microfono" class="btn-control" title="Micrófono">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                         <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
                         <line x1="12" y1="19" x2="12" y2="23"/>
                         <line x1="8" y1="23" x2="16" y2="23"/>
                     </svg>
-                    <span class="btn-badge">Mic</span>
                 </button>
 
-                <button id="btn-camara" class="btn-control" data-tooltip="Cámara">
+                <button id="btn-camara" class="btn-control" title="Cámara">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                         <circle cx="12" cy="13" r="4"/>
                     </svg>
-                    <span class="btn-badge">Cam</span>
                 </button>
 
-                <button id="btn-silenciar" class="btn-control" data-tooltip="Silenciar 5s">
+                <button id="btn-silenciar" class="btn-control" title="Silenciar 5s">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M11 5L6 9H2v6h4l5 4V5z"/>
                         <line x1="23" y1="9" x2="17" y2="15"/>
                         <line x1="17" y1="9" x2="23" y2="15"/>
                     </svg>
-                    <span class="btn-badge">Mute</span>
                 </button>
 
-                <button id="btn-compartir" class="btn-control" data-tooltip="Compartir pantalla">
+                <button id="btn-compartir" class="btn-control" title="Compartir pantalla">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M4 4v16h16V4H4z"/>
                         <polyline points="8 9 12 5 16 9"/>
@@ -69,20 +66,11 @@
                         <line x1="4" y1="13" x2="8" y2="13"/>
                         <line x1="16" y1="13" x2="20" y2="13"/>
                     </svg>
-                    <span class="btn-badge">Share</span>
                 </button>
-            </div>
 
-            <!-- Volumen -->
-            <div class="control-volumen">
-                <span class="icono-volumen">🔊</span>
-                <input type="range" id="volumen" min="0" max="1" step="0.01" value="0.30">
-                <span id="volumen-label" class="texto-volumen">30%</span>
-            </div>
+                <div class="separador"></div>
 
-            <!-- Controles secundarios -->
-            <div class="controles-secundarios">
-                <button id="btn-fullscreen" class="btn-control" data-tooltip="Pantalla completa">
+                <button id="btn-fullscreen" class="btn-control" title="Pantalla completa">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="15 3 21 3 21 9"/>
                         <polyline points="9 21 3 21 3 15"/>
@@ -91,39 +79,31 @@
                     </svg>
                 </button>
 
-                <button id="btn-reconectar" class="btn-control" data-tooltip="Reconectar">
+                <button id="btn-reconectar" class="btn-control" title="Reconectar">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="23 4 23 10 17 10"/>
                         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                     </svg>
                 </button>
-
-                <button id="btn-diagnostico" class="btn-control" data-tooltip="Diagnóstico">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                        <polyline points="14 2 14 8 20 8"/>
-                        <line x1="16" y1="13" x2="8" y2="13"/>
-                        <line x1="16" y1="17" x2="8" y2="17"/>
-                    </svg>
-                </button>
             </div>
 
-            <!-- Info conexión -->
-            <div id="info-conexion">
-                <div class="info-item">
-                    <span class="info-icon">🆔</span>
-                    <span id="mi-id" class="info-valor">---</span>
+            <!-- Fila inferior: Volumen + Info -->
+            <div class="controles-fila-inferior">
+                <div class="control-volumen">
+                    <span class="icono-volumen">🔊</span>
+                    <input type="range" id="volumen" min="0" max="1" step="0.01" value="0.30">
+                    <span id="volumen-label" class="texto-volumen">30%</span>
                 </div>
-                <div class="info-divider"></div>
-                <div class="info-item">
-                    <span class="info-icon">👥</span>
-                    <span id="peer-conectado" class="info-valor">0</span>
+
+                <div class="info-conexion">
+                    <span id="mi-id" class="info-item">👤 <span class="info-valor">---</span></span>
+                    <span class="info-divider"></span>
+                    <span id="peer-conectado" class="info-item">👥 <span class="info-valor">0</span></span>
+                    <span class="info-divider"></span>
+                    <span id="calidad-red" class="info-item">📶 <span class="info-valor">Excelente</span></span>
                 </div>
-                <div class="info-divider"></div>
-                <div class="info-item">
-                    <span class="info-icon">📶</span>
-                    <span id="calidad-red" class="info-valor">Excelente</span>
-                </div>
+
+                <button id="btn-diagnostico" class="btn-diagnostico" title="Diagnóstico">⚙️</button>
             </div>
 
         </div>

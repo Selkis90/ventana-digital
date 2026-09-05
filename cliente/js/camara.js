@@ -40,6 +40,12 @@ const MAX_INTENTOS_RECONEXION = 5;
 const videoMap = new Map();
 const audioMap = new Map();
 
+// ✅ Variables para monitor de internet
+let monitorInternet = null;
+let internetStatus = true;
+let reintentosReconexion = 0;
+const MAX_REINTENTOS_RECONEXION = 10;
+
 // ============================================================
 // FUNCIONES DE UTILIDAD
 // ============================================================
@@ -257,6 +263,176 @@ async function restaurarAudioDespuesReconexion() {
 }
 
 // ============================================================
+// ✅ SOLUCIÓN 8: RECONEXIÓN POR PÉRDIDA DE INTERNET
+// ============================================================
+
+// ✅ Detectar cambios en la conexión de internet
+function iniciarMonitorInternet() {
+    console.log('🌐 Iniciando monitor de internet...');
+    
+    // ✅ Escuchar evento de conexión
+    window.addEventListener('online', () => {
+        console.log('🌐 Internet CONECTADO');
+        internetStatus = true;
+        reintentosReconexion = 0;
+        // ✅ Si estamos desconectados, reconectar
+        if (!room || room.state === 'disconnected') {
+            console.log('🔄 Reconectando por recuperación de internet...');
+            reconectarManual();
+        }
+    });
+    
+    window.addEventListener('offline', () => {
+        console.warn('🌐 Internet DESCONECTADO');
+        internetStatus = false;
+        // ✅ Mostrar estado de desconexión
+        actualizarEstado('Sin Internet', 'error');
+    });
+    
+    // ✅ Monitoreo periódico de conectividad
+    monitorInternet = setInterval(async () => {
+        // ✅ Si estamos desconectados y hay internet, reconectar
+        if (navigator.onLine && (!room || room.state === 'disconnected')) {
+            console.log('🔄 Detectada desconexión - Intentando reconectar...');
+            
+            // ✅ Verificar si realmente hay internet
+            try {
+                const response = await fetch('/get-token', { 
+                    method: 'HEAD',
+                    signal: AbortSignal.timeout(5000)
+                });
+                if (response.ok) {
+                    console.log('✅ Servidor accesible - Reconectando...');
+                    reintentosReconexion = 0;
+                    reconectarManual();
+                }
+            } catch (error) {
+                console.warn('⚠️ Servidor no accesible, esperando...');
+                reintentosReconexion++;
+                if (reintentosReconexion >= MAX_REINTENTOS_RECONEXION) {
+                    console.error('❌ Demasiados intentos fallidos');
+                    actualizarEstado('Error crítico - Recarga la página', 'error');
+                    reintentosReconexion = 0;
+                }
+            }
+        }
+    }, 10000); // ✅ Verificar cada 10 segundos
+}
+
+// ✅ Función para verificar salud de la conexión
+async function verificarSaludConexion() {
+    if (!room) return false;
+    
+    try {
+        // ✅ Verificar si el room sigue conectado
+        if (room.state !== 'connected') {
+            console.warn('⚠️ Room no está conectado - Estado:', room.state);
+            return false;
+        }
+        
+        // ✅ Verificar participantes
+        const participants = room.remoteParticipants?.size || 0;
+        console.log(`📊 Salud: ${participants} participantes remotos`);
+        
+        return true;
+    } catch (error) {
+        console.warn('⚠️ Error verificando salud:', error);
+        return false;
+    }
+}
+
+// ✅ Función para reconexión automática con backoff exponencial
+async function reconexionAutomatica() {
+    if (conectando || reconectando) {
+        console.log('⏳ Ya hay una reconexión en progreso');
+        return;
+    }
+    
+    console.log('🔄 Iniciando reconexión automática...');
+    
+    // ✅ Intentar reconectar con backoff exponencial
+    let intento = 0;
+    const maxIntentos = 5;
+    const delayBase = 1000; // 1 segundo
+    
+    while (intento < maxIntentos) {
+        if (!navigator.onLine) {
+            console.log('🌐 Sin internet - Esperando...');
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            intento++;
+            continue;
+        }
+        
+        try {
+            console.log(`🔄 Intento ${intento + 1}/${maxIntentos}`);
+            
+            // ✅ Verificar servidor
+            const response = await fetch('/get-token', { 
+                method: 'HEAD',
+                signal: AbortSignal.timeout(5000)
+            });
+            
+            if (response.ok) {
+                // ✅ Reconectar
+                await reconectarManual();
+                console.log('✅ Reconexión automática exitosa');
+                return true;
+            }
+        } catch (error) {
+            console.warn(`⚠️ Intento ${intento + 1} fallido:`, error.message);
+        }
+        
+        // ✅ Esperar con backoff exponencial
+        const delay = delayBase * Math.pow(2, intento);
+        console.log(`⏳ Esperando ${delay}ms antes del siguiente intento...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        intento++;
+    }
+    
+    console.error('❌ Fallaron todos los intentos de reconexión');
+    actualizarEstado('Error - Recarga manual', 'error');
+    return false;
+}
+
+// ✅ Función para guardar estado y recuperar después de reinicio
+function guardarEstadoSala() {
+    if (!room) return;
+    
+    try {
+        const estado = {
+            roomName: ROOM_NAME,
+            identity: room.localParticipant?.identity,
+            timestamp: Date.now()
+        };
+        sessionStorage.setItem('ventana_digital_estado', JSON.stringify(estado));
+        console.log('💾 Estado guardado:', estado);
+    } catch (error) {
+        console.warn('⚠️ Error guardando estado:', error);
+    }
+}
+
+function recuperarEstadoSala() {
+    try {
+        const data = sessionStorage.getItem('ventana_digital_estado');
+        if (!data) return null;
+        const estado = JSON.parse(data);
+        const tiempoTranscurrido = Date.now() - estado.timestamp;
+        
+        // ✅ Solo válido por 5 minutos
+        if (tiempoTranscurrido > 300000) {
+            sessionStorage.removeItem('ventana_digital_estado');
+            return null;
+        }
+        
+        console.log('💾 Estado recuperado:', estado);
+        return estado;
+    } catch (error) {
+        console.warn('⚠️ Error recuperando estado:', error);
+        return null;
+    }
+}
+
+// ============================================================
 // ✅ CONEXIÓN
 // ============================================================
 
@@ -462,32 +638,39 @@ function registrarEventosLiveKit() {
         actualizarLayout();
     });
 
-    room.on(LivekitClient.RoomEvent.Disconnected, reason => {
+    // ✅ EVENTO DISCONNECTED MEJORADO CON RECONEXIÓN AUTOMÁTICA
+    room.on(LivekitClient.RoomEvent.Disconnected, async (reason) => {
         reconectando = false;
         console.warn('⚠️ Desconectado:', reason);
+        
+        // ✅ Guardar estado para recuperación
+        guardarEstadoSala();
         
         if (reason === 'user' || reason === 'room_closed') {
             actualizarEstado('Desconectado', 'error');
             return;
         }
 
-        if (intentosReconexion < MAX_INTENTOS_RECONEXION) {
-            intentosReconexion++;
-            const delay = intentosReconexion * 2000;
-            console.log(`🔄 Reconexión en ${delay/1000}s (intento ${intentosReconexion}/${MAX_INTENTOS_RECONEXION})`);
-            actualizarEstado(`Reconectando... (${intentosReconexion}/${MAX_INTENTOS_RECONEXION})`, 'conectando');
+        // ✅ Si hay internet, intentar reconectar automáticamente
+        if (navigator.onLine) {
+            console.log('🌐 Internet disponible - Iniciando reconexión automática');
+            actualizarEstado('Reconectando automáticamente...', 'conectando');
             
-            if (reconexionTimeout) {
-                clearTimeout(reconexionTimeout);
-            }
-            reconexionTimeout = setTimeout(() => {
-                reconexionTimeout = null;
-                if (!room || room.state === 'disconnected') {
-                    conectarLiveKit();
-                }
-            }, delay);
+            // ✅ Intentar reconexión automática
+            await reconexionAutomatica();
         } else {
-            actualizarEstado('Error - Reintenta manual', 'error');
+            console.log('🌐 Sin internet - Esperando conexión');
+            actualizarEstado('Esperando internet...', 'conectando');
+            
+            // ✅ Esperar a que vuelva el internet
+            const esperarInternet = async () => {
+                while (!navigator.onLine) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+                console.log('🌐 Internet recuperado - Reconectando...');
+                await reconexionAutomatica();
+            };
+            esperarInternet();
         }
     });
 }
@@ -1192,6 +1375,12 @@ function diagnostico() {
                 }
             }
         }
+        
+        // ✅ Información de internet
+        info += '\n🌐 ESTADO DE INTERNET:\n';
+        info += `   📶 Online: ${navigator.onLine ? 'SÍ' : 'NO'}\n`;
+        info += `   🔄 Reconectando: ${reconectando ? 'SÍ' : 'NO'}\n`;
+        info += `   📊 Intentos: ${reintentosReconexion}/${MAX_REINTENTOS_RECONEXION}\n`;
     } else {
         info += '❌ Room: NO CONECTADO\n';
     }
@@ -1247,9 +1436,13 @@ document.addEventListener('click', async () => {
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 4.3 - Audio Estable');
+    console.log('📋 Versión: 4.4 - Reconexión Total');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
+    console.log('🌐 Monitor de internet activado');
+    
+    // ✅ INICIAR MONITOR DE INTERNET
+    iniciarMonitorInternet();
     
     if (volumen) {
         volumen.value = '1.0';

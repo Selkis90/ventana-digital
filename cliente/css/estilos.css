@@ -9,27 +9,32 @@
 }
 
 :root {
-    --fondo-principal: #0a0a0f;
-    --fondo-panel: rgba(18, 18, 30, 0.92);
-    --borde-panel: rgba(255, 255, 255, 0.08);
-    --texto-principal: #ffffff;
-    --texto-secundario: rgba(255, 255, 255, 0.6);
-    --azul: #4f8cf7;
-    --verde: #34c759;
-    --rojo: #ff3b30;
-    --naranja: #ff9500;
-    --morado: #af52de;
-    --sombra: 0 8px 32px rgba(0, 0, 0, 0.6);
-    --radio: 16px;
-    --transicion: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --bg-primary: #08080e;
+    --bg-secondary: #0f0f1a;
+    --bg-panel: rgba(18, 18, 35, 0.92);
+    --border-panel: rgba(255, 255, 255, 0.06);
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.5);
+    --text-muted: rgba(255, 255, 255, 0.3);
+    --blue: #4f8cf7;
+    --blue-glow: rgba(79, 140, 247, 0.3);
+    --green: #34c759;
+    --green-glow: rgba(52, 199, 89, 0.3);
+    --red: #ff3b30;
+    --red-glow: rgba(255, 59, 48, 0.3);
+    --orange: #ff9500;
+    --purple: #af52de;
+    --shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+    --radius: 16px;
+    --radius-sm: 10px;
+    --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-html,
-body {
+html, body {
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background: var(--fondo-principal);
+    background: var(--bg-primary);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     touch-action: manipulation;
     user-select: none;
@@ -37,7 +42,23 @@ body {
 }
 
 /* ============================================================
-   LOADING OVERLAY
+   SCROLLBAR
+   ============================================================ */
+
+::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+}
+
+/* ============================================================
+   LOADING
    ============================================================ */
 
 #loading-overlay {
@@ -47,7 +68,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--fondo-principal);
+    background: var(--bg-primary);
     transition: opacity 0.6s ease, visibility 0.6s ease;
 }
 
@@ -61,16 +82,17 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 24px;
+    gap: 20px;
 }
 
 .spinner {
-    width: 48px;
-    height: 48px;
-    border: 3px solid rgba(79, 140, 247, 0.15);
-    border-top-color: var(--azul);
+    width: 52px;
+    height: 52px;
+    border: 3px solid rgba(79, 140, 247, 0.1);
+    border-top-color: var(--blue);
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    box-shadow: 0 0 30px rgba(79, 140, 247, 0.1);
 }
 
 @keyframes spin {
@@ -78,14 +100,22 @@ body {
 }
 
 .loading-text {
-    color: var(--texto-secundario);
-    font-size: 14px;
+    color: var(--text-secondary);
+    font-size: 15px;
     font-weight: 500;
     letter-spacing: 0.3px;
 }
 
+.loading-subtext {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 300;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+}
+
 /* ============================================================
-   GRID DE VIDEOS
+   GRID VIDEOS
    ============================================================ */
 
 #grid-videos {
@@ -96,9 +126,8 @@ body {
     display: grid;
     grid-template-columns: 1fr;
     grid-template-rows: 1fr;
-    gap: 3px;
-    padding: 0;
-    background: var(--fondo-principal);
+    gap: 2px;
+    background: var(--bg-primary);
     z-index: 1;
     overflow: hidden;
 }
@@ -108,17 +137,20 @@ body {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    background: #111118;
-    border-radius: 0;
+    background: #0a0a12;
 }
 
-/* Video local con borde sutil */
-#grid-videos video#video-local {
+#grid-videos video.video-local {
     border: 2px solid rgba(79, 140, 247, 0.3);
+    box-shadow: inset 0 0 30px rgba(79, 140, 247, 0.05);
+}
+
+#grid-videos video.video-remoto {
+    border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 /* ============================================================
-   ESTADO DE CONEXIÓN
+   ESTADO
    ============================================================ */
 
 #estado {
@@ -130,42 +162,39 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 18px;
+    padding: 8px 20px;
     border-radius: 50px;
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    box-shadow: var(--sombra);
-    transition: var(--transicion);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: var(--shadow);
+    transition: var(--transition);
 }
 
 .estado-indicador {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--naranja);
-    animation: pulse 1.5s infinite;
-}
-
-.estado-conectando .estado-indicador {
-    background: var(--naranja);
-    animation: pulse 1.5s infinite;
+    background: var(--orange);
+    animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
 .estado-conectado .estado-indicador {
-    background: var(--verde);
+    background: var(--green);
     animation: none;
+    box-shadow: 0 0 12px rgba(52, 199, 89, 0.4);
 }
 
 .estado-error .estado-indicador {
-    background: var(--rojo);
-    animation: pulse 0.8s infinite;
+    background: var(--red);
+    animation: pulse-dot 0.6s ease-in-out infinite;
+    box-shadow: 0 0 12px rgba(255, 59, 48, 0.4);
 }
 
-@keyframes pulse {
+@keyframes pulse-dot {
     0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(0.8); }
+    50% { opacity: 0.4; transform: scale(0.7); }
 }
 
 .estado-texto {
@@ -176,24 +205,24 @@ body {
 }
 
 /* ============================================================
-   PANEL DE CONTROLES
+   PANEL CONTROLES
    ============================================================ */
 
 #panel-controles {
     position: fixed;
     left: 50%;
-    bottom: 24px;
+    bottom: 28px;
     transform: translateX(-50%);
     z-index: 100;
     width: auto;
     max-width: calc(100vw - 32px);
-    background: var(--fondo-panel);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid var(--borde-panel);
-    border-radius: var(--radio);
-    box-shadow: var(--sombra);
-    transition: var(--transicion);
+    background: var(--bg-panel);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border: 1px solid var(--border-panel);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    transition: var(--transition);
 }
 
 .panel-inner {
@@ -201,37 +230,37 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 10px;
-    padding: 14px 20px;
+    padding: 14px 22px;
 }
 
 /* ============================================================
-   CONTROLES PRINCIPALES
+   CONTROLES
    ============================================================ */
 
 .controles-principales {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .controles-secundarios {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .btn-control {
-    width: 44px;
-    height: 44px;
+    width: 46px;
+    height: 46px;
     display: flex;
     align-items: center;
     justify-content: center;
     border: none;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.04);
     color: #fff;
     cursor: pointer;
-    transition: var(--transicion);
+    transition: var(--transition);
     position: relative;
 }
 
@@ -244,7 +273,7 @@ body {
 }
 
 .btn-control:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
     transform: scale(1.05);
 }
 
@@ -252,107 +281,124 @@ body {
     transform: scale(0.92);
 }
 
-.btn-control:focus-visible {
-    outline: 2px solid rgba(255, 255, 255, 0.5);
-    outline-offset: 2px;
+.btn-badge {
+    position: absolute;
+    bottom: -4px;
+    right: -4px;
+    font-size: 7px;
+    font-weight: 700;
+    text-transform: uppercase;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 1px 5px;
+    border-radius: 6px;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
 }
 
-/* Colores específicos */
+/* Estados de botones */
 #btn-microfono {
-    background: rgba(79, 140, 247, 0.25);
-    color: var(--azul);
+    background: rgba(79, 140, 247, 0.15);
+    color: var(--blue);
 }
 
 #btn-microfono:hover {
-    background: rgba(79, 140, 247, 0.35);
+    background: rgba(79, 140, 247, 0.25);
 }
 
 #btn-microfono.inactivo {
-    background: rgba(255, 59, 48, 0.2);
-    color: var(--rojo);
+    background: rgba(255, 59, 48, 0.15);
+    color: var(--red);
 }
 
 #btn-microfono.inactivo:hover {
-    background: rgba(255, 59, 48, 0.3);
+    background: rgba(255, 59, 48, 0.25);
+}
+
+#btn-microfono.activo {
+    background: rgba(52, 199, 89, 0.15);
+    color: var(--green);
+}
+
+#btn-microfono.activo:hover {
+    background: rgba(52, 199, 89, 0.25);
 }
 
 #btn-camara {
-    background: rgba(52, 199, 89, 0.2);
-    color: var(--verde);
+    background: rgba(52, 199, 89, 0.12);
+    color: var(--green);
 }
 
 #btn-camara:hover {
-    background: rgba(52, 199, 89, 0.3);
+    background: rgba(52, 199, 89, 0.22);
 }
 
 #btn-camara.inactivo {
-    background: rgba(255, 59, 48, 0.2);
-    color: var(--rojo);
+    background: rgba(255, 59, 48, 0.12);
+    color: var(--red);
 }
 
 #btn-camara.inactivo:hover {
-    background: rgba(255, 59, 48, 0.3);
+    background: rgba(255, 59, 48, 0.22);
 }
 
 #btn-silenciar {
-    background: rgba(255, 149, 0, 0.2);
-    color: var(--naranja);
+    background: rgba(255, 149, 0, 0.12);
+    color: var(--orange);
 }
 
 #btn-silenciar:hover {
-    background: rgba(255, 149, 0, 0.3);
+    background: rgba(255, 149, 0, 0.22);
 }
 
 #btn-silenciar.activo {
-    background: rgba(255, 59, 48, 0.25);
-    color: var(--rojo);
-    animation: parpadeo-boton 0.5s infinite alternate;
+    background: rgba(255, 59, 48, 0.2);
+    color: var(--red);
+    animation: pulse-btn 0.5s ease-in-out infinite alternate;
 }
 
-@keyframes parpadeo-boton {
-    from { opacity: 1; }
-    to { opacity: 0.5; }
+@keyframes pulse-btn {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0.5; transform: scale(0.95); }
 }
 
-/* Botones secundarios */
 #btn-compartir {
-    background: rgba(175, 82, 222, 0.2);
-    color: var(--morado);
+    background: rgba(175, 82, 222, 0.12);
+    color: var(--purple);
 }
 
 #btn-compartir:hover {
-    background: rgba(175, 82, 222, 0.3);
+    background: rgba(175, 82, 222, 0.22);
 }
 
 #btn-fullscreen {
-    background: rgba(255, 255, 255, 0.07);
-    color: #fff;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary);
 }
 
 #btn-fullscreen:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 #btn-reconectar {
-    background: rgba(255, 149, 0, 0.15);
-    color: var(--naranja);
+    background: rgba(255, 149, 0, 0.1);
+    color: var(--orange);
 }
 
 #btn-reconectar:hover {
-    background: rgba(255, 149, 0, 0.25);
+    background: rgba(255, 149, 0, 0.2);
 }
 
 #btn-diagnostico {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--texto-secundario);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-muted);
 }
 
 #btn-diagnostico:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 /* ============================================================
-   CONTROL DE VOLUMEN
+   VOLUMEN
    ============================================================ */
 
 .control-volumen {
@@ -360,89 +406,98 @@ body {
     align-items: center;
     gap: 10px;
     width: 100%;
-    max-width: 200px;
-    padding: 4px 0;
+    max-width: 180px;
+    padding: 2px 0;
 }
 
 .icono-volumen {
-    font-size: 16px;
-    opacity: 0.7;
+    font-size: 14px;
+    color: var(--text-muted);
 }
 
 #volumen {
     flex: 1;
-    height: 4px;
+    height: 3px;
     appearance: none;
     -webkit-appearance: none;
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
     border-radius: 4px;
     outline: none;
     cursor: pointer;
+    transition: var(--transition);
 }
 
 #volumen::-webkit-slider-thumb {
     appearance: none;
     -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
-    background: var(--azul);
+    background: var(--blue);
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(79, 140, 247, 0.4);
+    box-shadow: 0 0 20px rgba(79, 140, 247, 0.3);
+    transition: var(--transition);
+}
+
+#volumen::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
 }
 
 #volumen::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
-    background: var(--azul);
+    background: var(--blue);
     cursor: pointer;
     border: none;
 }
 
 .texto-volumen {
-    min-width: 36px;
-    color: var(--texto-secundario);
+    min-width: 34px;
+    color: var(--text-secondary);
     font-size: 12px;
     font-weight: 600;
     text-align: center;
+    font-variant-numeric: tabular-nums;
 }
 
 /* ============================================================
-   INFO DE CONEXIÓN
+   INFO CONEXIÓN
    ============================================================ */
 
 #info-conexion {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 6px 14px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    padding: 5px 14px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.03);
 }
 
 .info-item {
     display: flex;
     align-items: center;
-    gap: 4px;
-    color: var(--texto-secundario);
+    gap: 5px;
+    color: var(--text-secondary);
     font-size: 11px;
+    font-weight: 500;
 }
 
-.info-label {
-    font-weight: 400;
+.info-icon {
+    font-size: 12px;
+    opacity: 0.5;
 }
 
 .info-valor {
-    font-weight: 600;
     color: #fff;
+    font-weight: 600;
 }
 
-.info-divisor {
+.info-divider {
     width: 1px;
     height: 16px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 /* ============================================================
@@ -461,8 +516,9 @@ body {
     }
 
     #panel-controles {
-        bottom: 14px;
-        max-width: calc(100vw - 20px);
+        bottom: 16px;
+        max-width: calc(100vw - 16px);
+        border-radius: 14px;
     }
 
     .panel-inner {
@@ -471,8 +527,8 @@ body {
     }
 
     .btn-control {
-        width: 38px;
-        height: 38px;
+        width: 40px;
+        height: 40px;
     }
 
     .btn-control svg {
@@ -485,11 +541,15 @@ body {
     }
 
     .controles-secundarios {
-        gap: 6px;
+        gap: 5px;
     }
 
     .control-volumen {
-        max-width: 150px;
+        max-width: 140px;
+    }
+
+    .btn-badge {
+        display: none;
     }
 
     #info-conexion {
@@ -503,7 +563,7 @@ body {
         font-size: 10px;
     }
 
-    .info-divisor {
+    .info-divider {
         display: none;
     }
 }
@@ -515,8 +575,8 @@ body {
 
     #panel-controles {
         bottom: 10px;
-        max-width: calc(100vw - 12px);
-        border-radius: 14px;
+        max-width: calc(100vw - 10px);
+        border-radius: 12px;
     }
 
     .panel-inner {
@@ -525,8 +585,8 @@ body {
     }
 
     .btn-control {
-        width: 34px;
-        height: 34px;
+        width: 36px;
+        height: 36px;
     }
 
     .btn-control svg {
@@ -543,27 +603,36 @@ body {
     }
 
     .control-volumen {
-        max-width: 120px;
+        max-width: 110px;
         gap: 6px;
     }
 
+    .icono-volumen {
+        font-size: 12px;
+    }
+
     #volumen::-webkit-slider-thumb {
-        width: 14px;
-        height: 14px;
+        width: 12px;
+        height: 12px;
     }
 
     .texto-volumen {
         font-size: 10px;
-        min-width: 30px;
+        min-width: 28px;
     }
 
     #info-conexion {
         padding: 3px 8px;
-        gap: 6px;
+        gap: 5px;
     }
 
     .info-item {
         font-size: 9px;
+        gap: 3px;
+    }
+
+    .info-icon {
+        font-size: 10px;
     }
 
     .estado-texto {
@@ -578,8 +647,8 @@ body {
 
 @media (max-width: 360px) {
     .btn-control {
-        width: 30px;
-        height: 30px;
+        width: 32px;
+        height: 32px;
     }
 
     .btn-control svg {
@@ -587,17 +656,17 @@ body {
         height: 13px;
     }
 
-    .control-volumen {
-        max-width: 90px;
+    .controles-principales {
+        gap: 4px;
     }
 
-    .icono-volumen {
-        font-size: 13px;
+    .control-volumen {
+        max-width: 80px;
     }
 }
 
 /* ============================================================
-   PANTALLA COMPLETA
+   FULLSCREEN
    ============================================================ */
 
 #grid-videos:fullscreen {
@@ -622,19 +691,20 @@ body {
     }
 }
 
-/* Soporte para modo oscuro/claro */
 @media (prefers-color-scheme: light) {
     :root {
-        --fondo-principal: #f5f5fa;
-        --fondo-panel: rgba(255, 255, 255, 0.92);
-        --borde-panel: rgba(0, 0, 0, 0.06);
-        --texto-principal: #1a1a1a;
-        --texto-secundario: rgba(0, 0, 0, 0.5);
+        --bg-primary: #f0f0f5;
+        --bg-secondary: #e8e8ef;
+        --bg-panel: rgba(255, 255, 255, 0.92);
+        --border-panel: rgba(0, 0, 0, 0.04);
+        --text-primary: #1a1a1a;
+        --text-secondary: rgba(0, 0, 0, 0.5);
+        --text-muted: rgba(0, 0, 0, 0.3);
     }
 
     #estado {
         background: rgba(255, 255, 255, 0.85);
-        border-color: rgba(0, 0, 0, 0.06);
+        border-color: rgba(0, 0, 0, 0.04);
     }
 
     .estado-texto {
@@ -650,37 +720,33 @@ body {
     }
 
     #info-conexion {
-        background: rgba(0, 0, 0, 0.04);
-        border-color: rgba(0, 0, 0, 0.04);
+        background: rgba(0, 0, 0, 0.02);
+        border-color: rgba(0, 0, 0, 0.03);
     }
 
-    .info-divisor {
-        background: rgba(0, 0, 0, 0.08);
+    .info-divider {
+        background: rgba(0, 0, 0, 0.05);
     }
 
     .btn-control {
-        background: rgba(0, 0, 0, 0.06);
+        background: rgba(0, 0, 0, 0.03);
         color: #1a1a1a;
     }
 
     .btn-control:hover {
-        background: rgba(0, 0, 0, 0.1);
-    }
-
-    #btn-fullscreen {
         background: rgba(0, 0, 0, 0.06);
     }
 
-    #btn-fullscreen:hover {
-        background: rgba(0, 0, 0, 0.1);
+    .btn-badge {
+        background: rgba(255, 255, 255, 0.8);
+        color: rgba(0, 0, 0, 0.4);
     }
 
-    #btn-diagnostico {
-        background: rgba(0, 0, 0, 0.04);
-        color: rgba(0, 0, 0, 0.5);
+    .control-volumen {
+        background: rgba(0, 0, 0, 0.02);
     }
 
-    #btn-diagnostico:hover {
+    #volumen {
         background: rgba(0, 0, 0, 0.08);
     }
 
@@ -688,15 +754,23 @@ body {
         color: rgba(0, 0, 0, 0.5);
     }
 
-    #volumen {
-        background: rgba(0, 0, 0, 0.12);
+    .icono-volumen {
+        color: rgba(0, 0, 0, 0.3);
     }
 
-    .icono-volumen {
-        opacity: 0.6;
+    #grid-videos video {
+        background: #e8e8ef;
     }
 
     .loading-text {
         color: rgba(0, 0, 0, 0.5);
+    }
+
+    .loading-subtext {
+        color: rgba(0, 0, 0, 0.3);
+    }
+
+    #grid-videos video.video-local {
+        border-color: rgba(79, 140, 247, 0.4);
     }
 }

@@ -1,213 +1,143 @@
-```html
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-    >
-
-    <meta name="theme-color" content="#0d0d0d">
-
-    <title>Ventana Digital - Videollamada</title>
-
-    <!-- Estilos principales -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0a0a0f">
+    <title>Ventana Digital Pro</title>
     <link rel="stylesheet" href="css/estilos.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
-
 <body>
 
-    <!-- ==================================================
-         CONTENEDOR PRINCIPAL DE VIDEOS
-         ================================================== -->
-    <main id="grid-videos">
-        <!--
-            Los videos se agregan dinámicamente desde camara.js.
-        -->
-    </main>
-
-
-    <!-- ==================================================
-         ESTADO DE LA CONEXIÓN
-         ================================================== -->
-    <div
-        id="estado"
-        class="inicializando"
-        role="status"
-        aria-live="polite"
-    >
-        🔄 Inicializando...
+    <!-- Overlay de carga -->
+    <div id="loading-overlay">
+        <div class="loader-container">
+            <div class="spinner"></div>
+            <p class="loading-text">Inicializando conexión...</p>
+        </div>
     </div>
 
+    <!-- Grid de videos -->
+    <main id="grid-videos">
+        <!-- Videos dinámicos -->
+    </main>
 
-    <!-- ==================================================
-         CONTROLES
-         ================================================== -->
-    <section id="controles">
+    <!-- Estado de conexión -->
+    <div id="estado" class="estado-conectando" role="status" aria-live="polite">
+        <span class="estado-indicador"></span>
+        <span class="estado-texto">Conectando...</span>
+    </div>
 
-        <!-- CONTROLES PRINCIPALES -->
-        <div class="control-group">
+    <!-- Panel de controles -->
+    <div id="panel-controles">
+        <div class="panel-inner">
+            
+            <!-- Controles principales -->
+            <div class="controles-principales">
+                <button id="btn-microfono" class="btn-control" type="button" title="Micrófono">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                    </svg>
+                </button>
 
-            <button
-                id="btn-microfono"
-                class="btn-control"
-                type="button"
-                title="Activar o silenciar micrófono"
-                aria-label="Micrófono"
-            >
-                🎤
-            </button>
+                <button id="btn-camara" class="btn-control" type="button" title="Cámara">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                        <circle cx="12" cy="13" r="4"/>
+                    </svg>
+                </button>
 
-            <button
-                id="btn-camara"
-                class="btn-control"
-                type="button"
-                title="Activar o apagar cámara"
-                aria-label="Cámara"
-            >
-                📷
-            </button>
+                <button id="btn-silenciar" class="btn-control" type="button" title="Silenciar 5s">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+                        <line x1="23" y1="9" x2="17" y2="15"/>
+                        <line x1="17" y1="9" x2="23" y2="15"/>
+                    </svg>
+                </button>
+            </div>
 
-            <button
-                id="btn-silenciar"
-                class="btn-control"
-                type="button"
-                title="Silenciar temporalmente el micrófono"
-                aria-label="Silenciar"
-            >
-                🔇
-            </button>
+            <!-- Control de volumen -->
+            <div class="control-volumen">
+                <span class="icono-volumen">🔊</span>
+                <input type="range" id="volumen" min="0" max="1" step="0.01" value="0.30">
+                <span id="volumen-label" class="texto-volumen">30%</span>
+            </div>
 
-        </div>
+            <!-- Controles secundarios -->
+            <div class="controles-secundarios">
+                <button id="btn-compartir" class="btn-control" type="button" title="Compartir pantalla">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 4v16h16V4H4z"/>
+                        <polyline points="8 9 12 5 16 9"/>
+                        <line x1="12" y1="5" x2="12" y2="15"/>
+                        <line x1="4" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="13" x2="20" y2="13"/>
+                    </svg>
+                </button>
 
+                <button id="btn-fullscreen" class="btn-control" type="button" title="Pantalla completa">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="15 3 21 3 21 9"/>
+                        <polyline points="9 21 3 21 3 15"/>
+                        <line x1="21" y1="3" x2="14" y2="10"/>
+                        <line x1="3" y1="21" x2="10" y2="14"/>
+                    </svg>
+                </button>
 
-        <!-- ==================================================
-             CONTROL DE VOLUMEN
-             ================================================== -->
-        <div class="control-group volumen-group">
+                <button id="btn-reconectar" class="btn-control" type="button" title="Reconectar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="23 4 23 10 17 10"/>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>
+                </button>
 
-            <label
-                for="volumen"
-                class="label-volumen"
-                title="Volumen"
-            >
-                🔊
-            </label>
+                <button id="btn-diagnostico" class="btn-control" type="button" title="Diagnóstico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                </button>
+            </div>
 
-            <input
-                type="range"
-                id="volumen"
-                min="0"
-                max="1"
-                step="0.01"
-                value="0.30"
-                aria-label="Volumen"
-            >
-
-            <span
-                id="volumen-label"
-                class="volumen-text"
-            >
-                30%
-            </span>
-
-        </div>
-
-
-        <!-- ==================================================
-             CONTROLES SECUNDARIOS
-             ================================================== -->
-        <div class="control-group">
-
-            <button
-                id="btn-fullscreen"
-                class="btn-control"
-                type="button"
-                title="Pantalla completa"
-                aria-label="Pantalla completa"
-            >
-                ⛶
-            </button>
-
-            <button
-                id="btn-reconectar"
-                class="btn-control"
-                type="button"
-                title="Reconectar"
-                aria-label="Reconectar"
-            >
-                🔄
-            </button>
-
-            <button
-                id="btn-diagnostico"
-                class="btn-control"
-                type="button"
-                title="Diagnóstico"
-                aria-label="Diagnóstico"
-            >
-                📊
-            </button>
+            <!-- Info de conexión -->
+            <div id="info-conexion">
+                <span id="mi-id" class="info-item">
+                    <span class="info-label">ID:</span>
+                    <span class="info-valor">---</span>
+                </span>
+                <span class="info-divisor"></span>
+                <span id="peer-conectado" class="info-item">
+                    <span class="info-label">Participantes:</span>
+                    <span class="info-valor">0</span>
+                </span>
+                <span class="info-divisor"></span>
+                <span id="calidad-red" class="info-item">
+                    <span class="info-label">Calidad:</span>
+                    <span class="info-valor">Excelente</span>
+                </span>
+            </div>
 
         </div>
+    </div>
 
-
-        <!-- ==================================================
-             INFORMACIÓN DE CONEXIÓN
-             ================================================== -->
-        <div
-            id="info-conexion"
-            class="info-conexion"
-        >
-
-            <span id="mi-id">
-                ID: Conectando...
-            </span>
-
-            <span id="peer-conectado">
-                Participantes: 0
-            </span>
-
-        </div>
-
-    </section>
-
-
-    <!-- ==================================================
-         SOCKET.IO
-         ================================================== -->
+    <!-- Scripts -->
     <script src="/socket.io/socket.io.js"></script>
-
-
-    <!-- ==================================================
-         LIVEKIT CLIENT
-         ================================================== -->
-    <script
-        src="https://cdn.jsdelivr.net/npm/livekit-client@1.8.0/dist/livekit-client.umd.min.js"
-    ></script>
-
-
-    <!-- ==================================================
-         LÓGICA PRINCIPAL
-         ================================================== -->
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@1.8.0/dist/livekit-client.umd.min.js"></script>
     <script src="js/camara.js"></script>
 
-
-    <!-- ==================================================
-         HEALTH CHECK
-         Mantiene activa la aplicación en el servidor.
-         ================================================== -->
+    <!-- Health check -->
     <script>
         setInterval(() => {
-            fetch('/health', {
-                method: 'GET',
-                cache: 'no-store'
-            }).catch(() => {});
+            fetch('/health', { method: 'GET', cache: 'no-store' }).catch(() => {});
         }, 300000);
     </script>
 
 </body>
 </html>
-```

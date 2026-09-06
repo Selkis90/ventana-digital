@@ -29,7 +29,7 @@ let conectando = false;
 let reconectando = false;
 let audioMuted = false;
 
-// ✅ SOLUCIÓN 1: VOLUMEN POR DEFECTO AL 100%
+// ✅ VOLUMEN POR DEFECTO AL 100%
 let volumenActual = 1.0;
 
 let reconexionTimeout = null;
@@ -74,7 +74,7 @@ function mostrarLoading() {
 }
 
 // ============================================================
-// ✅ SOLUCIÓN 4: OBTENER AUDIO CON MEJOR CONFIGURACIÓN
+// ✅ OBTENER AUDIO CON MEJOR CONFIGURACIÓN
 // ============================================================
 
 async function obtenerAudioProfesional() {
@@ -145,7 +145,80 @@ async function obtenerAudioProfesional() {
 }
 
 // ============================================================
-// ✅ SOLUCIÓN 6: FORZAR REANUDACIÓN DE AUDIO CONTEXT
+// ✅ FORZAR SUSCRIPCIÓN DE AUDIO PARA TODOS LOS PARTICIPANTES
+// ============================================================
+
+async function forzarSuscripcionAudio(participant) {
+    if (!participant) return;
+    
+    console.log(`🔊 Forzando suscripción de audio para: ${participant.identity}`);
+    
+    try {
+        const audioPublications = [];
+        participant.trackPublications.forEach((pub) => {
+            if (pub.kind === 'audio') {
+                audioPublications.push(pub);
+            }
+        });
+        
+        if (audioPublications.length === 0) {
+            console.log(`   ⚠️ No hay publicaciones de audio para ${participant.identity}`);
+            return;
+        }
+        
+        console.log(`   📡 Encontradas ${audioPublications.length} publicaciones de audio`);
+        
+        for (const pub of audioPublications) {
+            if (!pub.isSubscribed) {
+                console.log(`   🔄 Forzando suscripción a audio de ${participant.identity}...`);
+                try {
+                    if (typeof pub.subscribe === 'function') {
+                        await pub.subscribe();
+                        console.log(`   ✅ Suscripción forzada exitosa`);
+                    }
+                } catch (error) {
+                    console.warn(`   ⚠️ Error forzando suscripción:`, error);
+                }
+            } else {
+                console.log(`   ✅ Audio ya está suscrito para ${participant.identity}`);
+            }
+            
+            if (pub.isSubscribed && pub.track) {
+                console.log(`   🔊 Creando audio para ${participant.identity}...`);
+                agregarAudioRemotoConGanancia(pub.track, participant);
+            }
+        }
+    } catch (error) {
+        console.error(`❌ Error forzando suscripción para ${participant.identity}:`, error);
+    }
+}
+
+// ✅ Función para verificar y reparar todos los participantes
+async function repararTodosLosAudios() {
+    console.log('🔧 Reparando todos los audios...');
+    
+    if (!room) {
+        console.warn('⚠️ Room no disponible');
+        return;
+    }
+    
+    if (room.remoteParticipants && room.remoteParticipants.size > 0) {
+        const participants = Array.from(room.remoteParticipants.values());
+        console.log(`👥 Procesando ${participants.length} participantes...`);
+        
+        for (const participant of participants) {
+            await forzarSuscripcionAudio(participant);
+        }
+    } else {
+        console.log('👥 No hay participantes remotos');
+    }
+    
+    console.log(`📊 Audios en mapa: ${audioMap.size}`);
+    console.log(`📻 Audios en DOM: ${document.querySelectorAll('audio[data-identity]').length}`);
+}
+
+// ============================================================
+// ✅ FORZAR REANUDACIÓN DE AUDIO CONTEXT
 // ============================================================
 
 async function forzarReanudacionAudio() {
@@ -162,14 +235,24 @@ async function forzarReanudacionAudio() {
                     console.log(`✅ AudioContext reanudado para: ${identity}`);
                 } else if (audioInfo.context.state === 'running') {
                     console.log(`✅ AudioContext ya está running para: ${identity}`);
-                } else {
-                    console.warn(`⚠️ AudioContext en estado: ${audioInfo.context.state} para ${identity}`);
                 }
             } catch (error) {
                 console.error(`❌ Error reanudando AudioContext para ${identity}:`, error);
             }
         }
     }
+    
+    // ✅ También forzar reproducción de elementos HTML
+    document.querySelectorAll('audio[data-identity]').forEach(audio => {
+        try {
+            audio.volume = Math.min(volumenActual, 1.0);
+            audio.muted = false;
+            if (audio.paused) {
+                audio.play().catch(() => {});
+                console.log(`▶️ Reproducción forzada para: ${audio.dataset.identity}`);
+            }
+        } catch (e) {}
+    });
     
     if (reanudados === 0 && audioMap.size === 0) {
         try {
@@ -189,7 +272,7 @@ async function forzarReanudacionAudio() {
 }
 
 // ============================================================
-// ✅ SOLUCIÓN 7: RESTAURAR AUDIO DESPUÉS DE RECONEXIÓN
+// ✅ RESTAURAR AUDIO DESPUÉS DE RECONEXIÓN
 // ============================================================
 
 async function restaurarAudioDespuesReconexion() {
@@ -201,50 +284,13 @@ async function restaurarAudioDespuesReconexion() {
     }
     
     await forzarReanudacionAudio();
-    
-    if (room.remoteParticipants && room.remoteParticipants.size > 0) {
-        room.remoteParticipants.forEach((participant) => {
-            const identity = participant.identity;
-            console.log(`👤 Revisando participante: ${identity}`);
-            
-            participant.trackPublications.forEach((publication) => {
-                if (publication.kind === 'audio' && publication.track && publication.isSubscribed) {
-                    if (audioMap.has(identity)) {
-                        const audioInfo = audioMap.get(identity);
-                        if (audioInfo && audioInfo.element) {
-                            try {
-                                if (audioInfo.element.paused) {
-                                    audioInfo.element.play().catch(() => {});
-                                }
-                                audioInfo.element.volume = Math.min(volumenActual, 1.0);
-                                console.log(`✅ Audio HTML restaurado para: ${identity}`);
-                            } catch (error) {
-                                console.error(`❌ Error restaurando audio de ${identity}:`, error);
-                                audioMap.delete(identity);
-                                agregarAudioRemotoConGanancia(publication.track, participant);
-                            }
-                        } else {
-                            audioMap.delete(identity);
-                            agregarAudioRemotoConGanancia(publication.track, participant);
-                        }
-                    } else {
-                        console.log(`🔊 Creando audio para ${identity}...`);
-                        agregarAudioRemotoConGanancia(publication.track, participant);
-                    }
-                }
-            });
-        });
-    } else {
-        console.log('👥 No hay participantes remotos');
-    }
-    
-    await forzarReanudacionAudio();
+    await repararTodosLosAudios();
     actualizarVolumen();
     console.log('✅ Audio restaurado completamente');
 }
 
 // ============================================================
-// ✅ SOLUCIÓN 8: RECONEXIÓN POR PÉRDIDA DE INTERNET
+// ✅ RECONEXIÓN POR PÉRDIDA DE INTERNET
 // ============================================================
 
 function iniciarMonitorInternet() {
@@ -477,11 +523,18 @@ async function conectarLiveKit() {
             btnCamara?.classList.add('inactivo');
         }
 
+        // ✅ Procesar participantes existentes con suscripción forzada
         if (room.remoteParticipants && room.remoteParticipants.size > 0) {
             const participants = Array.from(room.remoteParticipants.values());
-            participants.forEach(participant => {
-                agregarParticipante(participant);
-            });
+            for (const participant of participants) {
+                await forzarSuscripcionAudio(participant);
+                // ✅ También procesar video
+                participant.trackPublications.forEach((pub) => {
+                    if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
+                        agregarVideoRemoto(pub.track, participant);
+                    }
+                });
+            }
         }
 
         conectando = false;
@@ -513,15 +566,26 @@ async function conectarLiveKit() {
 }
 
 // ============================================================
-// ✅ EVENTOS
+// ✅ EVENTOS - CORREGIDOS CON SUSCRIPCIÓN FORZADA
 // ============================================================
 
 function registrarEventosLiveKit() {
     if (!room) return;
 
-    room.on(LivekitClient.RoomEvent.ParticipantConnected, participant => {
+    // ✅ PARTICIPANTE CONECTADO - CON SUSCRIPCIÓN FORZADA
+    room.on(LivekitClient.RoomEvent.ParticipantConnected, async (participant) => {
         console.log('👤 Participante conectado:', participant.identity);
-        agregarParticipante(participant);
+        
+        // ✅ FORZAR SUSCRIPCIÓN DE AUDIO
+        await forzarSuscripcionAudio(participant);
+        
+        // ✅ Procesar video
+        participant.trackPublications.forEach((pub) => {
+            if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
+                agregarVideoRemoto(pub.track, participant);
+            }
+        });
+        
         actualizarLayout();
         actualizarParticipanteRemoto();
     });
@@ -533,6 +597,7 @@ function registrarEventosLiveKit() {
         actualizarParticipanteRemoto();
     });
 
+    // ✅ TRACK SUSCRITO - CON CREACIÓN DE AUDIO
     room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
         if (!participant) return;
         console.log(`📡 Track suscrito: ${track.kind} de ${participant.identity}`);
@@ -540,7 +605,19 @@ function registrarEventosLiveKit() {
         if (track.kind === LivekitClient.Track.Kind.Video) {
             agregarVideoRemoto(track, participant);
         } else if (track.kind === LivekitClient.Track.Kind.Audio) {
+            console.log(`🔊 Track de audio suscrito para: ${participant.identity}`);
             agregarAudioRemotoConGanancia(track, participant);
+            
+            // ✅ Forzar reproducción después de un breve momento
+            setTimeout(() => {
+                const audioInfo = audioMap.get(participant.identity);
+                if (audioInfo && audioInfo.element) {
+                    audioInfo.element.volume = Math.min(volumenActual, 1.0);
+                    audioInfo.element.muted = false;
+                    audioInfo.element.play().catch(() => {});
+                    console.log(`🔊 Audio forzado a reproducir para: ${participant.identity}`);
+                }
+            }, 500);
         }
     });
 
@@ -655,7 +732,7 @@ function agregarVideoRemoto(track, participant) {
 }
 
 // ============================================================
-// ✅ SOLUCIÓN 2: AUDIO REMOTO - VERSIÓN CORREGIDA (SIN ECO)
+// ✅ AUDIO REMOTO - VERSIÓN CORREGIDA (SIN ECO)
 // ============================================================
 
 function agregarAudioRemotoConGanancia(track, participant) {
@@ -681,7 +758,6 @@ function agregarAudioRemotoConGanancia(track, participant) {
     try {
         console.log(`📻 Creando audio HTML5 para: ${identity}`);
         
-        // ✅ Crear elemento de audio HTML
         const audioElement = document.createElement('audio');
         audioElement.autoplay = true;
         audioElement.playsInline = true;
@@ -692,7 +768,6 @@ function agregarAudioRemotoConGanancia(track, participant) {
         audioElement.setAttribute('playsinline', '');
         document.body.appendChild(audioElement);
         
-        // ✅ Adjuntar track al elemento HTML
         if (typeof track.attach === 'function') {
             track.attach(audioElement);
             console.log(`✅ Track adjuntado a HTML para: ${identity}`);
@@ -704,11 +779,10 @@ function agregarAudioRemotoConGanancia(track, participant) {
             console.log(`✅ Stream adjuntado a HTML para: ${identity}`);
         }
         
-        // ✅ Guardar en audioMap como HTML5 (prioridad)
         const audioInfo = {
             element: audioElement,
             identity: identity,
-            isFallback: true,  // ✅ Marcado como HTML5
+            isFallback: true,
             track: track,
             connected: true
         };
@@ -716,13 +790,18 @@ function agregarAudioRemotoConGanancia(track, participant) {
         audioMap.set(identity, audioInfo);
         console.log(`🔊 Audio HTML5 creado para: ${identity} (volumen: ${audioElement.volume})`);
         
-        // ✅ Actualizar volumen
         actualizarVolumen();
-        
-        // ✅ Exponer globalmente
         window.audioMap = audioMap;
         window.room = room;
         window.volumenActual = volumenActual;
+        
+        // ✅ Forzar reproducción inmediata
+        setTimeout(() => {
+            audioElement.volume = Math.min(volumenActual, 1.0);
+            audioElement.muted = false;
+            audioElement.play().catch(() => {});
+            console.log(`▶️ Reproducción forzada para: ${identity}`);
+        }, 300);
         
         return audioInfo;
         
@@ -730,9 +809,6 @@ function agregarAudioRemotoConGanancia(track, participant) {
         console.error('❌ Error creando audio HTML5:', htmlError);
         console.warn('⚠️ Usando Web Audio API como respaldo...');
         
-        // ✅ ============================================
-        // ✅ SEGUNDO: FALLBACK A WEB AUDIO API
-        // ✅ ============================================
         try {
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const gainNode = audioContext.createGain();
@@ -782,18 +858,7 @@ function agregarAudioRemotoConGanancia(track, participant) {
 }
 
 // ============================================================
-// ✅ FALLBACK: HTML5 AUDIO (SIN GANANCIA) - MANTENIDO POR COMPATIBILIDAD
-// ============================================================
-
-function agregarAudioRemotoFallback(track, participant) {
-    // ✅ Esta función ya no se usa directamente, pero se mantiene por compatibilidad
-    // ✅ La función principal agregarAudioRemotoConGanancia ahora prioriza HTML5
-    console.log('⚠️ agregarAudioRemotoFallback llamado - usando agregarAudioRemotoConGanancia en su lugar');
-    return agregarAudioRemotoConGanancia(track, participant);
-}
-
-// ============================================================
-// ✅ SOLUCIÓN 3: CONTROL DE VOLUMEN MEJORADO
+// ✅ CONTROL DE VOLUMEN MEJORADO
 // ============================================================
 
 function actualizarVolumen() {
@@ -802,19 +867,15 @@ function actualizarVolumen() {
     volumenActual = Number(volumen.value);
     console.log(`🎚️ Volumen ajustado a: ${(volumenActual * 100).toFixed(0)}%`);
     
-    // ✅ Actualizar audios HTML5 (prioridad)
     document.querySelectorAll('audio[data-identity]').forEach(audio => {
         audio.volume = Math.min(volumenActual, 1.0);
         audio.muted = false;
     });
     
-    // ✅ Actualizar Web Audio (solo si existe y no hay HTML)
     for (const [identity, audioInfo] of audioMap) {
         if (audioInfo.isFallback && audioInfo.element) {
-            // ✅ Es HTML5, ya se actualizó arriba
             continue;
         } else if (audioInfo.gainNode) {
-            // ✅ Es Web Audio (respaldo)
             const volumenAmplificado = volumenActual * 1.5;
             const valorFinal = Math.min(volumenAmplificado, 2.0);
             audioInfo.gainNode.gain.value = valorFinal;
@@ -1246,7 +1307,7 @@ async function reconectarManual() {
 }
 
 // ============================================================
-// ✅ SOLUCIÓN 5: DIAGNÓSTICO MEJORADO
+// ✅ DIAGNÓSTICO MEJORADO
 // ============================================================
 
 function diagnostico() {
@@ -1267,21 +1328,19 @@ function diagnostico() {
         info += `   ✅ Noise Suppression: ACTIVADO\n`;
         info += `   ✅ Auto Gain Control: ACTIVADO\n`;
         info += `   ✅ Video local: MUTED\n`;
-        info += `   ✅ Audio propio: NO REPRODUCIDO\n`;
-        info += `   ✅ adaptiveStream: DESACTIVADO\n\n`;
+        info += `   ✅ Audio propio: NO REPRODUCIDO\n\n`;
         
         info += '🔊 DIAGNÓSTICO DE VOLUMEN:\n';
         info += `   🎚️ Volumen actual: ${(volumenActual * 100).toFixed(0)}%\n`;
-        info += `   🎯 Ganancia aplicada: ${(volumenActual * 150).toFixed(0)}% (150%)\n`;
-        info += `   📊 Audios con Web Audio: ${Array.from(audioMap.values()).filter(a => !a.isFallback && a.gainNode).length}\n`;
-        info += `   📊 Audios HTML5: ${Array.from(audioMap.values()).filter(a => a.isFallback && a.element).length}\n\n`;
+        info += `   📊 Audios HTML5: ${Array.from(audioMap.values()).filter(a => a.isFallback && a.element).length}\n`;
+        info += `   📊 Audios Web Audio: ${Array.from(audioMap.values()).filter(a => !a.isFallback && a.gainNode).length}\n\n`;
         
         if (audioMap.size > 0) {
             info += '🔊 DETALLE DE AUDIOS:\n';
             for (const [identity, audioInfo] of audioMap) {
                 if (audioInfo.isFallback && audioInfo.element) {
                     const vol = audioInfo.element?.volume || 0;
-                    const paused = audioInfo.element?.paused ? 'pausado' : 'reproduciendo';
+                    const paused = audioInfo.element?.paused ? '⏸️ pausado' : '▶️ reproduciendo';
                     info += `   📻 ${identity}: HTML5, volumen=${(vol * 100).toFixed(0)}%, ${paused}\n`;
                 } else if (audioInfo.gainNode) {
                     const gain = audioInfo.gainNode.gain.value;
@@ -1340,10 +1399,11 @@ document.addEventListener('visibilitychange', () => {
 document.addEventListener('click', async () => {
     console.log('🖱️ Click detectado - Reanudando audio...');
     await forzarReanudacionAudio();
+    await repararTodosLosAudios();
 }, { once: false });
 
 // ============================================================
-// ✅ EXPONER VARIABLES GLOBALES PARA DIAGNÓSTICO
+// ✅ EXPONER VARIABLES GLOBALES
 // ============================================================
 
 window.room = room;
@@ -1353,6 +1413,8 @@ window.volumenActual = volumenActual;
 window.agregarAudioRemotoConGanancia = agregarAudioRemotoConGanancia;
 window.forzarReanudacionAudio = forzarReanudacionAudio;
 window.actualizarVolumen = actualizarVolumen;
+window.forzarSuscripcionAudio = forzarSuscripcionAudio;
+window.repararTodosLosAudios = repararTodosLosAudios;
 
 const originalConectar = conectarLiveKit;
 conectarLiveKit = async function() {
@@ -1375,7 +1437,7 @@ actualizarVolumen = function() {
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 4.6 - Sin Eco');
+    console.log('📋 Versión: 4.7 - Audio Bidireccional');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');
@@ -1401,11 +1463,14 @@ async function iniciarCamara() {
     window.agregarAudioRemotoConGanancia = agregarAudioRemotoConGanancia;
     window.forzarReanudacionAudio = forzarReanudacionAudio;
     window.actualizarVolumen = actualizarVolumen;
+    window.forzarSuscripcionAudio = forzarSuscripcionAudio;
+    window.repararTodosLosAudios = repararTodosLosAudios;
     
-    setTimeout(() => {
+    setTimeout(async () => {
         console.log('✅ Sistema listo - Presiona "Diagnóstico" para ver detalles');
         console.log('🔍 Variables globales disponibles: room, audioMap, videoMap, volumenActual');
-        forzarReanudacionAudio();
+        await forzarReanudacionAudio();
+        await repararTodosLosAudios();
     }, 2000);
 }
 

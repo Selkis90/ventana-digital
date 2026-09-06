@@ -29,19 +29,15 @@ let conectando = false;
 let reconectando = false;
 let audioMuted = false;
 let monitorTracksInterval = null;
-
-// ✅ VOLUMEN POR DEFECTO AL 100%
 let volumenActual = 1.0;
 
 let reconexionTimeout = null;
 let intentosReconexion = 0;
 const MAX_INTENTOS_RECONEXION = 5;
 
-// Mapas para tracks
 const videoMap = new Map();
 const audioMap = new Map();
 
-// ✅ Variables para monitor de internet
 let monitorInternet = null;
 let internetStatus = true;
 let reintentosReconexion = 0;
@@ -147,7 +143,7 @@ async function obtenerAudioProfesional() {
 }
 
 // ============================================================
-// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN
+// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN - CORREGIDO
 // ============================================================
 
 async function publicarAudioConVerificacion() {
@@ -159,11 +155,17 @@ async function publicarAudioConVerificacion() {
     }
     
     try {
-        var audioPublication = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+        // ✅ FORMA CORRECTA - Usar getTrack
+        var audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        
+        // ✅ Si no funciona, intentar con getPublication
+        if (!audioPublication) {
+            audioPublication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
+        }
         
         if (audioPublication) {
             console.log('📡 Audio ya publicado, verificando estado...');
-            if (!audioPublication.isEnabled) {
+            if (audioPublication.isEnabled === false) {
                 await room.localParticipant.setMicrophoneEnabled(true);
                 console.log('✅ Audio habilitado');
             }
@@ -195,7 +197,11 @@ async function publicarAudioConVerificacion() {
         
         console.log('✅ Audio publicado exitosamente');
         
-        audioPublication = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+        audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        if (!audioPublication) {
+            audioPublication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
+        }
+        
         if (audioPublication && audioPublication.track) {
             console.log('✅ Verificación de publicación exitosa');
             if (btnMicrofono) {
@@ -210,7 +216,20 @@ async function publicarAudioConVerificacion() {
         
     } catch (error) {
         console.error('❌ Error publicando audio:', error);
-        return false;
+        
+        try {
+            console.log('📡 Intentando método alternativo...');
+            await room.localParticipant.setMicrophoneEnabled(true);
+            console.log('✅ Audio habilitado por método alternativo');
+            if (btnMicrofono) {
+                btnMicrofono.classList.add('activo');
+                btnMicrofono.classList.remove('inactivo');
+            }
+            return true;
+        } catch (e) {
+            console.error('❌ Error en método alternativo:', e);
+            return false;
+        }
     }
 }
 
@@ -341,11 +360,9 @@ async function reparacionCompletaAudio() {
     console.log('📡 Estado del room:', room.state);
     console.log('👥 Participantes remotos:', room.remoteParticipants ? room.remoteParticipants.size : 0);
     
-    // ✅ 1. REPUBLICAR AUDIO LOCAL
     console.log('📤 1. Reparando audio local...');
     await publicarAudioConVerificacion();
     
-    // ✅ 2. VERIFICAR PARTICIPANTES REMOTOS
     console.log('👥 2. Verificando participantes remotos...');
     if (room.remoteParticipants && room.remoteParticipants.size > 0) {
         var participants = Array.from(room.remoteParticipants.values());
@@ -363,7 +380,6 @@ async function reparacionCompletaAudio() {
                         console.log('   🔄 Forzando suscripción...');
                         try {
                             if (typeof pub.subscribe === 'function') {
-                                // Ejecutar suscripción de forma asíncrona
                                 (function(pubLocal) {
                                     pubLocal.subscribe().then(function() {
                                         console.log('   ✅ Suscripción forzada');
@@ -411,7 +427,6 @@ async function reparacionCompletaAudio() {
         console.warn('⚠️ No hay participantes remotos');
     }
     
-    // ✅ 3. VERIFICAR AUDIOS EN EL DOM
     console.log('📻 3. Verificando audios en el DOM...');
     var audios = document.querySelectorAll('audio[data-identity]');
     console.log('   Total:', audios.length);
@@ -424,11 +439,9 @@ async function reparacionCompletaAudio() {
         }
     });
     
-    // ✅ 4. FORZAR REANUDACIÓN DE AUDIO CONTEXT
     console.log('🎵 4. Forzando reanudación de AudioContext...');
     await forzarReanudacionAudio();
     
-    // ✅ 5. ACTUALIZAR VOLUMEN
     console.log('🎚️ 5. Actualizando volumen...');
     actualizarVolumen();
     
@@ -707,10 +720,8 @@ async function conectarLiveKit() {
             miId.textContent = participantName;
         }
 
-        // ✅ Publicar audio con verificación
         await publicarAudioConVerificacion();
 
-        // ✅ Publicar cámara
         try { 
             await room.localParticipant.setCameraEnabled(true);
             if (btnCamara) {
@@ -725,7 +736,6 @@ async function conectarLiveKit() {
             }
         }
 
-        // ✅ Procesar participantes existentes con suscripción forzada
         if (room.remoteParticipants && room.remoteParticipants.size > 0) {
             var participants = Array.from(room.remoteParticipants.values());
             for (var i = 0; i < participants.length; i++) {
@@ -768,17 +778,15 @@ async function conectarLiveKit() {
 }
 
 // ============================================================
-// ✅ EVENTOS - CORREGIDOS CON SUSCRIPCIÓN FORZADA
+// ✅ EVENTOS
 // ============================================================
 
 function registrarEventosLiveKit() {
     if (!room) return;
 
-    // ✅ PARTICIPANTE CONECTADO - CON SUSCRIPCIÓN FORZADA
     room.on(LivekitClient.RoomEvent.ParticipantConnected, function(participant) {
         console.log('👤 Participante conectado:', participant.identity);
         
-        // Llamar a la función async de forma segura
         (function(p) {
             forzarSuscripcionAudio(p).then(function() {
                 p.trackPublications.forEach(function(pub) {
@@ -801,7 +809,6 @@ function registrarEventosLiveKit() {
         actualizarParticipanteRemoto();
     });
 
-    // ✅ TRACK SUSCRITO - CON CREACIÓN DE AUDIO
     room.on(LivekitClient.RoomEvent.TrackSubscribed, function(track, publication, participant) {
         if (!participant) return;
         console.log('📡 Track suscrito:', track.kind, 'de', participant.identity);
@@ -849,7 +856,6 @@ function registrarEventosLiveKit() {
         actualizarEstado('Conectado', 'conectado');
         console.log('✅ LiveKit reconectado');
         
-        // Llamar a la función async de forma segura
         (function() {
             restaurarAudioDespuesReconexion().then(function() {
                 actualizarLayout();
@@ -951,7 +957,7 @@ function agregarVideoRemoto(track, participant) {
 }
 
 // ============================================================
-// ✅ AUDIO REMOTO - VERSIÓN CORREGIDA (SIN ECO)
+// ✅ AUDIO REMOTO
 // ============================================================
 
 function agregarAudioRemotoConGanancia(track, participant) {
@@ -1071,7 +1077,7 @@ function agregarAudioRemotoConGanancia(track, participant) {
 }
 
 // ============================================================
-// ✅ CONTROL DE VOLUMEN MEJORADO
+// ✅ CONTROL DE VOLUMEN
 // ============================================================
 
 function actualizarVolumen() {
@@ -1374,7 +1380,10 @@ async function alternarMicrofono() {
     }
     
     try {
-        var publication = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+        var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        if (!publication) {
+            publication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
+        }
         var isEnabled = publication ? publication.isEnabled : true;
         
         await room.localParticipant.setMicrophoneEnabled(!isEnabled);
@@ -1404,7 +1413,10 @@ async function alternarCamara() {
     }
     
     try {
-        var publication = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
+        var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
+        if (!publication) {
+            publication = room.localParticipant.getPublication(LivekitClient.Track.Source.Camera);
+        }
         var isEnabled = publication ? publication.isEnabled : true;
         
         await room.localParticipant.setCameraEnabled(!isEnabled);
@@ -1536,7 +1548,7 @@ async function reconectarManual() {
 }
 
 // ============================================================
-// ✅ DIAGNÓSTICO MEJORADO
+// ✅ DIAGNÓSTICO
 // ============================================================
 
 function diagnostico() {
@@ -1586,7 +1598,10 @@ function diagnostico() {
             });
         }
         
-        var pub = room.localParticipant ? room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone) : null;
+        var pub = room.localParticipant ? room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone) : null;
+        if (!pub) {
+            pub = room.localParticipant ? room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone) : null;
+        }
         info += '\n📤 AUDIO LOCAL:\n';
         info += '   Publicado: ' + (!!pub) + '\n';
         info += '   Habilitado: ' + (pub ? pub.isEnabled : false) + '\n';
@@ -1640,7 +1655,6 @@ document.addEventListener('visibilitychange', function() {
 
 document.addEventListener('click', function() {
     console.log('🖱️ Click detectado - Reanudando audio...');
-    // Llamar a funciones async de forma segura
     (function() {
         forzarReanudacionAudio().then(function() {
             return reparacionCompletaAudio();
@@ -1692,10 +1706,8 @@ async function iniciarCamara() {
     actualizarLayout();
     await conectarLiveKit();
     
-    // ✅ Iniciar monitoreo de tracks
     iniciarMonitoreoTracks();
     
-    // ✅ Reparación automática después de 3 segundos
     setTimeout(function() {
         (function() {
             reparacionCompletaAudio().then(function() {

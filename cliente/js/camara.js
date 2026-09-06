@@ -31,6 +31,7 @@ let audioMuted = false;
 let monitorTracksInterval = null;
 let volumenActual = 1.0;
 let actualizandoVolumen = false;
+let volumenTimeout = null;
 
 let reconexionTimeout = null;
 let intentosReconexion = 0;
@@ -156,21 +157,32 @@ async function publicarAudioConVerificacion() {
     }
     
     try {
-        // ✅ FORMA CORRECTA - Usar getTrack
-        var audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        // ✅ FORMA CORRECTA - Usar getTrack (la API correcta de LiveKit)
+        var audioPublication = null;
         
-        // ✅ Si no funciona, intentar con getPublication
-        if (!audioPublication) {
+        // Intentar obtener el track de audio
+        if (room.localParticipant.getTrack) {
+            audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        }
+        
+        // Si no funciona, intentar con getPublication (pero verificamos que existe)
+        if (!audioPublication && room.localParticipant.getPublication) {
             audioPublication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
         }
         
+        // Verificar si ya está publicado
         if (audioPublication) {
             console.log('📡 Audio ya publicado, verificando estado...');
+            
+            // Verificar si está habilitado
             if (audioPublication.isEnabled === false) {
-                await room.localParticipant.setMicrophoneEnabled(true);
-                console.log('✅ Audio habilitado');
+                if (room.localParticipant.setMicrophoneEnabled) {
+                    await room.localParticipant.setMicrophoneEnabled(true);
+                    console.log('✅ Audio habilitado');
+                }
             }
             
+            // Verificar que el track existe
             if (audioPublication.track) {
                 console.log('✅ Track de audio existente y válido');
                 if (btnMicrofono) {
@@ -181,6 +193,7 @@ async function publicarAudioConVerificacion() {
             }
         }
         
+        // Si no está publicado, publicar nuevo track
         console.log('📡 Publicando nuevo track de audio...');
         var audioStream = await obtenerAudioProfesional();
         var audioTrack = audioStream.getAudioTracks()[0];
@@ -190,16 +203,31 @@ async function publicarAudioConVerificacion() {
             return false;
         }
         
-        await room.localParticipant.publishTrack(audioTrack, {
-            name: 'microfono',
-            source: LivekitClient.Track.Source.Microphone,
-            simulcast: false
-        });
+        // Publicar el track
+        if (room.localParticipant.publishTrack) {
+            await room.localParticipant.publishTrack(audioTrack, {
+                name: 'microfono',
+                source: LivekitClient.Track.Source.Microphone,
+                simulcast: false
+            });
+            console.log('✅ Audio publicado exitosamente');
+        } else {
+            // Método alternativo
+            if (room.localParticipant.setMicrophoneEnabled) {
+                await room.localParticipant.setMicrophoneEnabled(true);
+                console.log('✅ Audio habilitado por método alternativo');
+                if (btnMicrofono) {
+                    btnMicrofono.classList.add('activo');
+                    btnMicrofono.classList.remove('inactivo');
+                }
+                return true;
+            }
+        }
         
-        console.log('✅ Audio publicado exitosamente');
-        
-        audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
-        if (!audioPublication) {
+        // Verificar publicación
+        if (room.localParticipant.getTrack) {
+            audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        } else if (room.localParticipant.getPublication) {
             audioPublication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
         }
         
@@ -220,17 +248,20 @@ async function publicarAudioConVerificacion() {
         
         try {
             console.log('📡 Intentando método alternativo...');
-            await room.localParticipant.setMicrophoneEnabled(true);
-            console.log('✅ Audio habilitado por método alternativo');
-            if (btnMicrofono) {
-                btnMicrofono.classList.add('activo');
-                btnMicrofono.classList.remove('inactivo');
+            if (room.localParticipant.setMicrophoneEnabled) {
+                await room.localParticipant.setMicrophoneEnabled(true);
+                console.log('✅ Audio habilitado por método alternativo');
+                if (btnMicrofono) {
+                    btnMicrofono.classList.add('activo');
+                    btnMicrofono.classList.remove('inactivo');
+                }
+                return true;
             }
-            return true;
         } catch (e) {
             console.error('❌ Error en método alternativo:', e);
             return false;
         }
+        return false;
     }
 }
 
@@ -245,11 +276,13 @@ async function forzarSuscripcionAudio(participant) {
     
     try {
         var audioPublications = [];
-        participant.trackPublications.forEach(function(pub) {
-            if (pub.kind === 'audio') {
-                audioPublications.push(pub);
-            }
-        });
+        if (participant.trackPublications) {
+            participant.trackPublications.forEach(function(pub) {
+                if (pub.kind === 'audio') {
+                    audioPublications.push(pub);
+                }
+            });
+        }
         
         if (audioPublications.length === 0) {
             console.log('   ⚠️ No hay publicaciones de audio para', participant.identity);
@@ -298,10 +331,12 @@ function iniciarMonitoreoTracks() {
     monitorTracksInterval = setInterval(function() {
         if (!room || room.state !== 'connected') return;
         
-        var remoteParticipants = room.remoteParticipants;
-        if (!remoteParticipants || remoteParticipants.size === 0) return;
+        if (!room.remoteParticipants) return;
+        if (room.remoteParticipants.size === 0) return;
         
-        remoteParticipants.forEach(function(participant, identity) {
+        room.remoteParticipants.forEach(function(participant, identity) {
+            if (!participant.trackPublications) return;
+            
             participant.trackPublications.forEach(function(pub) {
                 if (pub.kind === 'audio') {
                     if (!pub.isSubscribed) {
@@ -392,32 +427,34 @@ async function reparacionCompletaAudio() {
             console.log('   Procesando:', identity);
             
             var audioTrack = null;
-            participant.trackPublications.forEach(function(pub) {
-                if (pub.kind === 'audio') {
-                    console.log('   📡 Audio encontrado: suscrito=', pub.isSubscribed);
-                    
-                    if (!pub.isSubscribed) {
-                        console.log('   🔄 Forzando suscripción...');
-                        try {
-                            if (typeof pub.subscribe === 'function') {
-                                (function(pubLocal) {
-                                    pubLocal.subscribe().then(function() {
-                                        console.log('   ✅ Suscripción forzada');
-                                    }).catch(function(error) {
-                                        console.error('   ❌ Error forzando suscripción:', error);
-                                    });
-                                })(pub);
+            if (participant.trackPublications) {
+                participant.trackPublications.forEach(function(pub) {
+                    if (pub.kind === 'audio') {
+                        console.log('   📡 Audio encontrado: suscrito=', pub.isSubscribed);
+                        
+                        if (!pub.isSubscribed) {
+                            console.log('   🔄 Forzando suscripción...');
+                            try {
+                                if (typeof pub.subscribe === 'function') {
+                                    (function(pubLocal) {
+                                        pubLocal.subscribe().then(function() {
+                                            console.log('   ✅ Suscripción forzada');
+                                        }).catch(function(error) {
+                                            console.error('   ❌ Error forzando suscripción:', error);
+                                        });
+                                    })(pub);
+                                }
+                            } catch (error) {
+                                console.error('   ❌ Error forzando suscripción:', error);
                             }
-                        } catch (error) {
-                            console.error('   ❌ Error forzando suscripción:', error);
+                        }
+                        
+                        if (pub.isSubscribed && pub.track) {
+                            audioTrack = pub.track;
                         }
                     }
-                    
-                    if (pub.isSubscribed && pub.track) {
-                        audioTrack = pub.track;
-                    }
-                }
-            });
+                });
+            }
             
             if (audioTrack) {
                 console.log('   🔊 Creando/recreando audio para', identity, '...');
@@ -761,11 +798,13 @@ async function conectarLiveKit() {
             for (var i = 0; i < participants.length; i++) {
                 var participant = participants[i];
                 await forzarSuscripcionAudio(participant);
-                participant.trackPublications.forEach(function(pub) {
-                    if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
-                        agregarVideoRemoto(pub.track, participant);
-                    }
-                });
+                if (participant.trackPublications) {
+                    participant.trackPublications.forEach(function(pub) {
+                        if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
+                            agregarVideoRemoto(pub.track, participant);
+                        }
+                    });
+                }
             }
         }
 
@@ -809,11 +848,13 @@ function registrarEventosLiveKit() {
         
         (function(p) {
             forzarSuscripcionAudio(p).then(function() {
-                p.trackPublications.forEach(function(pub) {
-                    if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
-                        agregarVideoRemoto(pub.track, p);
-                    }
-                });
+                if (p.trackPublications) {
+                    p.trackPublications.forEach(function(pub) {
+                        if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
+                            agregarVideoRemoto(pub.track, p);
+                        }
+                    });
+                }
                 actualizarLayout();
                 actualizarParticipanteRemoto();
             }).catch(function(error) {
@@ -1098,7 +1139,7 @@ function agregarAudioRemotoConGanancia(track, participant) {
 }
 
 // ============================================================
-// ✅ CONTROL DE VOLUMEN MEJORADO
+// ✅ CONTROL DE VOLUMEN PROFESIONAL
 // ============================================================
 
 function actualizarVolumen() {
@@ -1120,6 +1161,7 @@ function actualizarVolumen() {
         
         console.log('🎚️ Volumen ajustado a:', (volumenActual * 100).toFixed(0), '%');
         
+        // 1. ACTUALIZAR AUDIOS HTML5
         var html5Audios = document.querySelectorAll('audio[data-identity]');
         var html5Count = 0;
         
@@ -1139,6 +1181,7 @@ function actualizarVolumen() {
             }
         });
         
+        // 2. ACTUALIZAR WEB AUDIO API
         var webAudioCount = 0;
         
         audioMap.forEach(function(audioInfo, identity) {
@@ -1161,6 +1204,7 @@ function actualizarVolumen() {
             }
         });
         
+        // 3. ACTUALIZAR AUDIOS DEL MAPA (respaldo)
         audioMap.forEach(function(audioInfo, identity) {
             if (audioInfo.isFallback && audioInfo.element) {
                 try {
@@ -1170,17 +1214,27 @@ function actualizarVolumen() {
             }
         });
         
+        // 4. ACTUALIZAR ETIQUETA
         if (volumenLabel) {
             volumenLabel.textContent = Math.round(volumenActual * 100) + '%';
         }
         
-        window.volumenActual = volumenActual;
-        
+        // 5. SINCronizar SLIDER
         if (volumen.value !== String(volumenActual)) {
             volumen.value = String(volumenActual);
         }
         
+        // 6. GUARDAR EN VARIABLE GLOBAL
+        window.volumenActual = volumenActual;
+        
         console.log('✅ Volumen aplicado:', html5Count, 'audios HTML5,', webAudioCount, 'audios Web Audio');
+        
+        // 7. DISPARAR EVENTO PARA ACTUALIZAR UI
+        if (window.dispatchEvent) {
+            window.dispatchEvent(new CustomEvent('volumenActualizado', { 
+                detail: { volumen: volumenActual } 
+            }));
+        }
         
     } catch (error) {
         console.error('❌ Error en actualizarVolumen:', error);
@@ -1551,13 +1605,18 @@ async function alternarMicrofono() {
     }
     
     try {
-        var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
-        if (!publication) {
+        var publication = null;
+        if (room.localParticipant.getTrack) {
+            publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        }
+        if (!publication && room.localParticipant.getPublication) {
             publication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
         }
         var isEnabled = publication ? publication.isEnabled : true;
         
-        await room.localParticipant.setMicrophoneEnabled(!isEnabled);
+        if (room.localParticipant.setMicrophoneEnabled) {
+            await room.localParticipant.setMicrophoneEnabled(!isEnabled);
+        }
         
         if (isEnabled) {
             if (btnMicrofono) {
@@ -1584,13 +1643,18 @@ async function alternarCamara() {
     }
     
     try {
-        var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
-        if (!publication) {
+        var publication = null;
+        if (room.localParticipant.getTrack) {
+            publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
+        }
+        if (!publication && room.localParticipant.getPublication) {
             publication = room.localParticipant.getPublication(LivekitClient.Track.Source.Camera);
         }
         var isEnabled = publication ? publication.isEnabled : true;
         
-        await room.localParticipant.setCameraEnabled(!isEnabled);
+        if (room.localParticipant.setCameraEnabled) {
+            await room.localParticipant.setCameraEnabled(!isEnabled);
+        }
         
         if (isEnabled) {
             if (btnCamara) {
@@ -1619,12 +1683,16 @@ async function silenciarTemporalmente() {
     }
     
     try {
-        await room.localParticipant.setMicrophoneEnabled(false);
+        if (room.localParticipant.setMicrophoneEnabled) {
+            await room.localParticipant.setMicrophoneEnabled(false);
+        }
         console.log('🔇 Silenciado temporalmente');
         
         setTimeout(async function() {
             try {
-                await room.localParticipant.setMicrophoneEnabled(true);
+                if (room && room.localParticipant && room.localParticipant.setMicrophoneEnabled) {
+                    await room.localParticipant.setMicrophoneEnabled(true);
+                }
                 audioMuted = false;
                 if (btnSilenciar) {
                     btnSilenciar.classList.remove('activo');
@@ -1655,7 +1723,7 @@ async function compartirPantalla() {
             video: { cursor: 'always', frameRate: 30 } 
         });
         var track = stream.getVideoTracks()[0];
-        if (track) {
+        if (track && room.localParticipant.publishTrack) {
             await room.localParticipant.publishTrack(track, {
                 name: 'screen-share',
                 source: LivekitClient.Track.Source.ScreenShare
@@ -1769,9 +1837,12 @@ function diagnostico() {
             });
         }
         
-        var pub = room.localParticipant ? room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone) : null;
-        if (!pub) {
-            pub = room.localParticipant ? room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone) : null;
+        var pub = null;
+        if (room.localParticipant && room.localParticipant.getTrack) {
+            pub = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        }
+        if (!pub && room.localParticipant && room.localParticipant.getPublication) {
+            pub = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
         }
         info += '\n📤 AUDIO LOCAL:\n';
         info += '   Publicado: ' + (!!pub) + '\n';
@@ -1793,7 +1864,7 @@ function diagnostico() {
 }
 
 // ============================================================
-// EVENT LISTENERS
+// EVENT LISTENERS MEJORADOS PARA VOLUMEN
 // ============================================================
 
 if (btnMicrofono) btnMicrofono.addEventListener('click', alternarMicrofono);
@@ -1804,34 +1875,74 @@ if (btnFullscreen) btnFullscreen.addEventListener('click', pantallaCompleta);
 if (btnReconectar) btnReconectar.addEventListener('click', reconectarManual);
 if (btnDiagnostico) btnDiagnostico.addEventListener('click', diagnostico);
 
+// ✅ CONFIGURACIÓN PROFESIONAL DEL CONTROL DE VOLUMEN
 if (volumen) {
+    // Configurar valores por defecto
     if (volumen.min === '') volumen.min = '0';
     if (volumen.max === '') volumen.max = '1';
     if (volumen.step === '') volumen.step = '0.01';
     if (volumen.value === '') volumen.value = '1.0';
     
+    // Evento input - actualización en tiempo real con debounce
     volumen.addEventListener('input', function() {
+        var valor = Number(this.value);
+        if (isNaN(valor)) valor = 0;
+        if (valor < 0) valor = 0;
+        if (valor > 1) valor = 1;
+        
+        // Actualizar etiqueta inmediatamente
         if (volumenLabel) {
-            var valor = Number(this.value);
-            if (isNaN(valor)) valor = 0;
-            if (valor < 0) valor = 0;
-            if (valor > 1) valor = 1;
             volumenLabel.textContent = Math.round(valor * 100) + '%';
         }
         
-        if (window.volumenTimeout) {
-            clearTimeout(window.volumenTimeout);
+        // Debounce para evitar muchas actualizaciones
+        if (volumenTimeout) {
+            clearTimeout(volumenTimeout);
         }
         
-        window.volumenTimeout = setTimeout(function() {
+        volumenTimeout = setTimeout(function() {
             actualizarVolumen();
-            window.volumenTimeout = null;
+            volumenTimeout = null;
         }, 50);
     });
     
+    // Evento change - aplicar cuando se suelta el slider
     volumen.addEventListener('change', function() {
         actualizarVolumen();
         console.log('✅ Volumen finalizado:', (volumenActual * 100).toFixed(0), '%');
+    });
+    
+    // Evento double-click - resetear a 100%
+    volumen.addEventListener('dblclick', function() {
+        this.value = '1.0';
+        if (volumenLabel) {
+            volumenLabel.textContent = '100%';
+        }
+        actualizarVolumen();
+        console.log('🔄 Volumen restablecido a 100%');
+    });
+    
+    // Soporte para teclado (flechas)
+    volumen.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+            var valor = Number(this.value) + 0.05;
+            if (valor > 1) valor = 1;
+            this.value = String(valor);
+            if (volumenLabel) {
+                volumenLabel.textContent = Math.round(valor * 100) + '%';
+            }
+            actualizarVolumen();
+            e.preventDefault();
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+            var valor = Number(this.value) - 0.05;
+            if (valor < 0) valor = 0;
+            this.value = String(valor);
+            if (volumenLabel) {
+                volumenLabel.textContent = Math.round(valor * 100) + '%';
+            }
+            actualizarVolumen();
+            e.preventDefault();
+        }
     });
 }
 
@@ -1843,6 +1954,8 @@ window.addEventListener('orientationchange', function() {
 document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible') {
         actualizarLayout();
+        // Reanudar audio si es necesario
+        forzarReanudacionAudio().catch(function() {});
     }
 });
 

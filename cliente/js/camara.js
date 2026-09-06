@@ -28,6 +28,7 @@ let room = null;
 let conectando = false;
 let reconectando = false;
 let audioMuted = false;
+let monitorTracksInterval = null;
 
 // ✅ VOLUMEN POR DEFECTO AL 100%
 let volumenActual = 1.0;
@@ -145,6 +146,70 @@ async function obtenerAudioProfesional() {
 }
 
 // ============================================================
+// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN
+// ============================================================
+
+async function publicarAudioConVerificacion() {
+    console.log('🎤 Publicando audio con verificación...');
+    
+    if (!room) {
+        console.error('❌ Room no disponible');
+        return false;
+    }
+    
+    try {
+        let audioPublication = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+        
+        if (audioPublication) {
+            console.log('📡 Audio ya publicado, verificando estado...');
+            if (!audioPublication.isEnabled) {
+                await room.localParticipant.setMicrophoneEnabled(true);
+                console.log('✅ Audio habilitado');
+            }
+            
+            if (audioPublication.track) {
+                console.log('✅ Track de audio existente y válido');
+                btnMicrofono?.classList.add('activo');
+                btnMicrofono?.classList.remove('inactivo');
+                return true;
+            }
+        }
+        
+        console.log('📡 Publicando nuevo track de audio...');
+        const audioStream = await obtenerAudioProfesional();
+        const audioTrack = audioStream.getAudioTracks()[0];
+        
+        if (!audioTrack) {
+            console.error('❌ No se obtuvo track de audio');
+            return false;
+        }
+        
+        await room.localParticipant.publishTrack(audioTrack, {
+            name: 'microfono',
+            source: LivekitClient.Track.Source.Microphone,
+            simulcast: false
+        });
+        
+        console.log('✅ Audio publicado exitosamente');
+        
+        audioPublication = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+        if (audioPublication && audioPublication.track) {
+            console.log('✅ Verificación de publicación exitosa');
+            btnMicrofono?.classList.add('activo');
+            btnMicrofono?.classList.remove('inactivo');
+            return true;
+        } else {
+            console.error('❌ Falló la verificación de publicación');
+            return false;
+        }
+        
+    } catch (error) {
+        console.error('❌ Error publicando audio:', error);
+        return false;
+    }
+}
+
+// ============================================================
 // ✅ FORZAR SUSCRIPCIÓN DE AUDIO PARA TODOS LOS PARTICIPANTES
 // ============================================================
 
@@ -193,28 +258,163 @@ async function forzarSuscripcionAudio(participant) {
     }
 }
 
-// ✅ Función para verificar y reparar todos los participantes
-async function repararTodosLosAudios() {
-    console.log('🔧 Reparando todos los audios...');
+// ============================================================
+// ✅ MONITOREO DE TRACKS REMOTOS
+// ============================================================
+
+function iniciarMonitoreoTracks() {
+    console.log('📡 Iniciando monitoreo de tracks remotos...');
+    
+    if (monitorTracksInterval) {
+        clearInterval(monitorTracksInterval);
+    }
+    
+    monitorTracksInterval = setInterval(async () => {
+        if (!room || room.state !== 'connected') return;
+        
+        const remoteParticipants = room.remoteParticipants;
+        if (!remoteParticipants || remoteParticipants.size === 0) return;
+        
+        for (const [identity, participant] of remoteParticipants) {
+            participant.trackPublications.forEach(async (pub) => {
+                if (pub.kind === 'audio') {
+                    if (!pub.isSubscribed) {
+                        console.warn(`⚠️ Track de audio de ${identity} NO suscrito - Forzando...`);
+                        try {
+                            if (typeof pub.subscribe === 'function') {
+                                await pub.subscribe();
+                                console.log(`✅ Suscripción forzada para ${identity}`);
+                            }
+                        } catch (error) {
+                            console.error(`❌ Error forzando suscripción para ${identity}:`, error);
+                        }
+                    }
+                    
+                    if (pub.isSubscribed && pub.track) {
+                        if (!audioMap.has(identity)) {
+                            console.log(`🔊 Creando audio faltante para ${identity}...`);
+                            agregarAudioRemotoConGanancia(pub.track, participant);
+                        }
+                    }
+                }
+            });
+        }
+        
+        for (const [identity, audioInfo] of audioMap) {
+            if (audioInfo.isFallback && !audioInfo.element) {
+                console.warn(`⚠️ Audio en mapa sin elemento HTML para ${identity} - Recreando...`);
+                audioMap.delete(identity);
+                const participant = room.remoteParticipants?.get(identity);
+                if (participant) {
+                    participant.trackPublications.forEach((pub) => {
+                        if (pub.kind === 'audio' && pub.track) {
+                            agregarAudioRemotoConGanancia(pub.track, participant);
+                        }
+                    });
+                }
+            }
+        }
+    }, 5000);
+}
+
+// ============================================================
+// ✅ REPARACIÓN COMPLETA DE AUDIO
+// ============================================================
+
+async function reparacionCompletaAudio() {
+    console.log('🔧 ====== INICIANDO REPARACIÓN COMPLETA DE AUDIO ======');
     
     if (!room) {
-        console.warn('⚠️ Room no disponible');
-        return;
+        console.error('❌ Room no disponible');
+        return false;
     }
     
+    console.log(`📡 Estado del room: ${room.state}`);
+    console.log(`👥 Participantes remotos: ${room.remoteParticipants?.size || 0}`);
+    
+    // ✅ 1. REPUBLICAR AUDIO LOCAL
+    console.log('📤 1. Reparando audio local...');
+    await publicarAudioConVerificacion();
+    
+    // ✅ 2. VERIFICAR PARTICIPANTES REMOTOS
+    console.log('👥 2. Verificando participantes remotos...');
     if (room.remoteParticipants && room.remoteParticipants.size > 0) {
-        const participants = Array.from(room.remoteParticipants.values());
-        console.log(`👥 Procesando ${participants.length} participantes...`);
-        
-        for (const participant of participants) {
-            await forzarSuscripcionAudio(participant);
+        for (const [identity, participant] of room.remoteParticipants) {
+            console.log(`   Procesando: ${identity}`);
+            
+            let audioTrack = null;
+            participant.trackPublications.forEach((pub) => {
+                if (pub.kind === 'audio') {
+                    console.log(`   📡 Audio encontrado: suscrito=${pub.isSubscribed}`);
+                    
+                    if (!pub.isSubscribed) {
+                        console.log(`   🔄 Forzando suscripción...`);
+                        try {
+                            if (typeof pub.subscribe === 'function') {
+                                await pub.subscribe();
+                                console.log(`   ✅ Suscripción forzada`);
+                            }
+                        } catch (error) {
+                            console.error(`   ❌ Error forzando suscripción:`, error);
+                        }
+                    }
+                    
+                    if (pub.isSubscribed && pub.track) {
+                        audioTrack = pub.track;
+                    }
+                }
+            });
+            
+            if (audioTrack) {
+                console.log(`   🔊 Creando/recreando audio para ${identity}...`);
+                
+                if (audioMap.has(identity)) {
+                    const oldAudio = audioMap.get(identity);
+                    if (oldAudio.element) {
+                        oldAudio.element.remove();
+                    }
+                    audioMap.delete(identity);
+                }
+                
+                agregarAudioRemotoConGanancia(audioTrack, participant);
+                
+                const newAudio = audioMap.get(identity);
+                if (newAudio && newAudio.element) {
+                    newAudio.element.volume = Math.min(volumenActual, 1.0);
+                    newAudio.element.muted = false;
+                    await newAudio.element.play().catch(() => {});
+                    console.log(`   ✅ Audio reproducido para ${identity}`);
+                }
+            } else {
+                console.warn(`   ⚠️ No se encontró track de audio para ${identity}`);
+            }
         }
     } else {
-        console.log('👥 No hay participantes remotos');
+        console.warn('⚠️ No hay participantes remotos');
     }
     
-    console.log(`📊 Audios en mapa: ${audioMap.size}`);
-    console.log(`📻 Audios en DOM: ${document.querySelectorAll('audio[data-identity]').length}`);
+    // ✅ 3. VERIFICAR AUDIOS EN EL DOM
+    console.log('📻 3. Verificando audios en el DOM...');
+    const audios = document.querySelectorAll('audio[data-identity]');
+    console.log(`   Total: ${audios.length}`);
+    audios.forEach((audio) => {
+        console.log(`   🎵 ${audio.dataset.identity}: volumen=${audio.volume}, muted=${audio.muted}, paused=${audio.paused}`);
+        if (audio.paused) {
+            audio.play().catch(() => {});
+            console.log(`   ▶️ Reproducción forzada para ${audio.dataset.identity}`);
+        }
+    });
+    
+    // ✅ 4. FORZAR REANUDACIÓN DE AUDIO CONTEXT
+    console.log('🎵 4. Forzando reanudación de AudioContext...');
+    await forzarReanudacionAudio();
+    
+    // ✅ 5. ACTUALIZAR VOLUMEN
+    console.log('🎚️ 5. Actualizando volumen...');
+    actualizarVolumen();
+    
+    console.log('✅ ====== REPARACIÓN COMPLETA FINALIZADA ======');
+    return true;
 }
 
 // ============================================================
@@ -242,7 +442,6 @@ async function forzarReanudacionAudio() {
         }
     }
     
-    // ✅ También forzar reproducción de elementos HTML
     document.querySelectorAll('audio[data-identity]').forEach(audio => {
         try {
             audio.volume = Math.min(volumenActual, 1.0);
@@ -284,7 +483,7 @@ async function restaurarAudioDespuesReconexion() {
     }
     
     await forzarReanudacionAudio();
-    await repararTodosLosAudios();
+    await reparacionCompletaAudio();
     actualizarVolumen();
     console.log('✅ Audio restaurado completamente');
 }
@@ -485,34 +684,10 @@ async function conectarLiveKit() {
             miId.textContent = participantName;
         }
 
-        try {
-            const audioStream = await obtenerAudioProfesional();
-            const audioTrack = audioStream.getAudioTracks()[0];
-            
-            if (audioTrack) {
-                await room.localParticipant.publishTrack(audioTrack, {
-                    name: 'microfono',
-                    source: LivekitClient.Track.Source.Microphone,
-                    simulcast: false
-                });
-                
-                btnMicrofono?.classList.add('activo');
-                btnMicrofono?.classList.remove('inactivo');
-                console.log('✅ Audio publicado');
-            }
-        } catch (error) {
-            console.warn('⚠️ Error publicando audio:', error);
-            try { 
-                await room.localParticipant.setMicrophoneEnabled(true);
-                btnMicrofono?.classList.add('activo');
-                btnMicrofono?.classList.remove('inactivo');
-                console.log('✅ Audio publicado (fallback)');
-            } catch (e) {
-                console.error('❌ Fallback de audio falló:', e);
-                btnMicrofono?.classList.add('inactivo');
-            }
-        }
+        // ✅ Publicar audio con verificación
+        await publicarAudioConVerificacion();
 
+        // ✅ Publicar cámara
         try { 
             await room.localParticipant.setCameraEnabled(true);
             btnCamara?.classList.remove('inactivo');
@@ -528,7 +703,6 @@ async function conectarLiveKit() {
             const participants = Array.from(room.remoteParticipants.values());
             for (const participant of participants) {
                 await forzarSuscripcionAudio(participant);
-                // ✅ También procesar video
                 participant.trackPublications.forEach((pub) => {
                     if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
                         agregarVideoRemoto(pub.track, participant);
@@ -576,10 +750,8 @@ function registrarEventosLiveKit() {
     room.on(LivekitClient.RoomEvent.ParticipantConnected, async (participant) => {
         console.log('👤 Participante conectado:', participant.identity);
         
-        // ✅ FORZAR SUSCRIPCIÓN DE AUDIO
         await forzarSuscripcionAudio(participant);
         
-        // ✅ Procesar video
         participant.trackPublications.forEach((pub) => {
             if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
                 agregarVideoRemoto(pub.track, participant);
@@ -608,7 +780,6 @@ function registrarEventosLiveKit() {
             console.log(`🔊 Track de audio suscrito para: ${participant.identity}`);
             agregarAudioRemotoConGanancia(track, participant);
             
-            // ✅ Forzar reproducción después de un breve momento
             setTimeout(() => {
                 const audioInfo = audioMap.get(participant.identity);
                 if (audioInfo && audioInfo.element) {
@@ -740,21 +911,16 @@ function agregarAudioRemotoConGanancia(track, participant) {
     
     const identity = participant.identity;
     
-    // ✅ CRÍTICO: NO reproducir audio propio (EVITA ECO)
     if (identity === room?.localParticipant?.identity) {
         console.log('⏭️ 🚨 SALTANDO AUDIO PROPIO - EVITA ECO');
         return;
     }
 
-    // ✅ Verificar si ya existe
     if (audioMap.has(identity)) {
         console.log(`⏭️ Audio ya existe para ${identity}`);
         return;
     }
 
-    // ✅ ============================================
-    // ✅ PRIMERO: INTENTAR CON HTML5 AUDIO (SIN ECO)
-    // ✅ ============================================
     try {
         console.log(`📻 Creando audio HTML5 para: ${identity}`);
         
@@ -795,7 +961,6 @@ function agregarAudioRemotoConGanancia(track, participant) {
         window.room = room;
         window.volumenActual = volumenActual;
         
-        // ✅ Forzar reproducción inmediata
         setTimeout(() => {
             audioElement.volume = Math.min(volumenActual, 1.0);
             audioElement.muted = false;
@@ -1350,6 +1515,13 @@ function diagnostico() {
             }
         }
         
+        // ✅ Verificar publicación local
+        const pub = room.localParticipant?.getTrackPublication(LivekitClient.Track.Source.Microphone);
+        info += '\n📤 AUDIO LOCAL:\n';
+        info += `   Publicado: ${!!pub}\n`;
+        info += `   Habilitado: ${pub?.isEnabled || false}\n`;
+        info += `   Track existe: ${!!pub?.track}\n`;
+        
         info += '\n🌐 ESTADO DE INTERNET:\n';
         info += `   📶 Online: ${navigator.onLine ? 'SÍ' : 'NO'}\n`;
         info += `   🔄 Reconectando: ${reconectando ? 'SÍ' : 'NO'}\n`;
@@ -1399,7 +1571,7 @@ document.addEventListener('visibilitychange', () => {
 document.addEventListener('click', async () => {
     console.log('🖱️ Click detectado - Reanudando audio...');
     await forzarReanudacionAudio();
-    await repararTodosLosAudios();
+    await reparacionCompletaAudio();
 }, { once: false });
 
 // ============================================================
@@ -1414,7 +1586,9 @@ window.agregarAudioRemotoConGanancia = agregarAudioRemotoConGanancia;
 window.forzarReanudacionAudio = forzarReanudacionAudio;
 window.actualizarVolumen = actualizarVolumen;
 window.forzarSuscripcionAudio = forzarSuscripcionAudio;
-window.repararTodosLosAudios = repararTodosLosAudios;
+window.reparacionCompletaAudio = reparacionCompletaAudio;
+window.publicarAudioConVerificacion = publicarAudioConVerificacion;
+window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
 
 const originalConectar = conectarLiveKit;
 conectarLiveKit = async function() {
@@ -1437,10 +1611,11 @@ actualizarVolumen = function() {
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 4.7 - Audio Bidireccional');
+    console.log('📋 Versión: 4.8 - Solución Profesional');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');
+    console.log('📡 Monitoreo de tracks activado');
     console.log('🔍 Variables expuestas globalmente para diagnóstico');
     
     iniciarMonitorInternet();
@@ -1456,6 +1631,15 @@ async function iniciarCamara() {
     actualizarLayout();
     await conectarLiveKit();
     
+    // ✅ Iniciar monitoreo de tracks
+    iniciarMonitoreoTracks();
+    
+    // ✅ Reparación automática después de 3 segundos
+    setTimeout(async () => {
+        await reparacionCompletaAudio();
+        console.log('✅ Reparación automática completada');
+    }, 3000);
+    
     window.room = room;
     window.audioMap = audioMap;
     window.videoMap = videoMap;
@@ -1464,13 +1648,15 @@ async function iniciarCamara() {
     window.forzarReanudacionAudio = forzarReanudacionAudio;
     window.actualizarVolumen = actualizarVolumen;
     window.forzarSuscripcionAudio = forzarSuscripcionAudio;
-    window.repararTodosLosAudios = repararTodosLosAudios;
+    window.reparacionCompletaAudio = reparacionCompletaAudio;
+    window.publicarAudioConVerificacion = publicarAudioConVerificacion;
+    window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
     
     setTimeout(async () => {
         console.log('✅ Sistema listo - Presiona "Diagnóstico" para ver detalles');
         console.log('🔍 Variables globales disponibles: room, audioMap, videoMap, volumenActual');
+        console.log('🔧 Funciones: reparacionCompletaAudio(), forzarSuscripcionAudio()');
         await forzarReanudacionAudio();
-        await repararTodosLosAudios();
     }, 2000);
 }
 

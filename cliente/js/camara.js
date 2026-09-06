@@ -29,8 +29,8 @@ let conectando = false;
 let reconectando = false;
 let audioMuted = false;
 
-// ✅ SOLUCIÓN 1: VOLUMEN POR DEFECTO AL 100% (CORREGIDO)
-let volumenActual = 1.0; // ✅ AHORA 100% (antes estaba en 0)
+// ✅ SOLUCIÓN 1: VOLUMEN POR DEFECTO AL 100%
+let volumenActual = 1.0;
 
 let reconexionTimeout = null;
 let intentosReconexion = 0;
@@ -171,7 +171,6 @@ async function forzarReanudacionAudio() {
         }
     }
     
-    // ✅ Si no hay audios, crear contexto de respaldo
     if (reanudados === 0 && audioMap.size === 0) {
         try {
             const backupContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -201,48 +200,34 @@ async function restaurarAudioDespuesReconexion() {
         return;
     }
     
-    // ✅ Primero, forzar reanudación de todos los AudioContexts existentes
     await forzarReanudacionAudio();
     
-    // ✅ Verificar participantes remotos
     if (room.remoteParticipants && room.remoteParticipants.size > 0) {
         room.remoteParticipants.forEach((participant) => {
             const identity = participant.identity;
             console.log(`👤 Revisando participante: ${identity}`);
             
-            // ✅ Buscar tracks de audio del participante
             participant.trackPublications.forEach((publication) => {
                 if (publication.kind === 'audio' && publication.track && publication.isSubscribed) {
-                    // ✅ Si ya existe, reconectarlo
                     if (audioMap.has(identity)) {
                         const audioInfo = audioMap.get(identity);
-                        if (audioInfo && audioInfo.gainNode && audioInfo.source) {
+                        if (audioInfo && audioInfo.element) {
                             try {
-                                // ✅ Re-conectar si está desconectado
-                                if (!audioInfo.gainNode.context || audioInfo.gainNode.context.state === 'closed') {
-                                    console.log(`♻️ Re-creando AudioContext para ${identity}`);
-                                    audioMap.delete(identity);
-                                    agregarAudioRemotoConGanancia(publication.track, participant);
-                                } else {
-                                    // ✅ Solo reanudar y ajustar ganancia
-                                    if (audioInfo.context.state === 'suspended') {
-                                        audioInfo.context.resume().catch(() => {});
-                                    }
-                                    audioInfo.gainNode.gain.value = Math.min(volumenActual * 1.5, 2.0);
-                                    console.log(`✅ Audio restaurado para: ${identity}`);
+                                if (audioInfo.element.paused) {
+                                    audioInfo.element.play().catch(() => {});
                                 }
+                                audioInfo.element.volume = Math.min(volumenActual, 1.0);
+                                console.log(`✅ Audio HTML restaurado para: ${identity}`);
                             } catch (error) {
-                                console.error(`❌ Error reconectando audio de ${identity}:`, error);
+                                console.error(`❌ Error restaurando audio de ${identity}:`, error);
                                 audioMap.delete(identity);
                                 agregarAudioRemotoConGanancia(publication.track, participant);
                             }
                         } else {
-                            // ✅ Recrear si está corrupto
                             audioMap.delete(identity);
                             agregarAudioRemotoConGanancia(publication.track, participant);
                         }
                     } else {
-                        // ✅ No existe, crearlo
                         console.log(`🔊 Creando audio para ${identity}...`);
                         agregarAudioRemotoConGanancia(publication.track, participant);
                     }
@@ -253,12 +238,8 @@ async function restaurarAudioDespuesReconexion() {
         console.log('👥 No hay participantes remotos');
     }
     
-    // ✅ Forzar reanudación nuevamente
     await forzarReanudacionAudio();
-    
-    // ✅ Aplicar volumen actual
     actualizarVolumen();
-    
     console.log('✅ Audio restaurado completamente');
 }
 
@@ -266,16 +247,13 @@ async function restaurarAudioDespuesReconexion() {
 // ✅ SOLUCIÓN 8: RECONEXIÓN POR PÉRDIDA DE INTERNET
 // ============================================================
 
-// ✅ Detectar cambios en la conexión de internet
 function iniciarMonitorInternet() {
     console.log('🌐 Iniciando monitor de internet...');
     
-    // ✅ Escuchar evento de conexión
     window.addEventListener('online', () => {
         console.log('🌐 Internet CONECTADO');
         internetStatus = true;
         reintentosReconexion = 0;
-        // ✅ Si estamos desconectados, reconectar
         if (!room || room.state === 'disconnected') {
             console.log('🔄 Reconectando por recuperación de internet...');
             reconectarManual();
@@ -285,17 +263,12 @@ function iniciarMonitorInternet() {
     window.addEventListener('offline', () => {
         console.warn('🌐 Internet DESCONECTADO');
         internetStatus = false;
-        // ✅ Mostrar estado de desconexión
         actualizarEstado('Sin Internet', 'error');
     });
     
-    // ✅ Monitoreo periódico de conectividad
     monitorInternet = setInterval(async () => {
-        // ✅ Si estamos desconectados y hay internet, reconectar
         if (navigator.onLine && (!room || room.state === 'disconnected')) {
             console.log('🔄 Detectada desconexión - Intentando reconectar...');
-            
-            // ✅ Verificar si realmente hay internet
             try {
                 const response = await fetch('/get-token', { 
                     method: 'HEAD',
@@ -316,32 +289,9 @@ function iniciarMonitorInternet() {
                 }
             }
         }
-    }, 10000); // ✅ Verificar cada 10 segundos
+    }, 10000);
 }
 
-// ✅ Función para verificar salud de la conexión
-async function verificarSaludConexion() {
-    if (!room) return false;
-    
-    try {
-        // ✅ Verificar si el room sigue conectado
-        if (room.state !== 'connected') {
-            console.warn('⚠️ Room no está conectado - Estado:', room.state);
-            return false;
-        }
-        
-        // ✅ Verificar participantes
-        const participants = room.remoteParticipants?.size || 0;
-        console.log(`📊 Salud: ${participants} participantes remotos`);
-        
-        return true;
-    } catch (error) {
-        console.warn('⚠️ Error verificando salud:', error);
-        return false;
-    }
-}
-
-// ✅ Función para reconexión automática con backoff exponencial
 async function reconexionAutomatica() {
     if (conectando || reconectando) {
         console.log('⏳ Ya hay una reconexión en progreso');
@@ -350,10 +300,9 @@ async function reconexionAutomatica() {
     
     console.log('🔄 Iniciando reconexión automática...');
     
-    // ✅ Intentar reconectar con backoff exponencial
     let intento = 0;
     const maxIntentos = 5;
-    const delayBase = 1000; // 1 segundo
+    const delayBase = 1000;
     
     while (intento < maxIntentos) {
         if (!navigator.onLine) {
@@ -365,15 +314,12 @@ async function reconexionAutomatica() {
         
         try {
             console.log(`🔄 Intento ${intento + 1}/${maxIntentos}`);
-            
-            // ✅ Verificar servidor
             const response = await fetch('/get-token', { 
                 method: 'HEAD',
                 signal: AbortSignal.timeout(5000)
             });
             
             if (response.ok) {
-                // ✅ Reconectar
                 await reconectarManual();
                 console.log('✅ Reconexión automática exitosa');
                 return true;
@@ -382,7 +328,6 @@ async function reconexionAutomatica() {
             console.warn(`⚠️ Intento ${intento + 1} fallido:`, error.message);
         }
         
-        // ✅ Esperar con backoff exponencial
         const delay = delayBase * Math.pow(2, intento);
         console.log(`⏳ Esperando ${delay}ms antes del siguiente intento...`);
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -394,10 +339,8 @@ async function reconexionAutomatica() {
     return false;
 }
 
-// ✅ Función para guardar estado y recuperar después de reinicio
 function guardarEstadoSala() {
     if (!room) return;
-    
     try {
         const estado = {
             roomName: ROOM_NAME,
@@ -417,13 +360,10 @@ function recuperarEstadoSala() {
         if (!data) return null;
         const estado = JSON.parse(data);
         const tiempoTranscurrido = Date.now() - estado.timestamp;
-        
-        // ✅ Solo válido por 5 minutos
         if (tiempoTranscurrido > 300000) {
             sessionStorage.removeItem('ventana_digital_estado');
             return null;
         }
-        
         console.log('💾 Estado recuperado:', estado);
         return estado;
     } catch (error) {
@@ -499,7 +439,6 @@ async function conectarLiveKit() {
             miId.textContent = participantName;
         }
 
-        // ✅ Publicar audio
         try {
             const audioStream = await obtenerAudioProfesional();
             const audioTrack = audioStream.getAudioTracks()[0];
@@ -528,7 +467,6 @@ async function conectarLiveKit() {
             }
         }
 
-        // ✅ Publicar cámara
         try { 
             await room.localParticipant.setCameraEnabled(true);
             btnCamara?.classList.remove('inactivo');
@@ -539,7 +477,6 @@ async function conectarLiveKit() {
             btnCamara?.classList.add('inactivo');
         }
 
-        // ✅ Procesar participantes existentes
         if (room.remoteParticipants && room.remoteParticipants.size > 0) {
             const participants = Array.from(room.remoteParticipants.values());
             participants.forEach(participant => {
@@ -626,24 +563,18 @@ function registrarEventosLiveKit() {
         console.log('🔄 LiveKit reconectando...');
     });
 
-    // ✅ EVENTO RECONNECTED MEJORADO
     room.on(LivekitClient.RoomEvent.Reconnected, async () => {
         reconectando = false;
         intentosReconexion = 0;
         actualizarEstado('Conectado', 'conectado');
         console.log('✅ LiveKit reconectado');
-        
-        // ✅ CRÍTICO: Restaurar audio después de reconexión
         await restaurarAudioDespuesReconexion();
         actualizarLayout();
     });
 
-    // ✅ EVENTO DISCONNECTED MEJORADO CON RECONEXIÓN AUTOMÁTICA
     room.on(LivekitClient.RoomEvent.Disconnected, async (reason) => {
         reconectando = false;
         console.warn('⚠️ Desconectado:', reason);
-        
-        // ✅ Guardar estado para recuperación
         guardarEstadoSala();
         
         if (reason === 'user' || reason === 'room_closed') {
@@ -651,18 +582,13 @@ function registrarEventosLiveKit() {
             return;
         }
 
-        // ✅ Si hay internet, intentar reconectar automáticamente
         if (navigator.onLine) {
             console.log('🌐 Internet disponible - Iniciando reconexión automática');
             actualizarEstado('Reconectando automáticamente...', 'conectando');
-            
-            // ✅ Intentar reconexión automática
             await reconexionAutomatica();
         } else {
             console.log('🌐 Sin internet - Esperando conexión');
             actualizarEstado('Esperando internet...', 'conectando');
-            
-            // ✅ Esperar a que vuelva el internet
             const esperarInternet = async () => {
                 while (!navigator.onLine) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -729,7 +655,7 @@ function agregarVideoRemoto(track, participant) {
 }
 
 // ============================================================
-// ✅ SOLUCIÓN 2: AUDIO REMOTO CON GANANCIA (WEB AUDIO API)
+// ✅ SOLUCIÓN 2: AUDIO REMOTO - VERSIÓN CORREGIDA (SIN ECO)
 // ============================================================
 
 function agregarAudioRemotoConGanancia(track, participant) {
@@ -749,132 +675,121 @@ function agregarAudioRemotoConGanancia(track, participant) {
         return;
     }
 
+    // ✅ ============================================
+    // ✅ PRIMERO: INTENTAR CON HTML5 AUDIO (SIN ECO)
+    // ✅ ============================================
     try {
-        // ✅ Crear contexto de audio
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        console.log(`📻 Creando audio HTML5 para: ${identity}`);
         
-        // ✅ SOLUCIÓN 2: Crear nodo de ganancia (AMPLIFICADOR)
-        const gainNode = audioContext.createGain();
+        // ✅ Crear elemento de audio HTML
+        const audioElement = document.createElement('audio');
+        audioElement.autoplay = true;
+        audioElement.playsInline = true;
+        audioElement.dataset.identity = identity;
+        audioElement.volume = Math.min(volumenActual, 1.0);
+        audioElement.muted = false;
+        audioElement.setAttribute('autoplay', '');
+        audioElement.setAttribute('playsinline', '');
+        document.body.appendChild(audioElement);
         
-        // ✅ Aplicar volumen actual con AMPLIFICACIÓN (150%)
-        const volumenAmplificado = volumenActual * 1.5;
-        gainNode.gain.value = Math.min(volumenAmplificado, 2.0);
+        // ✅ Adjuntar track al elemento HTML
+        if (typeof track.attach === 'function') {
+            track.attach(audioElement);
+            console.log(`✅ Track adjuntado a HTML para: ${identity}`);
+        } else {
+            const stream = new MediaStream();
+            stream.addTrack(track.mediaStreamTrack);
+            audioElement.srcObject = stream;
+            audioElement.play().catch(() => {});
+            console.log(`✅ Stream adjuntado a HTML para: ${identity}`);
+        }
         
-        console.log(`🔊 Ganancia inicial para ${identity}: ${(gainNode.gain.value * 100).toFixed(0)}%`);
-        
-        // ✅ Crear fuente desde el track
-        const source = audioContext.createMediaStreamSource(
-            new MediaStream([track.mediaStreamTrack])
-        );
-        
-        // ✅ Conectar: fuente -> ganancia -> destino (altavoces)
-        source.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        // ✅ Guardar TODO para poder ajustar después
+        // ✅ Guardar en audioMap como HTML5 (prioridad)
         const audioInfo = {
-            context: audioContext,
-            source: source,
-            gainNode: gainNode,
+            element: audioElement,
             identity: identity,
+            isFallback: true,  // ✅ Marcado como HTML5
             track: track,
             connected: true
         };
         
         audioMap.set(identity, audioInfo);
-        console.log(`🔊 Audio amplificado creado para: ${identity} (${(gainNode.gain.value * 100).toFixed(0)}%)`);
+        console.log(`🔊 Audio HTML5 creado para: ${identity} (volumen: ${audioElement.volume})`);
         
-        // ✅ Si el contexto está suspendido, reanudarlo
-        if (audioContext.state === 'suspended') {
-            audioContext.resume().then(() => {
-                console.log(`🎵 AudioContext reanudado para ${identity}`);
-            }).catch(err => {
-                console.warn(`⚠️ Error reanudando AudioContext para ${identity}:`, err);
-            });
-        }
-        
-        // ✅ Aplicar volumen a todos los audios
+        // ✅ Actualizar volumen
         actualizarVolumen();
         
-        // ✅ EXPONER GLOBALMENTE
+        // ✅ Exponer globalmente
         window.audioMap = audioMap;
         window.room = room;
         window.volumenActual = volumenActual;
         
         return audioInfo;
         
-    } catch (error) {
-        console.error('❌ Error creando audio con Web Audio API:', error);
-        console.warn('⚠️ Usando fallback HTML5 Audio...');
+    } catch (htmlError) {
+        console.error('❌ Error creando audio HTML5:', htmlError);
+        console.warn('⚠️ Usando Web Audio API como respaldo...');
         
-        // ✅ Fallback: HTML5 Audio si Web Audio falla
-        agregarAudioRemotoFallback(track, participant);
+        // ✅ ============================================
+        // ✅ SEGUNDO: FALLBACK A WEB AUDIO API
+        // ✅ ============================================
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const gainNode = audioContext.createGain();
+            const volumenAmplificado = volumenActual * 1.5;
+            gainNode.gain.value = Math.min(volumenAmplificado, 2.0);
+            
+            const source = audioContext.createMediaStreamSource(
+                new MediaStream([track.mediaStreamTrack])
+            );
+            
+            source.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            const audioInfo = {
+                context: audioContext,
+                source: source,
+                gainNode: gainNode,
+                identity: identity,
+                track: track,
+                connected: true,
+                isFallback: false
+            };
+            
+            audioMap.set(identity, audioInfo);
+            console.log(`🔊 Web Audio creado (respaldo) para: ${identity}`);
+            
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    console.log(`🎵 AudioContext reanudado para ${identity}`);
+                }).catch(err => {
+                    console.warn(`⚠️ Error reanudando AudioContext para ${identity}:`, err);
+                });
+            }
+            
+            actualizarVolumen();
+            window.audioMap = audioMap;
+            window.room = room;
+            window.volumenActual = volumenActual;
+            
+            return audioInfo;
+            
+        } catch (webAudioError) {
+            console.error('❌ Error en respaldo Web Audio:', webAudioError);
+            return null;
+        }
     }
 }
 
 // ============================================================
-// ✅ FALLBACK: HTML5 AUDIO (SIN GANANCIA)
+// ✅ FALLBACK: HTML5 AUDIO (SIN GANANCIA) - MANTENIDO POR COMPATIBILIDAD
 // ============================================================
 
 function agregarAudioRemotoFallback(track, participant) {
-    if (!participant || !track) return;
-    
-    const identity = participant.identity;
-    
-    if (identity === room?.localParticipant?.identity) {
-        console.log('⏭️ 🚨 SALTANDO AUDIO PROPIO - EVITA ECO');
-        return;
-    }
-
-    if (audioMap.has(identity)) {
-        console.log(`⏭️ Audio ya existe para ${identity}`);
-        return;
-    }
-
-    const audio = document.createElement('audio');
-    audio.autoplay = true;
-    audio.playsInline = true;
-    audio.dataset.identity = identity;
-    audio.volume = Math.min(volumenActual, 1.0);
-    audio.setAttribute('autoplay', '');
-    audio.setAttribute('playsinline', '');
-    document.body.appendChild(audio);
-    
-    const audioInfo = {
-        element: audio,
-        identity: identity,
-        isFallback: true,
-        track: track
-    };
-    
-    audioMap.set(identity, audioInfo);
-    console.log(`🔊 Audio HTML5 creado para: ${identity} (volumen: ${audio.volume})`);
-
-    try {
-        if (typeof track.attach === 'function') {
-            track.attach(audio);
-        } else {
-            const stream = new MediaStream();
-            stream.addTrack(track.mediaStreamTrack);
-            audio.srcObject = stream;
-            audio.play().catch(() => {});
-        }
-    } catch (error) {
-        console.warn('⚠️ Error adjuntando audio HTML5:', error);
-        try {
-            const stream = new MediaStream();
-            stream.addTrack(track.mediaStreamTrack);
-            audio.srcObject = stream;
-            audio.play().catch(() => {});
-        } catch (e) {
-            console.error('❌ Error en fallback de audio HTML5:', e);
-        }
-    }
-    
-    // ✅ EXPONER GLOBALMENTE
-    window.audioMap = audioMap;
-    window.room = room;
-    window.volumenActual = volumenActual;
+    // ✅ Esta función ya no se usa directamente, pero se mantiene por compatibilidad
+    // ✅ La función principal agregarAudioRemotoConGanancia ahora prioriza HTML5
+    console.log('⚠️ agregarAudioRemotoFallback llamado - usando agregarAudioRemotoConGanancia en su lugar');
+    return agregarAudioRemotoConGanancia(track, participant);
 }
 
 // ============================================================
@@ -887,31 +802,30 @@ function actualizarVolumen() {
     volumenActual = Number(volumen.value);
     console.log(`🎚️ Volumen ajustado a: ${(volumenActual * 100).toFixed(0)}%`);
     
-    // ✅ Actualizar audios HTML5 (fallback)
+    // ✅ Actualizar audios HTML5 (prioridad)
     document.querySelectorAll('audio[data-identity]').forEach(audio => {
         audio.volume = Math.min(volumenActual, 1.0);
+        audio.muted = false;
     });
     
-    // ✅ Actualizar Web Audio (con ganancia)
+    // ✅ Actualizar Web Audio (solo si existe y no hay HTML)
     for (const [identity, audioInfo] of audioMap) {
-        if (audioInfo.isFallback) {
-            if (audioInfo.element) {
-                audioInfo.element.volume = Math.min(volumenActual, 1.0);
-            }
+        if (audioInfo.isFallback && audioInfo.element) {
+            // ✅ Es HTML5, ya se actualizó arriba
+            continue;
         } else if (audioInfo.gainNode) {
+            // ✅ Es Web Audio (respaldo)
             const volumenAmplificado = volumenActual * 1.5;
             const valorFinal = Math.min(volumenAmplificado, 2.0);
             audioInfo.gainNode.gain.value = valorFinal;
-            console.log(`🔊 ${identity}: gain = ${(valorFinal * 100).toFixed(0)}%`);
+            console.log(`🔊 ${identity} (Web Audio): gain = ${(valorFinal * 100).toFixed(0)}%`);
         }
     }
     
-    // ✅ Actualizar label del slider
     if (volumenLabel) {
         volumenLabel.textContent = Math.round(volumenActual * 100) + '%';
     }
     
-    // ✅ EXPONER GLOBALMENTE
     window.volumenActual = volumenActual;
 }
 
@@ -1073,7 +987,6 @@ function limpiarVideos() {
         } catch (e) {}
     });
     
-    // ✅ Limpiar audios Web Audio y HTML5
     for (const [identity, audioInfo] of audioMap) {
         try {
             if (audioInfo.source) {
@@ -1361,15 +1274,15 @@ function diagnostico() {
         info += `   🎚️ Volumen actual: ${(volumenActual * 100).toFixed(0)}%\n`;
         info += `   🎯 Ganancia aplicada: ${(volumenActual * 150).toFixed(0)}% (150%)\n`;
         info += `   📊 Audios con Web Audio: ${Array.from(audioMap.values()).filter(a => !a.isFallback && a.gainNode).length}\n`;
-        info += `   📊 Audios HTML5 (fallback): ${Array.from(audioMap.values()).filter(a => a.isFallback).length}\n\n`;
+        info += `   📊 Audios HTML5: ${Array.from(audioMap.values()).filter(a => a.isFallback && a.element).length}\n\n`;
         
-        // ✅ Mostrar estado de cada AudioContext
         if (audioMap.size > 0) {
             info += '🔊 DETALLE DE AUDIOS:\n';
             for (const [identity, audioInfo] of audioMap) {
-                if (audioInfo.isFallback) {
+                if (audioInfo.isFallback && audioInfo.element) {
                     const vol = audioInfo.element?.volume || 0;
-                    info += `   📻 ${identity}: HTML5, volumen=${(vol * 100).toFixed(0)}%\n`;
+                    const paused = audioInfo.element?.paused ? 'pausado' : 'reproduciendo';
+                    info += `   📻 ${identity}: HTML5, volumen=${(vol * 100).toFixed(0)}%, ${paused}\n`;
                 } else if (audioInfo.gainNode) {
                     const gain = audioInfo.gainNode.gain.value;
                     const state = audioInfo.context?.state || 'unknown';
@@ -1378,22 +1291,9 @@ function diagnostico() {
             }
         }
         
-        // ✅ Verificar estado del AudioContext principal
-        if (audioMap.size > 0) {
-            const firstAudio = audioMap.values().next().value;
-            if (firstAudio && !firstAudio.isFallback && firstAudio.context) {
-                info += `\n🎵 Estado del AudioContext: ${firstAudio.context.state}\n`;
-                if (firstAudio.context.state === 'suspended') {
-                    info += '⚠️ ¡AudioContext SUSPENDIDO! Debes hacer clic en la página para reanudarlo.\n';
-                }
-            }
-        }
-        
-        // ✅ Información de internet
         info += '\n🌐 ESTADO DE INTERNET:\n';
         info += `   📶 Online: ${navigator.onLine ? 'SÍ' : 'NO'}\n`;
         info += `   🔄 Reconectando: ${reconectando ? 'SÍ' : 'NO'}\n`;
-        info += `   📊 Intentos: ${reintentosReconexion}/${MAX_REINTENTOS_RECONEXION}\n`;
     } else {
         info += '❌ Room: NO CONECTADO\n';
     }
@@ -1437,7 +1337,6 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// ✅ Click en cualquier parte para reanudar audio
 document.addEventListener('click', async () => {
     console.log('🖱️ Click detectado - Reanudando audio...');
     await forzarReanudacionAudio();
@@ -1447,7 +1346,6 @@ document.addEventListener('click', async () => {
 // ✅ EXPONER VARIABLES GLOBALES PARA DIAGNÓSTICO
 // ============================================================
 
-// ✅ Hacer accesibles globalmente para diagnóstico en consola
 window.room = room;
 window.audioMap = audioMap;
 window.videoMap = videoMap;
@@ -1456,7 +1354,6 @@ window.agregarAudioRemotoConGanancia = agregarAudioRemotoConGanancia;
 window.forzarReanudacionAudio = forzarReanudacionAudio;
 window.actualizarVolumen = actualizarVolumen;
 
-// ✅ Actualizar referencias cuando cambien
 const originalConectar = conectarLiveKit;
 conectarLiveKit = async function() {
     await originalConectar.call(this);
@@ -1466,7 +1363,6 @@ conectarLiveKit = async function() {
     window.volumenActual = volumenActual;
 };
 
-// ✅ Actualizar cada vez que cambie el volumen
 const originalActualizarVolumen = actualizarVolumen;
 actualizarVolumen = function() {
     originalActualizarVolumen.call(this);
@@ -1479,13 +1375,12 @@ actualizarVolumen = function() {
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 4.5 - Diagnóstico Total');
+    console.log('📋 Versión: 4.6 - Sin Eco');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');
     console.log('🔍 Variables expuestas globalmente para diagnóstico');
     
-    // ✅ INICIAR MONITOR DE INTERNET
     iniciarMonitorInternet();
     
     if (volumen) {
@@ -1499,7 +1394,6 @@ async function iniciarCamara() {
     actualizarLayout();
     await conectarLiveKit();
     
-    // ✅ Exponer variables globalmente
     window.room = room;
     window.audioMap = audioMap;
     window.videoMap = videoMap;
@@ -1511,7 +1405,6 @@ async function iniciarCamara() {
     setTimeout(() => {
         console.log('✅ Sistema listo - Presiona "Diagnóstico" para ver detalles');
         console.log('🔍 Variables globales disponibles: room, audioMap, videoMap, volumenActual');
-        // ✅ Intentar reanudar audio automáticamente
         forzarReanudacionAudio();
     }, 2000);
 }

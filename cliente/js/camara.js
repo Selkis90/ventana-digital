@@ -158,11 +158,6 @@ async function publicarAudioConVerificacion() {
         // ✅ FORMA CORRECTA - Usar getTrack
         var audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
         
-        // ✅ Si no funciona, intentar con getPublication
-        if (!audioPublication) {
-            audioPublication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
-        }
-        
         if (audioPublication) {
             console.log('📡 Audio ya publicado, verificando estado...');
             if (audioPublication.isEnabled === false) {
@@ -198,9 +193,6 @@ async function publicarAudioConVerificacion() {
         console.log('✅ Audio publicado exitosamente');
         
         audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
-        if (!audioPublication) {
-            audioPublication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
-        }
         
         if (audioPublication && audioPublication.track) {
             console.log('✅ Verificación de publicación exitosa');
@@ -1370,10 +1362,10 @@ function actualizarLayout() {
 }
 
 // ============================================================
-// ✅ CONTROLES - BOTONES DE CÁMARA Y MICRÓFONO CORREGIDOS
+// ✅ CONTROLES - BOTONES DE CÁMARA Y MICRÓFONO - VERSIÓN DEFINITIVA
 // ============================================================
 
-// ✅ 1. BOTÓN MICRÓFONO - CORREGIDO
+// ✅ 1. BOTÓN MICRÓFONO - VERSIÓN DEFINITIVA
 async function alternarMicrofono() {
     if (!room) {
         console.warn('⚠️ Room no disponible');
@@ -1390,39 +1382,16 @@ async function alternarMicrofono() {
             }, 200);
         }
         
-        // Obtener el estado actual del micrófono
-        var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        // Usar setMicrophoneEnabled directamente con toggle
+        // Primero obtenemos el estado actual
+        var track = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        var isEnabled = true;
         
-        // Si no hay publicación, publicar
-        if (!publication) {
-            console.log('📡 Publicando micrófono...');
-            var audioStream = await obtenerAudioProfesional();
-            var audioTrack = audioStream.getAudioTracks()[0];
-            if (audioTrack) {
-                await room.localParticipant.publishTrack(audioTrack, {
-                    name: 'microfono',
-                    source: LivekitClient.Track.Source.Microphone,
-                    simulcast: false
-                });
-                publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
-            }
+        if (track) {
+            isEnabled = track.isEnabled !== false;
         }
         
-        // Si aún no hay publicación, usar método alternativo
-        if (!publication) {
-            await room.localParticipant.setMicrophoneEnabled(true);
-            if (btnMicrofono) {
-                btnMicrofono.classList.remove('inactivo');
-                btnMicrofono.classList.add('activo');
-            }
-            console.log('🎤 Micrófono activado');
-            return;
-        }
-        
-        // Estado actual
-        var isEnabled = publication.isEnabled !== false;
-        
-        // Cambiar estado
+        // Cambiar el estado
         await room.localParticipant.setMicrophoneEnabled(!isEnabled);
         
         // Actualizar UI
@@ -1430,10 +1399,14 @@ async function alternarMicrofono() {
             if (isEnabled) {
                 btnMicrofono.classList.remove('activo');
                 btnMicrofono.classList.add('inactivo');
+                btnMicrofono.title = 'Activar micrófono';
+                btnMicrofono.setAttribute('aria-label', 'Activar micrófono');
                 console.log('🎤 Micrófono desactivado');
             } else {
                 btnMicrofono.classList.remove('inactivo');
                 btnMicrofono.classList.add('activo');
+                btnMicrofono.title = 'Desactivar micrófono';
+                btnMicrofono.setAttribute('aria-label', 'Desactivar micrófono');
                 console.log('🎤 Micrófono activado');
             }
         }
@@ -1443,7 +1416,7 @@ async function alternarMicrofono() {
     }
 }
 
-// ✅ 2. BOTÓN CÁMARA - CORREGIDO
+// ✅ 2. BOTÓN CÁMARA - VERSIÓN DEFINITIVA
 async function alternarCamara() {
     if (!room) {
         console.warn('⚠️ Room no disponible');
@@ -1460,24 +1433,16 @@ async function alternarCamara() {
             }, 200);
         }
         
-        // Obtener el estado actual de la cámara
-        var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
+        // Usar setCameraEnabled directamente con toggle
+        // Primero obtenemos el estado actual
+        var track = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
+        var isEnabled = true;
         
-        // Si no hay publicación, intentar activar directamente
-        if (!publication) {
-            await room.localParticipant.setCameraEnabled(true);
-            if (btnCamara) {
-                btnCamara.classList.remove('inactivo');
-                btnCamara.classList.add('activo');
-            }
-            console.log('📷 Cámara activada');
-            return;
+        if (track) {
+            isEnabled = track.isEnabled !== false;
         }
         
-        // Estado actual
-        var isEnabled = publication.isEnabled !== false;
-        
-        // Cambiar estado
+        // Cambiar el estado
         await room.localParticipant.setCameraEnabled(!isEnabled);
         
         // Actualizar UI
@@ -1485,10 +1450,14 @@ async function alternarCamara() {
             if (isEnabled) {
                 btnCamara.classList.remove('activo');
                 btnCamara.classList.add('inactivo');
+                btnCamara.title = 'Activar cámara';
+                btnCamara.setAttribute('aria-label', 'Activar cámara');
                 console.log('📷 Cámara desactivada');
             } else {
                 btnCamara.classList.remove('inactivo');
                 btnCamara.classList.add('activo');
+                btnCamara.title = 'Desactivar cámara';
+                btnCamara.setAttribute('aria-label', 'Desactivar cámara');
                 console.log('📷 Cámara activada');
             }
         }
@@ -1662,9 +1631,6 @@ function diagnostico() {
         }
         
         var pub = room.localParticipant ? room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone) : null;
-        if (!pub) {
-            pub = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
-        }
         info += '\n📤 AUDIO LOCAL:\n';
         info += '   Publicado: ' + (!!pub) + '\n';
         info += '   Habilitado: ' + (pub ? pub.isEnabled : false) + '\n';

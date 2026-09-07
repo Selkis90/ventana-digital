@@ -157,32 +157,21 @@ async function publicarAudioConVerificacion() {
     }
     
     try {
-        // ✅ FORMA CORRECTA - Usar getTrack (la API correcta de LiveKit)
-        var audioPublication = null;
+        // ✅ FORMA CORRECTA - Usar getTrack
+        var audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
         
-        // Intentar obtener el track de audio
-        if (room.localParticipant.getTrack) {
-            audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
-        }
-        
-        // Si no funciona, intentar con getPublication (pero verificamos que existe)
-        if (!audioPublication && room.localParticipant.getPublication) {
+        // ✅ Si no funciona, intentar con getPublication
+        if (!audioPublication) {
             audioPublication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
         }
         
-        // Verificar si ya está publicado
         if (audioPublication) {
             console.log('📡 Audio ya publicado, verificando estado...');
-            
-            // Verificar si está habilitado
             if (audioPublication.isEnabled === false) {
-                if (room.localParticipant.setMicrophoneEnabled) {
-                    await room.localParticipant.setMicrophoneEnabled(true);
-                    console.log('✅ Audio habilitado');
-                }
+                await room.localParticipant.setMicrophoneEnabled(true);
+                console.log('✅ Audio habilitado');
             }
             
-            // Verificar que el track existe
             if (audioPublication.track) {
                 console.log('✅ Track de audio existente y válido');
                 if (btnMicrofono) {
@@ -193,7 +182,6 @@ async function publicarAudioConVerificacion() {
             }
         }
         
-        // Si no está publicado, publicar nuevo track
         console.log('📡 Publicando nuevo track de audio...');
         var audioStream = await obtenerAudioProfesional();
         var audioTrack = audioStream.getAudioTracks()[0];
@@ -203,31 +191,16 @@ async function publicarAudioConVerificacion() {
             return false;
         }
         
-        // Publicar el track
-        if (room.localParticipant.publishTrack) {
-            await room.localParticipant.publishTrack(audioTrack, {
-                name: 'microfono',
-                source: LivekitClient.Track.Source.Microphone,
-                simulcast: false
-            });
-            console.log('✅ Audio publicado exitosamente');
-        } else {
-            // Método alternativo
-            if (room.localParticipant.setMicrophoneEnabled) {
-                await room.localParticipant.setMicrophoneEnabled(true);
-                console.log('✅ Audio habilitado por método alternativo');
-                if (btnMicrofono) {
-                    btnMicrofono.classList.add('activo');
-                    btnMicrofono.classList.remove('inactivo');
-                }
-                return true;
-            }
-        }
+        await room.localParticipant.publishTrack(audioTrack, {
+            name: 'microfono',
+            source: LivekitClient.Track.Source.Microphone,
+            simulcast: false
+        });
         
-        // Verificar publicación
-        if (room.localParticipant.getTrack) {
-            audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
-        } else if (room.localParticipant.getPublication) {
+        console.log('✅ Audio publicado exitosamente');
+        
+        audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        if (!audioPublication) {
             audioPublication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
         }
         
@@ -248,20 +221,17 @@ async function publicarAudioConVerificacion() {
         
         try {
             console.log('📡 Intentando método alternativo...');
-            if (room.localParticipant.setMicrophoneEnabled) {
-                await room.localParticipant.setMicrophoneEnabled(true);
-                console.log('✅ Audio habilitado por método alternativo');
-                if (btnMicrofono) {
-                    btnMicrofono.classList.add('activo');
-                    btnMicrofono.classList.remove('inactivo');
-                }
-                return true;
+            await room.localParticipant.setMicrophoneEnabled(true);
+            console.log('✅ Audio habilitado por método alternativo');
+            if (btnMicrofono) {
+                btnMicrofono.classList.add('activo');
+                btnMicrofono.classList.remove('inactivo');
             }
+            return true;
         } catch (e) {
             console.error('❌ Error en método alternativo:', e);
             return false;
         }
-        return false;
     }
 }
 
@@ -276,13 +246,11 @@ async function forzarSuscripcionAudio(participant) {
     
     try {
         var audioPublications = [];
-        if (participant.trackPublications) {
-            participant.trackPublications.forEach(function(pub) {
-                if (pub.kind === 'audio') {
-                    audioPublications.push(pub);
-                }
-            });
-        }
+        participant.trackPublications.forEach(function(pub) {
+            if (pub.kind === 'audio') {
+                audioPublications.push(pub);
+            }
+        });
         
         if (audioPublications.length === 0) {
             console.log('   ⚠️ No hay publicaciones de audio para', participant.identity);
@@ -331,12 +299,10 @@ function iniciarMonitoreoTracks() {
     monitorTracksInterval = setInterval(function() {
         if (!room || room.state !== 'connected') return;
         
-        if (!room.remoteParticipants) return;
-        if (room.remoteParticipants.size === 0) return;
+        var remoteParticipants = room.remoteParticipants;
+        if (!remoteParticipants || remoteParticipants.size === 0) return;
         
-        room.remoteParticipants.forEach(function(participant, identity) {
-            if (!participant.trackPublications) return;
-            
+        remoteParticipants.forEach(function(participant, identity) {
             participant.trackPublications.forEach(function(pub) {
                 if (pub.kind === 'audio') {
                     if (!pub.isSubscribed) {
@@ -364,19 +330,6 @@ function iniciarMonitoreoTracks() {
                             setTimeout(function() {
                                 repararVolumenAudio(identity);
                             }, 500);
-                        } else {
-                            var audioInfo = audioMap.get(identity);
-                            if (audioInfo) {
-                                if (audioInfo.element && audioInfo.element.volume !== Math.min(volumenActual, 1.0)) {
-                                    audioInfo.element.volume = Math.min(volumenActual, 1.0);
-                                }
-                                if (audioInfo.gainNode) {
-                                    var expected = Math.min(volumenActual * 1.5, 2.0);
-                                    if (Math.abs(audioInfo.gainNode.gain.value - expected) > 0.01) {
-                                        audioInfo.gainNode.gain.setValueAtTime(expected, audioInfo.context.currentTime);
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -427,34 +380,32 @@ async function reparacionCompletaAudio() {
             console.log('   Procesando:', identity);
             
             var audioTrack = null;
-            if (participant.trackPublications) {
-                participant.trackPublications.forEach(function(pub) {
-                    if (pub.kind === 'audio') {
-                        console.log('   📡 Audio encontrado: suscrito=', pub.isSubscribed);
-                        
-                        if (!pub.isSubscribed) {
-                            console.log('   🔄 Forzando suscripción...');
-                            try {
-                                if (typeof pub.subscribe === 'function') {
-                                    (function(pubLocal) {
-                                        pubLocal.subscribe().then(function() {
-                                            console.log('   ✅ Suscripción forzada');
-                                        }).catch(function(error) {
-                                            console.error('   ❌ Error forzando suscripción:', error);
-                                        });
-                                    })(pub);
-                                }
-                            } catch (error) {
-                                console.error('   ❌ Error forzando suscripción:', error);
+            participant.trackPublications.forEach(function(pub) {
+                if (pub.kind === 'audio') {
+                    console.log('   📡 Audio encontrado: suscrito=', pub.isSubscribed);
+                    
+                    if (!pub.isSubscribed) {
+                        console.log('   🔄 Forzando suscripción...');
+                        try {
+                            if (typeof pub.subscribe === 'function') {
+                                (function(pubLocal) {
+                                    pubLocal.subscribe().then(function() {
+                                        console.log('   ✅ Suscripción forzada');
+                                    }).catch(function(error) {
+                                        console.error('   ❌ Error forzando suscripción:', error);
+                                    });
+                                })(pub);
                             }
-                        }
-                        
-                        if (pub.isSubscribed && pub.track) {
-                            audioTrack = pub.track;
+                        } catch (error) {
+                            console.error('   ❌ Error forzando suscripción:', error);
                         }
                     }
-                });
-            }
+                    
+                    if (pub.isSubscribed && pub.track) {
+                        audioTrack = pub.track;
+                    }
+                }
+            });
             
             if (audioTrack) {
                 console.log('   🔊 Creando/recreando audio para', identity, '...');
@@ -798,13 +749,11 @@ async function conectarLiveKit() {
             for (var i = 0; i < participants.length; i++) {
                 var participant = participants[i];
                 await forzarSuscripcionAudio(participant);
-                if (participant.trackPublications) {
-                    participant.trackPublications.forEach(function(pub) {
-                        if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
-                            agregarVideoRemoto(pub.track, participant);
-                        }
-                    });
-                }
+                participant.trackPublications.forEach(function(pub) {
+                    if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
+                        agregarVideoRemoto(pub.track, participant);
+                    }
+                });
             }
         }
 
@@ -848,13 +797,11 @@ function registrarEventosLiveKit() {
         
         (function(p) {
             forzarSuscripcionAudio(p).then(function() {
-                if (p.trackPublications) {
-                    p.trackPublications.forEach(function(pub) {
-                        if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
-                            agregarVideoRemoto(pub.track, p);
-                        }
-                    });
-                }
+                p.trackPublications.forEach(function(pub) {
+                    if (pub.kind === 'video' && pub.isSubscribed && pub.track) {
+                        agregarVideoRemoto(pub.track, p);
+                    }
+                });
                 actualizarLayout();
                 actualizarParticipanteRemoto();
             }).catch(function(error) {
@@ -1018,7 +965,7 @@ function agregarVideoRemoto(track, participant) {
 }
 
 // ============================================================
-// ✅ AUDIO REMOTO MEJORADO CON VOLUMEN
+// ✅ AUDIO REMOTO
 // ============================================================
 
 function agregarAudioRemotoConGanancia(track, participant) {
@@ -1114,7 +1061,7 @@ function agregarAudioRemotoConGanancia(track, participant) {
             };
             
             audioMap.set(identity, audioInfo);
-            console.log('🔊 Web Audio creado (respaldo) para:', identity, '(ganancia:', valorFinal, ')');
+            console.log('🔊 Web Audio creado (respaldo) para:', identity);
             
             if (audioContext.state === 'suspended') {
                 audioContext.resume().then(function() {
@@ -1228,13 +1175,6 @@ function actualizarVolumen() {
         window.volumenActual = volumenActual;
         
         console.log('✅ Volumen aplicado:', html5Count, 'audios HTML5,', webAudioCount, 'audios Web Audio');
-        
-        // 7. DISPARAR EVENTO PARA ACTUALIZAR UI
-        if (window.dispatchEvent) {
-            window.dispatchEvent(new CustomEvent('volumenActualizado', { 
-                detail: { volumen: volumenActual } 
-            }));
-        }
         
     } catch (error) {
         console.error('❌ Error en actualizarVolumen:', error);
@@ -1605,18 +1545,13 @@ async function alternarMicrofono() {
     }
     
     try {
-        var publication = null;
-        if (room.localParticipant.getTrack) {
-            publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
-        }
-        if (!publication && room.localParticipant.getPublication) {
+        var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        if (!publication) {
             publication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
         }
         var isEnabled = publication ? publication.isEnabled : true;
         
-        if (room.localParticipant.setMicrophoneEnabled) {
-            await room.localParticipant.setMicrophoneEnabled(!isEnabled);
-        }
+        await room.localParticipant.setMicrophoneEnabled(!isEnabled);
         
         if (isEnabled) {
             if (btnMicrofono) {
@@ -1643,18 +1578,13 @@ async function alternarCamara() {
     }
     
     try {
-        var publication = null;
-        if (room.localParticipant.getTrack) {
-            publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
-        }
-        if (!publication && room.localParticipant.getPublication) {
+        var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
+        if (!publication) {
             publication = room.localParticipant.getPublication(LivekitClient.Track.Source.Camera);
         }
         var isEnabled = publication ? publication.isEnabled : true;
         
-        if (room.localParticipant.setCameraEnabled) {
-            await room.localParticipant.setCameraEnabled(!isEnabled);
-        }
+        await room.localParticipant.setCameraEnabled(!isEnabled);
         
         if (isEnabled) {
             if (btnCamara) {
@@ -1683,16 +1613,12 @@ async function silenciarTemporalmente() {
     }
     
     try {
-        if (room.localParticipant.setMicrophoneEnabled) {
-            await room.localParticipant.setMicrophoneEnabled(false);
-        }
+        await room.localParticipant.setMicrophoneEnabled(false);
         console.log('🔇 Silenciado temporalmente');
         
         setTimeout(async function() {
             try {
-                if (room && room.localParticipant && room.localParticipant.setMicrophoneEnabled) {
-                    await room.localParticipant.setMicrophoneEnabled(true);
-                }
+                await room.localParticipant.setMicrophoneEnabled(true);
                 audioMuted = false;
                 if (btnSilenciar) {
                     btnSilenciar.classList.remove('activo');
@@ -1723,7 +1649,7 @@ async function compartirPantalla() {
             video: { cursor: 'always', frameRate: 30 } 
         });
         var track = stream.getVideoTracks()[0];
-        if (track && room.localParticipant.publishTrack) {
+        if (track) {
             await room.localParticipant.publishTrack(track, {
                 name: 'screen-share',
                 source: LivekitClient.Track.Source.ScreenShare
@@ -1837,12 +1763,9 @@ function diagnostico() {
             });
         }
         
-        var pub = null;
-        if (room.localParticipant && room.localParticipant.getTrack) {
-            pub = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
-        }
-        if (!pub && room.localParticipant && room.localParticipant.getPublication) {
-            pub = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
+        var pub = room.localParticipant ? room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone) : null;
+        if (!pub) {
+            pub = room.localParticipant ? room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone) : null;
         }
         info += '\n📤 AUDIO LOCAL:\n';
         info += '   Publicado: ' + (!!pub) + '\n';
@@ -1864,7 +1787,7 @@ function diagnostico() {
 }
 
 // ============================================================
-// EVENT LISTENERS MEJORADOS PARA VOLUMEN
+// EVENT LISTENERS
 // ============================================================
 
 if (btnMicrofono) btnMicrofono.addEventListener('click', alternarMicrofono);
@@ -1954,8 +1877,6 @@ window.addEventListener('orientationchange', function() {
 document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible') {
         actualizarLayout();
-        // Reanudar audio si es necesario
-        forzarReanudacionAudio().catch(function() {});
     }
 });
 

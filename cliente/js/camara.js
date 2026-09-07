@@ -72,7 +72,7 @@ function mostrarLoading() {
 }
 
 // ============================================================
-// ✅ OBTENER AUDIO CON MEJOR CONFIGURACIÓN (NO TOCAR)
+// ✅ OBTENER AUDIO CON MEJOR CONFIGURACIÓN
 // ============================================================
 
 async function obtenerAudioProfesional() {
@@ -143,7 +143,7 @@ async function obtenerAudioProfesional() {
 }
 
 // ============================================================
-// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN (NO TOCAR)
+// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN - CORREGIDO
 // ============================================================
 
 async function publicarAudioConVerificacion() {
@@ -232,7 +232,7 @@ async function publicarAudioConVerificacion() {
 }
 
 // ============================================================
-// ✅ FORZAR SUSCRIPCIÓN DE AUDIO PARA TODOS LOS PARTICIPANTES (NO TOCAR)
+// ✅ FORZAR SUSCRIPCIÓN DE AUDIO PARA TODOS LOS PARTICIPANTES
 // ============================================================
 
 async function forzarSuscripcionAudio(participant) {
@@ -282,7 +282,7 @@ async function forzarSuscripcionAudio(participant) {
 }
 
 // ============================================================
-// ✅ MONITOREO DE TRACKS REMOTOS (NO TOCAR)
+// ✅ MONITOREO DE TRACKS REMOTOS
 // ============================================================
 
 function iniciarMonitoreoTracks() {
@@ -344,7 +344,7 @@ function iniciarMonitoreoTracks() {
 }
 
 // ============================================================
-// ✅ REPARACIÓN COMPLETA DE AUDIO (NO TOCAR)
+// ✅ REPARACIÓN COMPLETA DE AUDIO
 // ============================================================
 
 async function reparacionCompletaAudio() {
@@ -448,7 +448,7 @@ async function reparacionCompletaAudio() {
 }
 
 // ============================================================
-// ✅ FORZAR REANUDACIÓN DE AUDIO CONTEXT (NO TOCAR)
+// ✅ FORZAR REANUDACIÓN DE AUDIO CONTEXT
 // ============================================================
 
 async function forzarReanudacionAudio() {
@@ -504,7 +504,7 @@ async function forzarReanudacionAudio() {
 }
 
 // ============================================================
-// ✅ RESTAURAR AUDIO DESPUÉS DE RECONEXIÓN (NO TOCAR)
+// ✅ RESTAURAR AUDIO DESPUÉS DE RECONEXIÓN
 // ============================================================
 
 async function restaurarAudioDespuesReconexion() {
@@ -522,7 +522,7 @@ async function restaurarAudioDespuesReconexion() {
 }
 
 // ============================================================
-// ✅ RECONEXIÓN POR PÉRDIDA DE INTERNET (NO TOCAR)
+// ✅ RECONEXIÓN POR PÉRDIDA DE INTERNET
 // ============================================================
 
 function iniciarMonitorInternet() {
@@ -720,64 +720,17 @@ async function conectarLiveKit() {
 
         await publicarAudioConVerificacion();
 
-        // ✅ CÁMARA - CORREGIDO
         try { 
             await room.localParticipant.setCameraEnabled(true);
             if (btnCamara) {
                 btnCamara.classList.remove('inactivo');
                 btnCamara.classList.add('activo');
-                btnCamara.innerHTML = `
-                    <svg viewBox="0 0 24 24">
-                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                        <circle cx="12" cy="13" r="4"/>
-                    </svg>
-                `;
             }
             console.log('✅ Cámara activada');
         } catch (error) { 
             console.warn('⚠️ Cámara no disponible:', error); 
             if (btnCamara) {
-                btnCamara.classList.remove('activo');
                 btnCamara.classList.add('inactivo');
-                btnCamara.innerHTML = `
-                    <svg viewBox="0 0 24 24">
-                        <line x1="1" y1="1" x2="23" y2="23"/>
-                        <path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3m3-3h6l2 3h4a2 2 0 0 1 2 2v9.34m-7.72-2.06a4 4 0 1 1-5.56-5.56"/>
-                    </svg>
-                `;
-            }
-        }
-
-        // ✅ MICRÓFONO - CORREGIDO
-        try { 
-            await room.localParticipant.setMicrophoneEnabled(true);
-            if (btnMicrofono) {
-                btnMicrofono.classList.remove('inactivo');
-                btnMicrofono.classList.add('activo');
-                btnMicrofono.innerHTML = `
-                    <svg viewBox="0 0 24 24">
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                        <line x1="12" y1="19" x2="12" y2="23"/>
-                        <line x1="8" y1="23" x2="16" y2="23"/>
-                    </svg>
-                `;
-            }
-            console.log('✅ Micrófono activado');
-        } catch (error) { 
-            console.warn('⚠️ Micrófono no disponible:', error); 
-            if (btnMicrofono) {
-                btnMicrofono.classList.remove('activo');
-                btnMicrofono.classList.add('inactivo');
-                btnMicrofono.innerHTML = `
-                    <svg viewBox="0 0 24 24">
-                        <line x1="1" y1="1" x2="23" y2="23"/>
-                        <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
-                        <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
-                        <line x1="12" y1="19" x2="12" y2="23"/>
-                        <line x1="8" y1="23" x2="16" y2="23"/>
-                    </svg>
-                `;
             }
         }
 
@@ -949,7 +902,7 @@ function registrarEventosLiveKit() {
 }
 
 // ============================================================
-// ✅ VIDEO REMOTO (NO TOCAR)
+// ✅ VIDEO REMOTO
 // ============================================================
 
 function agregarVideoRemoto(track, participant) {
@@ -1002,7 +955,7 @@ function agregarVideoRemoto(track, participant) {
 }
 
 // ============================================================
-// ✅ AUDIO REMOTO (NO TOCAR)
+// ✅ AUDIO REMOTO
 // ============================================================
 
 function agregarAudioRemotoConGanancia(track, participant) {
@@ -1122,7 +1075,7 @@ function agregarAudioRemotoConGanancia(track, participant) {
 }
 
 // ============================================================
-// ✅ CONTROL DE VOLUMEN (NO TOCAR)
+// ✅ CONTROL DE VOLUMEN
 // ============================================================
 
 function actualizarVolumen() {
@@ -1155,7 +1108,7 @@ function actualizarVolumen() {
 }
 
 // ============================================================
-// ELIMINAR TRACKS (NO TOCAR)
+// ELIMINAR TRACKS
 // ============================================================
 
 function eliminarTrackRemoto(track, participant) {
@@ -1254,7 +1207,7 @@ function agregarParticipante(participant) {
 }
 
 // ============================================================
-// VIDEO LOCAL (NO TOCAR)
+// VIDEO LOCAL
 // ============================================================
 
 function mostrarVideoLocal(publication) {
@@ -1299,7 +1252,7 @@ function mostrarVideoLocal(publication) {
 }
 
 // ============================================================
-// LIMPIAR (NO TOCAR)
+// LIMPIAR
 // ============================================================
 
 function limpiarVideos() {
@@ -1344,7 +1297,7 @@ function limpiarVideos() {
 }
 
 // ============================================================
-// UI (NO TOCAR)
+// UI
 // ============================================================
 
 function actualizarParticipanteRemoto() {
@@ -1574,7 +1527,7 @@ async function alternarCamara() {
 }
 
 // ============================================================
-// OTROS CONTROLES (NO TOCAR)
+// OTROS CONTROLES
 // ============================================================
 
 async function silenciarTemporalmente() {
@@ -1686,7 +1639,7 @@ async function reconectarManual() {
 }
 
 // ============================================================
-// ✅ DIAGNÓSTICO (NO TOCAR)
+// ✅ DIAGNÓSTICO
 // ============================================================
 
 function diagnostico() {
@@ -1708,12 +1661,6 @@ function diagnostico() {
         info += '   ✅ Auto Gain Control: ACTIVADO\n';
         info += '   ✅ Video local: MUTED\n';
         info += '   ✅ Audio propio: NO REPRODUCIDO\n\n';
-        
-        info += '📷 CÁMARA:\n';
-        info += '   Estado: ' + (room.localParticipant.isCameraEnabled ? '✅ ACTIVADA' : '❌ DESACTIVADA') + '\n';
-        
-        info += '\n🎤 MICRÓFONO:\n';
-        info += '   Estado: ' + (room.localParticipant.isMicrophoneEnabled ? '✅ ACTIVADO' : '❌ DESACTIVADO') + '\n\n';
         
         info += '🔊 DIAGNÓSTICO DE VOLUMEN:\n';
         info += '   🎚️ Volumen actual: ' + (volumenActual * 100).toFixed(0) + '%\n';
@@ -1830,7 +1777,7 @@ window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 4.8.2 - Botones Corregidos');
+    console.log('📋 Versión: 4.8.2 - Solo Botones Corregidos');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');

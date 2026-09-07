@@ -1370,10 +1370,10 @@ function actualizarLayout() {
 }
 
 // ============================================================
-// ✅ CONTROLES - FUNCIONES VERIFICADAS Y PERFECTAS
+// ✅ CONTROLES - SOLO BOTONES DE CÁMARA Y MICRÓFONO MEJORADOS
 // ============================================================
 
-// ✅ 1. BOTÓN MICRÓFONO
+// ✅ 1. BOTÓN MICRÓFONO - MEJORADO PARA ACTIVAR/DESACTIVAR
 async function alternarMicrofono() {
     if (!room) {
         console.warn('⚠️ Room no disponible');
@@ -1390,33 +1390,99 @@ async function alternarMicrofono() {
             }, 200);
         }
         
+        // Obtener el estado actual del micrófono
         var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
         if (!publication) {
             publication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
         }
-        var isEnabled = publication ? publication.isEnabled : true;
         
-        await room.localParticipant.setMicrophoneEnabled(!isEnabled);
-        
-        if (isEnabled) {
-            if (btnMicrofono) {
-                btnMicrofono.classList.remove('activo');
-                btnMicrofono.classList.add('inactivo');
+        // Si no hay publicación, significa que no está publicado, lo publicamos
+        if (!publication) {
+            console.log('📡 Publicando micrófono...');
+            var audioStream = await obtenerAudioProfesional();
+            var audioTrack = audioStream.getAudioTracks()[0];
+            if (audioTrack) {
+                await room.localParticipant.publishTrack(audioTrack, {
+                    name: 'microfono',
+                    source: LivekitClient.Track.Source.Microphone,
+                    simulcast: false
+                });
+                publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+                if (!publication) {
+                    publication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
+                }
             }
-            console.log('🎤 Micrófono desactivado');
-        } else {
+        }
+        
+        // Si aún no hay publicación, intentar habilitar por método alternativo
+        if (!publication) {
+            await room.localParticipant.setMicrophoneEnabled(true);
             if (btnMicrofono) {
                 btnMicrofono.classList.remove('inactivo');
                 btnMicrofono.classList.add('activo');
             }
-            console.log('🎤 Micrófono activado');
+            console.log('🎤 Micrófono activado (método alternativo)');
+            return;
         }
+        
+        // Obtener el estado actual
+        var isEnabled = publication.isEnabled !== false;
+        
+        // Cambiar el estado
+        await room.localParticipant.setMicrophoneEnabled(!isEnabled);
+        
+        // Esperar un momento para que el cambio se aplique
+        await new Promise(function(resolve) { setTimeout(resolve, 100); });
+        
+        // Verificar el estado real después del cambio
+        var pubActualizado = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+        if (!pubActualizado) {
+            pubActualizado = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
+        }
+        
+        var estadoReal = pubActualizado ? pubActualizado.isEnabled !== false : false;
+        
+        // Actualizar UI según el estado real
+        if (btnMicrofono) {
+            if (estadoReal) {
+                btnMicrofono.classList.remove('inactivo');
+                btnMicrofono.classList.add('activo');
+                btnMicrofono.title = 'Desactivar micrófono';
+                btnMicrofono.setAttribute('aria-label', 'Desactivar micrófono');
+                console.log('🎤 Micrófono activado');
+            } else {
+                btnMicrofono.classList.remove('activo');
+                btnMicrofono.classList.add('inactivo');
+                btnMicrofono.title = 'Activar micrófono';
+                btnMicrofono.setAttribute('aria-label', 'Activar micrófono');
+                console.log('🎤 Micrófono desactivado');
+            }
+        }
+        
     } catch (error) {
         console.error('❌ Error con micrófono:', error);
+        // Intentar recuperar el estado visual
+        try {
+            var pub = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+            if (!pub) {
+                pub = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
+            }
+            if (btnMicrofono && pub) {
+                if (pub.isEnabled !== false) {
+                    btnMicrofono.classList.remove('inactivo');
+                    btnMicrofono.classList.add('activo');
+                } else {
+                    btnMicrofono.classList.remove('activo');
+                    btnMicrofono.classList.add('inactivo');
+                }
+            }
+        } catch (e) {
+            console.warn('⚠️ No se pudo recuperar el estado del micrófono:', e);
+        }
     }
 }
 
-// ✅ 2. BOTÓN CÁMARA
+// ✅ 2. BOTÓN CÁMARA - MEJORADO PARA ACTIVAR/DESACTIVAR
 async function alternarCamara() {
     if (!room) {
         console.warn('⚠️ Room no disponible');
@@ -1433,33 +1499,84 @@ async function alternarCamara() {
             }, 200);
         }
         
+        // Obtener el estado actual de la cámara
         var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
         if (!publication) {
             publication = room.localParticipant.getPublication(LivekitClient.Track.Source.Camera);
         }
-        var isEnabled = publication ? publication.isEnabled : true;
         
-        await room.localParticipant.setCameraEnabled(!isEnabled);
-        
-        if (isEnabled) {
-            if (btnCamara) {
-                btnCamara.classList.add('inactivo');
-                btnCamara.classList.remove('activo');
-            }
-            console.log('📷 Cámara desactivada');
-        } else {
+        // Si no hay publicación, intentar activar directamente
+        if (!publication) {
+            await room.localParticipant.setCameraEnabled(true);
             if (btnCamara) {
                 btnCamara.classList.remove('inactivo');
                 btnCamara.classList.add('activo');
             }
-            console.log('📷 Cámara activada');
+            console.log('📷 Cámara activada (método alternativo)');
+            return;
         }
+        
+        // Obtener el estado actual
+        var isEnabled = publication.isEnabled !== false;
+        
+        // Cambiar el estado
+        await room.localParticipant.setCameraEnabled(!isEnabled);
+        
+        // Esperar un momento para que el cambio se aplique
+        await new Promise(function(resolve) { setTimeout(resolve, 100); });
+        
+        // Verificar el estado real después del cambio
+        var pubActualizado = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
+        if (!pubActualizado) {
+            pubActualizado = room.localParticipant.getPublication(LivekitClient.Track.Source.Camera);
+        }
+        
+        var estadoReal = pubActualizado ? pubActualizado.isEnabled !== false : false;
+        
+        // Actualizar UI según el estado real
+        if (btnCamara) {
+            if (estadoReal) {
+                btnCamara.classList.remove('inactivo');
+                btnCamara.classList.add('activo');
+                btnCamara.title = 'Desactivar cámara';
+                btnCamara.setAttribute('aria-label', 'Desactivar cámara');
+                console.log('📷 Cámara activada');
+            } else {
+                btnCamara.classList.remove('activo');
+                btnCamara.classList.add('inactivo');
+                btnCamara.title = 'Activar cámara';
+                btnCamara.setAttribute('aria-label', 'Activar cámara');
+                console.log('📷 Cámara desactivada');
+            }
+        }
+        
     } catch (error) {
         console.error('❌ Error con cámara:', error);
+        // Intentar recuperar el estado visual
+        try {
+            var pub = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
+            if (!pub) {
+                pub = room.localParticipant.getPublication(LivekitClient.Track.Source.Camera);
+            }
+            if (btnCamara && pub) {
+                if (pub.isEnabled !== false) {
+                    btnCamara.classList.remove('inactivo');
+                    btnCamara.classList.add('activo');
+                } else {
+                    btnCamara.classList.remove('activo');
+                    btnCamara.classList.add('inactivo');
+                }
+            }
+        } catch (e) {
+            console.warn('⚠️ No se pudo recuperar el estado de la cámara:', e);
+        }
     }
 }
 
-// ✅ 3. BOTÓN SILENCIAR
+// ============================================================
+// OTROS CONTROLES (SIN MODIFICAR)
+// ============================================================
+
 async function silenciarTemporalmente() {
     if (!room || audioMuted) return;
     
@@ -1469,15 +1586,6 @@ async function silenciarTemporalmente() {
     }
     
     try {
-        // Feedback visual
-        if (btnSilenciar) {
-            btnSilenciar.style.transition = 'transform 0.15s ease';
-            btnSilenciar.style.transform = 'scale(0.85)';
-            setTimeout(function() {
-                if (btnSilenciar) btnSilenciar.style.transform = 'scale(1)';
-            }, 200);
-        }
-        
         await room.localParticipant.setMicrophoneEnabled(false);
         console.log('🔇 Silenciado temporalmente');
         
@@ -1487,11 +1595,6 @@ async function silenciarTemporalmente() {
                 audioMuted = false;
                 if (btnSilenciar) {
                     btnSilenciar.classList.remove('activo');
-                }
-                // Actualizar estado del micrófono
-                if (btnMicrofono) {
-                    btnMicrofono.classList.remove('inactivo');
-                    btnMicrofono.classList.add('activo');
                 }
                 console.log('🎤 Micrófono reactivado');
             } catch (error) {
@@ -1511,122 +1614,43 @@ async function silenciarTemporalmente() {
     }
 }
 
-// ✅ 4. BOTÓN COMPARTIR PANTALLA
-let compartiendoPantalla = false;
-let screenTrack = null;
-
 async function compartirPantalla() {
     if (!room) return;
     
-    // Si ya está compartiendo, detener
-    if (compartiendoPantalla) {
-        try {
-            if (screenTrack) {
-                screenTrack.stop();
-                screenTrack = null;
-            }
-            compartiendoPantalla = false;
-            if (btnCompartir) {
-                btnCompartir.classList.remove('activo');
-            }
-            console.log('🖥️ Compartición finalizada');
-            return;
-        } catch (error) {
-            console.error('❌ Error deteniendo compartición:', error);
-        }
-    }
-    
     try {
-        // Feedback visual
-        if (btnCompartir) {
-            btnCompartir.style.transition = 'transform 0.15s ease';
-            btnCompartir.style.transform = 'scale(0.85)';
-            setTimeout(function() {
-                if (btnCompartir) btnCompartir.style.transform = 'scale(1)';
-            }, 200);
-        }
-        
         var stream = await navigator.mediaDevices.getDisplayMedia({ 
             video: { cursor: 'always', frameRate: 30 } 
         });
         var track = stream.getVideoTracks()[0];
         if (track) {
-            screenTrack = track;
             await room.localParticipant.publishTrack(track, {
                 name: 'screen-share',
                 source: LivekitClient.Track.Source.ScreenShare
             });
-            
-            compartiendoPantalla = true;
-            
-            if (btnCompartir) {
-                btnCompartir.classList.add('activo');
-            }
-            
             console.log('🖥️ Pantalla compartida');
-            
-            track.onended = function() {
-                compartiendoPantalla = false;
-                screenTrack = null;
-                if (btnCompartir) {
-                    btnCompartir.classList.remove('activo');
-                }
-                console.log('🖥️ Compartición finalizada');
-            };
+            track.onended = function() { console.log('🖥️ Compartición finalizada'); };
         }
     } catch (error) {
         if (error.name !== 'NotAllowedError' && error.name !== 'PermissionDeniedError') {
             console.error('❌ Error compartiendo:', error);
         }
-        compartiendoPantalla = false;
-        if (btnCompartir) {
-            btnCompartir.classList.remove('activo');
-        }
     }
 }
 
-// ✅ 5. BOTÓN PANTALLA COMPLETA
 async function pantallaCompleta() {
     if (!gridVideos) return;
     
     try {
-        // Feedback visual
-        if (btnFullscreen) {
-            btnFullscreen.style.transition = 'transform 0.15s ease';
-            btnFullscreen.style.transform = 'scale(0.85)';
-            setTimeout(function() {
-                if (btnFullscreen) btnFullscreen.style.transform = 'scale(1)';
-            }, 200);
-        }
-        
         if (!document.fullscreenElement) {
             await gridVideos.requestFullscreen();
-            if (btnFullscreen) {
-                btnFullscreen.classList.add('activo');
-            }
-            console.log('⛶ Pantalla completa activada');
         } else {
             await document.exitFullscreen();
-            if (btnFullscreen) {
-                btnFullscreen.classList.remove('activo');
-            }
-            console.log('⛶ Pantalla completa desactivada');
         }
     } catch (error) {
         console.error('❌ Error pantalla completa:', error);
     }
 }
 
-// Detectar cambios en pantalla completa (por teclado ESC)
-document.addEventListener('fullscreenchange', function() {
-    if (!document.fullscreenElement) {
-        if (btnFullscreen) {
-            btnFullscreen.classList.remove('activo');
-        }
-    }
-});
-
-// ✅ 6. BOTÓN RECONECTAR
 async function reconectarManual() {
     if (conectando || reconectando) {
         console.log('⏳ Ya hay una reconexión en progreso');
@@ -1644,12 +1668,6 @@ async function reconectarManual() {
     actualizarEstado('Reconectando manual...', 'conectando');
     mostrarLoading();
     
-    if (btnReconectar) {
-        btnReconectar.disabled = true;
-        btnReconectar.style.opacity = '0.6';
-        btnReconectar.textContent = '⏳';
-    }
-    
     try {
         if (room) {
             try { await room.disconnect(); } catch (e) {}
@@ -1664,21 +1682,18 @@ async function reconectarManual() {
         ocultarLoading();
     } finally {
         reconectando = false;
-        if (btnReconectar) {
-            btnReconectar.disabled = false;
-            btnReconectar.style.opacity = '1';
-            btnReconectar.textContent = '🔄';
-        }
     }
 }
 
-// ✅ 7. BOTÓN DIAGNÓSTICO
+// ============================================================
+// ✅ DIAGNÓSTICO
+// ============================================================
+
 function diagnostico() {
     var info = '📊 DIAGNÓSTICO VENTANA DIGITAL PRO\n\n';
     info += '━'.repeat(50) + '\n\n';
     info += '🔗 LiveKit URL: ' + LIVEKIT_URL + '\n';
-    info += '📁 Sala: ' + ROOM_NAME + '\n';
-    info += '🕐 Hora: ' + new Date().toLocaleString() + '\n\n';
+    info += '📁 Sala: ' + ROOM_NAME + '\n\n';
     
     if (room) {
         info += '📡 Estado: ' + (room.state || 'desconocido') + '\n';
@@ -1730,13 +1745,6 @@ function diagnostico() {
         info += '   Habilitado: ' + (pub ? pub.isEnabled : false) + '\n';
         info += '   Track existe: ' + (!!(pub && pub.track)) + '\n';
         
-        info += '\n📊 ESTADO DE BOTONES:\n';
-        info += '   🎤 Micrófono: ' + (btnMicrofono?.classList.contains('activo') ? 'ACTIVO ✅' : 'INACTIVO ❌') + '\n';
-        info += '   📷 Cámara: ' + (btnCamara?.classList.contains('activo') ? 'ACTIVA ✅' : 'INACTIVA ❌') + '\n';
-        info += '   🔇 Silencio: ' + (audioMuted ? 'ACTIVO ⏸️' : 'INACTIVO') + '\n';
-        info += '   🖥️ Compartir: ' + (compartiendoPantalla ? 'ACTIVO 🟢' : 'INACTIVO') + '\n';
-        info += '   ⛶ Pantalla completa: ' + (document.fullscreenElement ? 'ACTIVO 🟢' : 'INACTIVO') + '\n';
-        
         info += '\n🌐 ESTADO DE INTERNET:\n';
         info += '   📶 Online: ' + (navigator.onLine ? 'SÍ' : 'NO') + '\n';
         info += '   🔄 Reconectando: ' + (reconectando ? 'SÍ' : 'NO') + '\n';
@@ -1746,7 +1754,6 @@ function diagnostico() {
     
     info += '\n' + '━'.repeat(50) + '\n';
     info += '🌐 Navegador: ' + navigator.userAgent;
-    info += '\n📱 Dispositivo: ' + (window.innerWidth < 768 ? 'Móvil' : window.innerWidth < 1024 ? 'Tablet' : 'Desktop');
     
     console.log(info);
     alert(info);

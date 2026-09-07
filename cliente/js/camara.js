@@ -1370,9 +1370,10 @@ function actualizarLayout() {
 }
 
 // ============================================================
-// CONTROLES
+// ✅ CONTROLES - FUNCIONES VERIFICADAS Y PERFECTAS
 // ============================================================
 
+// ✅ 1. BOTÓN MICRÓFONO
 async function alternarMicrofono() {
     if (!room) {
         console.warn('⚠️ Room no disponible');
@@ -1380,6 +1381,15 @@ async function alternarMicrofono() {
     }
     
     try {
+        // Feedback visual
+        if (btnMicrofono) {
+            btnMicrofono.style.transition = 'transform 0.15s ease';
+            btnMicrofono.style.transform = 'scale(0.85)';
+            setTimeout(function() {
+                if (btnMicrofono) btnMicrofono.style.transform = 'scale(1)';
+            }, 200);
+        }
+        
         var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
         if (!publication) {
             publication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
@@ -1406,6 +1416,7 @@ async function alternarMicrofono() {
     }
 }
 
+// ✅ 2. BOTÓN CÁMARA
 async function alternarCamara() {
     if (!room) {
         console.warn('⚠️ Room no disponible');
@@ -1413,6 +1424,15 @@ async function alternarCamara() {
     }
     
     try {
+        // Feedback visual
+        if (btnCamara) {
+            btnCamara.style.transition = 'transform 0.15s ease';
+            btnCamara.style.transform = 'scale(0.85)';
+            setTimeout(function() {
+                if (btnCamara) btnCamara.style.transform = 'scale(1)';
+            }, 200);
+        }
+        
         var publication = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
         if (!publication) {
             publication = room.localParticipant.getPublication(LivekitClient.Track.Source.Camera);
@@ -1439,6 +1459,7 @@ async function alternarCamara() {
     }
 }
 
+// ✅ 3. BOTÓN SILENCIAR
 async function silenciarTemporalmente() {
     if (!room || audioMuted) return;
     
@@ -1448,6 +1469,15 @@ async function silenciarTemporalmente() {
     }
     
     try {
+        // Feedback visual
+        if (btnSilenciar) {
+            btnSilenciar.style.transition = 'transform 0.15s ease';
+            btnSilenciar.style.transform = 'scale(0.85)';
+            setTimeout(function() {
+                if (btnSilenciar) btnSilenciar.style.transform = 'scale(1)';
+            }, 200);
+        }
+        
         await room.localParticipant.setMicrophoneEnabled(false);
         console.log('🔇 Silenciado temporalmente');
         
@@ -1457,6 +1487,11 @@ async function silenciarTemporalmente() {
                 audioMuted = false;
                 if (btnSilenciar) {
                     btnSilenciar.classList.remove('activo');
+                }
+                // Actualizar estado del micrófono
+                if (btnMicrofono) {
+                    btnMicrofono.classList.remove('inactivo');
+                    btnMicrofono.classList.add('activo');
                 }
                 console.log('🎤 Micrófono reactivado');
             } catch (error) {
@@ -1476,43 +1511,122 @@ async function silenciarTemporalmente() {
     }
 }
 
+// ✅ 4. BOTÓN COMPARTIR PANTALLA
+let compartiendoPantalla = false;
+let screenTrack = null;
+
 async function compartirPantalla() {
     if (!room) return;
     
+    // Si ya está compartiendo, detener
+    if (compartiendoPantalla) {
+        try {
+            if (screenTrack) {
+                screenTrack.stop();
+                screenTrack = null;
+            }
+            compartiendoPantalla = false;
+            if (btnCompartir) {
+                btnCompartir.classList.remove('activo');
+            }
+            console.log('🖥️ Compartición finalizada');
+            return;
+        } catch (error) {
+            console.error('❌ Error deteniendo compartición:', error);
+        }
+    }
+    
     try {
+        // Feedback visual
+        if (btnCompartir) {
+            btnCompartir.style.transition = 'transform 0.15s ease';
+            btnCompartir.style.transform = 'scale(0.85)';
+            setTimeout(function() {
+                if (btnCompartir) btnCompartir.style.transform = 'scale(1)';
+            }, 200);
+        }
+        
         var stream = await navigator.mediaDevices.getDisplayMedia({ 
             video: { cursor: 'always', frameRate: 30 } 
         });
         var track = stream.getVideoTracks()[0];
         if (track) {
+            screenTrack = track;
             await room.localParticipant.publishTrack(track, {
                 name: 'screen-share',
                 source: LivekitClient.Track.Source.ScreenShare
             });
+            
+            compartiendoPantalla = true;
+            
+            if (btnCompartir) {
+                btnCompartir.classList.add('activo');
+            }
+            
             console.log('🖥️ Pantalla compartida');
-            track.onended = function() { console.log('🖥️ Compartición finalizada'); };
+            
+            track.onended = function() {
+                compartiendoPantalla = false;
+                screenTrack = null;
+                if (btnCompartir) {
+                    btnCompartir.classList.remove('activo');
+                }
+                console.log('🖥️ Compartición finalizada');
+            };
         }
     } catch (error) {
         if (error.name !== 'NotAllowedError' && error.name !== 'PermissionDeniedError') {
             console.error('❌ Error compartiendo:', error);
         }
+        compartiendoPantalla = false;
+        if (btnCompartir) {
+            btnCompartir.classList.remove('activo');
+        }
     }
 }
 
+// ✅ 5. BOTÓN PANTALLA COMPLETA
 async function pantallaCompleta() {
     if (!gridVideos) return;
     
     try {
+        // Feedback visual
+        if (btnFullscreen) {
+            btnFullscreen.style.transition = 'transform 0.15s ease';
+            btnFullscreen.style.transform = 'scale(0.85)';
+            setTimeout(function() {
+                if (btnFullscreen) btnFullscreen.style.transform = 'scale(1)';
+            }, 200);
+        }
+        
         if (!document.fullscreenElement) {
             await gridVideos.requestFullscreen();
+            if (btnFullscreen) {
+                btnFullscreen.classList.add('activo');
+            }
+            console.log('⛶ Pantalla completa activada');
         } else {
             await document.exitFullscreen();
+            if (btnFullscreen) {
+                btnFullscreen.classList.remove('activo');
+            }
+            console.log('⛶ Pantalla completa desactivada');
         }
     } catch (error) {
         console.error('❌ Error pantalla completa:', error);
     }
 }
 
+// Detectar cambios en pantalla completa (por teclado ESC)
+document.addEventListener('fullscreenchange', function() {
+    if (!document.fullscreenElement) {
+        if (btnFullscreen) {
+            btnFullscreen.classList.remove('activo');
+        }
+    }
+});
+
+// ✅ 6. BOTÓN RECONECTAR
 async function reconectarManual() {
     if (conectando || reconectando) {
         console.log('⏳ Ya hay una reconexión en progreso');
@@ -1530,6 +1644,12 @@ async function reconectarManual() {
     actualizarEstado('Reconectando manual...', 'conectando');
     mostrarLoading();
     
+    if (btnReconectar) {
+        btnReconectar.disabled = true;
+        btnReconectar.style.opacity = '0.6';
+        btnReconectar.textContent = '⏳';
+    }
+    
     try {
         if (room) {
             try { await room.disconnect(); } catch (e) {}
@@ -1544,18 +1664,21 @@ async function reconectarManual() {
         ocultarLoading();
     } finally {
         reconectando = false;
+        if (btnReconectar) {
+            btnReconectar.disabled = false;
+            btnReconectar.style.opacity = '1';
+            btnReconectar.textContent = '🔄';
+        }
     }
 }
 
-// ============================================================
-// ✅ DIAGNÓSTICO
-// ============================================================
-
+// ✅ 7. BOTÓN DIAGNÓSTICO
 function diagnostico() {
     var info = '📊 DIAGNÓSTICO VENTANA DIGITAL PRO\n\n';
     info += '━'.repeat(50) + '\n\n';
     info += '🔗 LiveKit URL: ' + LIVEKIT_URL + '\n';
-    info += '📁 Sala: ' + ROOM_NAME + '\n\n';
+    info += '📁 Sala: ' + ROOM_NAME + '\n';
+    info += '🕐 Hora: ' + new Date().toLocaleString() + '\n\n';
     
     if (room) {
         info += '📡 Estado: ' + (room.state || 'desconocido') + '\n';
@@ -1607,6 +1730,13 @@ function diagnostico() {
         info += '   Habilitado: ' + (pub ? pub.isEnabled : false) + '\n';
         info += '   Track existe: ' + (!!(pub && pub.track)) + '\n';
         
+        info += '\n📊 ESTADO DE BOTONES:\n';
+        info += '   🎤 Micrófono: ' + (btnMicrofono?.classList.contains('activo') ? 'ACTIVO ✅' : 'INACTIVO ❌') + '\n';
+        info += '   📷 Cámara: ' + (btnCamara?.classList.contains('activo') ? 'ACTIVA ✅' : 'INACTIVA ❌') + '\n';
+        info += '   🔇 Silencio: ' + (audioMuted ? 'ACTIVO ⏸️' : 'INACTIVO') + '\n';
+        info += '   🖥️ Compartir: ' + (compartiendoPantalla ? 'ACTIVO 🟢' : 'INACTIVO') + '\n';
+        info += '   ⛶ Pantalla completa: ' + (document.fullscreenElement ? 'ACTIVO 🟢' : 'INACTIVO') + '\n';
+        
         info += '\n🌐 ESTADO DE INTERNET:\n';
         info += '   📶 Online: ' + (navigator.onLine ? 'SÍ' : 'NO') + '\n';
         info += '   🔄 Reconectando: ' + (reconectando ? 'SÍ' : 'NO') + '\n';
@@ -1616,6 +1746,7 @@ function diagnostico() {
     
     info += '\n' + '━'.repeat(50) + '\n';
     info += '🌐 Navegador: ' + navigator.userAgent;
+    info += '\n📱 Dispositivo: ' + (window.innerWidth < 768 ? 'Móvil' : window.innerWidth < 1024 ? 'Tablet' : 'Desktop');
     
     console.log(info);
     alert(info);

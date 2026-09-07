@@ -30,6 +30,8 @@ let reconectando = false;
 let audioMuted = false;
 let monitorTracksInterval = null;
 let volumenActual = 1.0;
+let actualizandoVolumen = false;
+let volumenTimeout = null;
 
 let reconexionTimeout = null;
 let intentosReconexion = 0;
@@ -309,6 +311,9 @@ function iniciarMonitoreoTracks() {
                             if (typeof pub.subscribe === 'function') {
                                 pub.subscribe().then(function() {
                                     console.log('✅ Suscripción forzada para', identity);
+                                    setTimeout(function() {
+                                        repararVolumenAudio(identity);
+                                    }, 500);
                                 }).catch(function(error) {
                                     console.error('❌ Error forzando suscripción para', identity, ':', error);
                                 });
@@ -322,6 +327,9 @@ function iniciarMonitoreoTracks() {
                         if (!audioMap.has(identity)) {
                             console.log('🔊 Creando audio faltante para', identity, '...');
                             agregarAudioRemotoConGanancia(pub.track, participant);
+                            setTimeout(function() {
+                                repararVolumenAudio(identity);
+                            }, 500);
                         }
                     }
                 }
@@ -1032,7 +1040,8 @@ function agregarAudioRemotoConGanancia(track, participant) {
             var audioContext = new (window.AudioContext || window.webkitAudioContext)();
             var gainNode = audioContext.createGain();
             var volumenAmplificado = volumenActual * 1.5;
-            gainNode.gain.value = Math.min(volumenAmplificado, 2.0);
+            var valorFinal = Math.min(volumenAmplificado, 2.0);
+            gainNode.gain.value = valorFinal;
             
             var source = audioContext.createMediaStreamSource(
                 new MediaStream([track.mediaStreamTrack])
@@ -1077,36 +1086,186 @@ function agregarAudioRemotoConGanancia(track, participant) {
 }
 
 // ============================================================
-// ✅ CONTROL DE VOLUMEN
+// ✅ CONTROL DE VOLUMEN PROFESIONAL
 // ============================================================
 
 function actualizarVolumen() {
+    if (actualizandoVolumen) return;
+    actualizandoVolumen = true;
+    
+    try {
+        if (!volumen) {
+            actualizandoVolumen = false;
+            return;
+        }
+        
+        var nuevoVolumen = Number(volumen.value);
+        
+        if (isNaN(nuevoVolumen) || nuevoVolumen < 0) nuevoVolumen = 0;
+        if (nuevoVolumen > 1) nuevoVolumen = 1;
+        
+        volumenActual = nuevoVolumen;
+        
+        console.log('🎚️ Volumen ajustado a:', (volumenActual * 100).toFixed(0), '%');
+        
+        var html5Audios = document.querySelectorAll('audio[data-identity]');
+        var html5Count = 0;
+        
+        html5Audios.forEach(function(audio) {
+            if (audio) {
+                try {
+                    audio.volume = Math.min(volumenActual, 1.0);
+                    audio.muted = false;
+                    html5Count++;
+                    
+                    if (audio.paused) {
+                        audio.play().catch(function() {});
+                    }
+                } catch (error) {
+                    console.warn('⚠️ Error ajustando volumen de audio HTML5:', error);
+                }
+            }
+        });
+        
+        var webAudioCount = 0;
+        
+        audioMap.forEach(function(audioInfo, identity) {
+            if (!audioInfo) return;
+            
+            try {
+                if (audioInfo.gainNode) {
+                    var volumenAmplificado = volumenActual * 1.5;
+                    var valorFinal = Math.min(volumenAmplificado, 2.0);
+                    audioInfo.gainNode.gain.setValueAtTime(valorFinal, audioInfo.context.currentTime);
+                    webAudioCount++;
+                }
+                
+                if (audioInfo.element) {
+                    audioInfo.element.volume = Math.min(volumenActual, 1.0);
+                    audioInfo.element.muted = false;
+                }
+            } catch (error) {
+                console.warn('⚠️ Error ajustando volumen Web Audio para', identity, ':', error);
+            }
+        });
+        
+        audioMap.forEach(function(audioInfo, identity) {
+            if (audioInfo.isFallback && audioInfo.element) {
+                try {
+                    audioInfo.element.volume = Math.min(volumenActual, 1.0);
+                    audioInfo.element.muted = false;
+                } catch (error) {}
+            }
+        });
+        
+        if (volumenLabel) {
+            volumenLabel.textContent = Math.round(volumenActual * 100) + '%';
+        }
+        
+        if (volumen.value !== String(volumenActual)) {
+            volumen.value = String(volumenActual);
+        }
+        
+        window.volumenActual = volumenActual;
+        
+        console.log('✅ Volumen aplicado:', html5Count, 'audios HTML5,', webAudioCount, 'audios Web Audio');
+        
+    } catch (error) {
+        console.error('❌ Error en actualizarVolumen:', error);
+    } finally {
+        actualizandoVolumen = false;
+    }
+}
+
+// ============================================================
+// ✅ FUNCIONES DE REPARACIÓN DE VOLUMEN
+// ============================================================
+
+function sincronizarVolumenConAudios() {
+    console.log('🔄 Sincronizando volumen con todos los audios...');
+    
     if (!volumen) return;
     
-    volumenActual = Number(volumen.value);
-    console.log('🎚️ Volumen ajustado a:', (volumenActual * 100).toFixed(0), '%');
+    if (volumen.value !== String(volumenActual)) {
+        volumen.value = String(volumenActual);
+        if (volumenLabel) {
+            volumenLabel.textContent = Math.round(volumenActual * 100) + '%';
+        }
+    }
     
-    document.querySelectorAll('audio[data-identity]').forEach(function(audio) {
-        audio.volume = Math.min(volumenActual, 1.0);
-        audio.muted = false;
-    });
+    actualizarVolumen();
+}
+
+function repararVolumenAudio(identity) {
+    if (!identity) return false;
     
-    audioMap.forEach(function(audioInfo, identity) {
-        if (audioInfo.isFallback && audioInfo.element) {
-            return;
-        } else if (audioInfo.gainNode) {
+    var audioInfo = audioMap.get(identity);
+    if (!audioInfo) return false;
+    
+    try {
+        if (audioInfo.element) {
+            audioInfo.element.volume = Math.min(volumenActual, 1.0);
+            audioInfo.element.muted = false;
+            if (audioInfo.element.paused) {
+                audioInfo.element.play().catch(function() {});
+            }
+        }
+        
+        if (audioInfo.gainNode) {
             var volumenAmplificado = volumenActual * 1.5;
             var valorFinal = Math.min(volumenAmplificado, 2.0);
-            audioInfo.gainNode.gain.value = valorFinal;
-            console.log('🔊', identity, '(Web Audio): gain =', (valorFinal * 100).toFixed(0), '%');
+            audioInfo.gainNode.gain.setValueAtTime(valorFinal, audioInfo.context.currentTime);
+        }
+        
+        console.log('✅ Volumen reparado para:', identity);
+        return true;
+    } catch (error) {
+        console.error('❌ Error reparando volumen para', identity, ':', error);
+        return false;
+    }
+}
+
+function repararVolumenTodosAudios() {
+    console.log('🔧 Reparando volumen de todos los audios...');
+    
+    var contador = 0;
+    
+    audioMap.forEach(function(audioInfo, identity) {
+        try {
+            if (audioInfo.element) {
+                audioInfo.element.volume = Math.min(volumenActual, 1.0);
+                audioInfo.element.muted = false;
+                contador++;
+            }
+            
+            if (audioInfo.gainNode) {
+                var volumenAmplificado = volumenActual * 1.5;
+                var valorFinal = Math.min(volumenAmplificado, 2.0);
+                audioInfo.gainNode.gain.setValueAtTime(valorFinal, audioInfo.context.currentTime);
+            }
+        } catch (error) {
+            console.warn('⚠️ Error reparando volumen para', identity, ':', error);
         }
     });
     
-    if (volumenLabel) {
-        volumenLabel.textContent = Math.round(volumenActual * 100) + '%';
-    }
+    console.log('✅ Volumen reparado para', contador, 'audios');
+    return contador;
+}
+
+function restaurarVolumenDespuesReconexion() {
+    console.log('🔄 Restaurando volumen después de reconexión...');
     
-    window.volumenActual = volumenActual;
+    setTimeout(function() {
+        if (volumen) {
+            volumen.value = String(volumenActual);
+            if (volumenLabel) {
+                volumenLabel.textContent = Math.round(volumenActual * 100) + '%';
+            }
+        }
+        
+        repararVolumenTodosAudios();
+        console.log('✅ Volumen restaurado:', (volumenActual * 100).toFixed(0), '%');
+    }, 1000);
 }
 
 // ============================================================
@@ -1370,12 +1529,14 @@ function actualizarLayout() {
 }
 
 // ============================================================
-// CONTROLES
+// ✅ BOTONES MEJORADOS PROFESIONALMENTE
 // ============================================================
 
+// 1. BOTÓN MICRÓFONO
 async function alternarMicrofono() {
     if (!room) {
         console.warn('⚠️ Room no disponible');
+        mostrarNotificacion('No hay conexión activa', 'warning');
         return;
     }
     
@@ -1386,29 +1547,47 @@ async function alternarMicrofono() {
         }
         var isEnabled = publication ? publication.isEnabled : true;
         
+        // Feedback visual inmediato
+        if (btnMicrofono) {
+            btnMicrofono.style.transition = 'transform 0.2s ease';
+            btnMicrofono.style.transform = 'scale(0.95)';
+            setTimeout(function() {
+                if (btnMicrofono) btnMicrofono.style.transform = 'scale(1)';
+            }, 200);
+        }
+        
         await room.localParticipant.setMicrophoneEnabled(!isEnabled);
         
         if (isEnabled) {
             if (btnMicrofono) {
                 btnMicrofono.classList.remove('activo');
                 btnMicrofono.classList.add('inactivo');
+                btnMicrofono.title = 'Activar micrófono';
+                btnMicrofono.setAttribute('aria-label', 'Activar micrófono');
             }
+            mostrarNotificacion('🎤 Micrófono desactivado', 'info');
             console.log('🎤 Micrófono desactivado');
         } else {
             if (btnMicrofono) {
                 btnMicrofono.classList.remove('inactivo');
                 btnMicrofono.classList.add('activo');
+                btnMicrofono.title = 'Desactivar micrófono';
+                btnMicrofono.setAttribute('aria-label', 'Desactivar micrófono');
             }
+            mostrarNotificacion('🎤 Micrófono activado', 'success');
             console.log('🎤 Micrófono activado');
         }
     } catch (error) {
         console.error('❌ Error con micrófono:', error);
+        mostrarNotificacion('Error al cambiar el micrófono', 'error');
     }
 }
 
+// 2. BOTÓN CÁMARA
 async function alternarCamara() {
     if (!room) {
         console.warn('⚠️ Room no disponible');
+        mostrarNotificacion('No hay conexión activa', 'warning');
         return;
     }
     
@@ -1419,104 +1598,317 @@ async function alternarCamara() {
         }
         var isEnabled = publication ? publication.isEnabled : true;
         
+        // Feedback visual inmediato
+        if (btnCamara) {
+            btnCamara.style.transition = 'transform 0.2s ease';
+            btnCamara.style.transform = 'scale(0.95)';
+            setTimeout(function() {
+                if (btnCamara) btnCamara.style.transform = 'scale(1)';
+            }, 200);
+        }
+        
         await room.localParticipant.setCameraEnabled(!isEnabled);
         
         if (isEnabled) {
             if (btnCamara) {
                 btnCamara.classList.add('inactivo');
                 btnCamara.classList.remove('activo');
+                btnCamara.title = 'Activar cámara';
+                btnCamara.setAttribute('aria-label', 'Activar cámara');
             }
+            mostrarNotificacion('📷 Cámara desactivada', 'info');
             console.log('📷 Cámara desactivada');
         } else {
             if (btnCamara) {
                 btnCamara.classList.remove('inactivo');
                 btnCamara.classList.add('activo');
+                btnCamara.title = 'Desactivar cámara';
+                btnCamara.setAttribute('aria-label', 'Desactivar cámara');
             }
+            mostrarNotificacion('📷 Cámara activada', 'success');
             console.log('📷 Cámara activada');
         }
     } catch (error) {
         console.error('❌ Error con cámara:', error);
+        mostrarNotificacion('Error al cambiar la cámara', 'error');
     }
 }
 
+// 3. BOTÓN SILENCIAR (Push-to-Talk mejorado)
+let silencioTimeout = null;
+let silencioActivo = false;
+
 async function silenciarTemporalmente() {
-    if (!room || audioMuted) return;
+    if (!room) {
+        console.warn('⚠️ Room no disponible');
+        mostrarNotificacion('No hay conexión activa', 'warning');
+        return;
+    }
     
-    audioMuted = true;
-    if (btnSilenciar) {
-        btnSilenciar.classList.add('activo');
+    if (silencioActivo) {
+        console.log('⚠️ Ya está silenciado');
+        return;
     }
     
     try {
+        silencioActivo = true;
+        
+        // Feedback visual inmediato
+        if (btnSilenciar) {
+            btnSilenciar.classList.add('activo');
+            btnSilenciar.style.transition = 'transform 0.2s ease';
+            btnSilenciar.style.transform = 'scale(0.95)';
+            btnSilenciar.title = 'Micrófono silenciado (presiona para reactivar)';
+            btnSilenciar.setAttribute('aria-label', 'Micrófono silenciado');
+            setTimeout(function() {
+                if (btnSilenciar) btnSilenciar.style.transform = 'scale(1)';
+            }, 200);
+        }
+        
         await room.localParticipant.setMicrophoneEnabled(false);
+        mostrarNotificacion('🔇 Micrófono silenciado por 5 segundos', 'warning');
         console.log('🔇 Silenciado temporalmente');
         
-        setTimeout(async function() {
+        // Limpiar timeout anterior si existe
+        if (silencioTimeout) {
+            clearTimeout(silencioTimeout);
+            silencioTimeout = null;
+        }
+        
+        // Reactivar automáticamente después de 5 segundos
+        silencioTimeout = setTimeout(async function() {
             try {
-                await room.localParticipant.setMicrophoneEnabled(true);
-                audioMuted = false;
+                if (room && room.localParticipant) {
+                    await room.localParticipant.setMicrophoneEnabled(true);
+                }
+                silencioActivo = false;
+                silencioTimeout = null;
+                
                 if (btnSilenciar) {
                     btnSilenciar.classList.remove('activo');
+                    btnSilenciar.title = 'Silenciar micrófono por 5 segundos';
+                    btnSilenciar.setAttribute('aria-label', 'Silenciar micrófono por 5 segundos');
                 }
+                mostrarNotificacion('🎤 Micrófono reactivado', 'success');
                 console.log('🎤 Micrófono reactivado');
             } catch (error) {
                 console.error('❌ Error reactivando:', error);
-                audioMuted = false;
+                silencioActivo = false;
+                silencioTimeout = null;
                 if (btnSilenciar) {
                     btnSilenciar.classList.remove('activo');
                 }
+                mostrarNotificacion('Error al reactivar micrófono', 'error');
             }
         }, 5000);
+        
     } catch (error) {
         console.error('❌ Error silenciando:', error);
-        audioMuted = false;
+        silencioActivo = false;
         if (btnSilenciar) {
             btnSilenciar.classList.remove('activo');
         }
+        mostrarNotificacion('Error al silenciar', 'error');
     }
 }
 
+// Cancelar silencio si se hace clic de nuevo
+function cancelarSilencio() {
+    if (silencioActivo && silencioTimeout) {
+        clearTimeout(silencioTimeout);
+        silencioTimeout = null;
+        silencioActivo = false;
+        
+        if (room && room.localParticipant) {
+            room.localParticipant.setMicrophoneEnabled(true).catch(function() {});
+        }
+        
+        if (btnSilenciar) {
+            btnSilenciar.classList.remove('activo');
+            btnSilenciar.title = 'Silenciar micrófono por 5 segundos';
+            btnSilenciar.setAttribute('aria-label', 'Silenciar micrófono por 5 segundos');
+        }
+        mostrarNotificacion('🔄 Silencio cancelado', 'info');
+        console.log('🔄 Silencio cancelado');
+    }
+}
+
+// 4. BOTÓN COMPARTIR PANTALLA
+let compartiendoPantalla = false;
+let screenTrack = null;
+
 async function compartirPantalla() {
-    if (!room) return;
+    if (!room) {
+        console.warn('⚠️ Room no disponible');
+        mostrarNotificacion('No hay conexión activa', 'warning');
+        return;
+    }
+    
+    // Si ya está compartiendo, detener
+    if (compartiendoPantalla) {
+        try {
+            if (screenTrack) {
+                screenTrack.stop();
+                screenTrack = null;
+            }
+            compartiendoPantalla = false;
+            if (btnCompartir) {
+                btnCompartir.classList.remove('activo');
+                btnCompartir.title = 'Compartir pantalla';
+                btnCompartir.setAttribute('aria-label', 'Compartir pantalla');
+            }
+            mostrarNotificacion('🖥️ Compartición de pantalla finalizada', 'info');
+            console.log('🖥️ Compartición finalizada');
+            return;
+        } catch (error) {
+            console.error('❌ Error deteniendo compartición:', error);
+        }
+    }
     
     try {
+        // Feedback visual
+        if (btnCompartir) {
+            btnCompartir.style.transition = 'transform 0.2s ease';
+            btnCompartir.style.transform = 'scale(0.95)';
+            setTimeout(function() {
+                if (btnCompartir) btnCompartir.style.transform = 'scale(1)';
+            }, 200);
+        }
+        
         var stream = await navigator.mediaDevices.getDisplayMedia({ 
-            video: { cursor: 'always', frameRate: 30 } 
+            video: { 
+                cursor: 'always', 
+                frameRate: 30,
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            } 
         });
+        
         var track = stream.getVideoTracks()[0];
         if (track) {
+            screenTrack = track;
             await room.localParticipant.publishTrack(track, {
                 name: 'screen-share',
                 source: LivekitClient.Track.Source.ScreenShare
             });
+            
+            compartiendoPantalla = true;
+            
+            if (btnCompartir) {
+                btnCompartir.classList.add('activo');
+                btnCompartir.title = 'Detener compartición de pantalla';
+                btnCompartir.setAttribute('aria-label', 'Detener compartición de pantalla');
+            }
+            
+            mostrarNotificacion('🖥️ Compartiendo pantalla', 'success');
             console.log('🖥️ Pantalla compartida');
-            track.onended = function() { console.log('🖥️ Compartición finalizada'); };
+            
+            // Detener automáticamente cuando el usuario cierre la ventana de compartir
+            track.onended = function() {
+                compartiendoPantalla = false;
+                screenTrack = null;
+                if (btnCompartir) {
+                    btnCompartir.classList.remove('activo');
+                    btnCompartir.title = 'Compartir pantalla';
+                    btnCompartir.setAttribute('aria-label', 'Compartir pantalla');
+                }
+                mostrarNotificacion('🖥️ Compartición finalizada', 'info');
+                console.log('🖥️ Compartición finalizada por el usuario');
+            };
         }
     } catch (error) {
-        if (error.name !== 'NotAllowedError' && error.name !== 'PermissionDeniedError') {
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            mostrarNotificacion('Permiso denegado para compartir pantalla', 'error');
+        } else if (error.name === 'AbortError') {
+            mostrarNotificacion('Compartición cancelada', 'info');
+        } else {
             console.error('❌ Error compartiendo:', error);
+            mostrarNotificacion('Error al compartir pantalla', 'error');
+        }
+        compartiendoPantalla = false;
+        if (btnCompartir) {
+            btnCompartir.classList.remove('activo');
         }
     }
 }
+
+// 5. BOTÓN PANTALLA COMPLETA
+let fullscreenActivo = false;
 
 async function pantallaCompleta() {
     if (!gridVideos) return;
     
     try {
+        // Feedback visual
+        if (btnFullscreen) {
+            btnFullscreen.style.transition = 'transform 0.2s ease';
+            btnFullscreen.style.transform = 'scale(0.95)';
+            setTimeout(function() {
+                if (btnFullscreen) btnFullscreen.style.transform = 'scale(1)';
+            }, 200);
+        }
+        
         if (!document.fullscreenElement) {
             await gridVideos.requestFullscreen();
+            fullscreenActivo = true;
+            if (btnFullscreen) {
+                btnFullscreen.classList.add('activo');
+                btnFullscreen.title = 'Salir de pantalla completa';
+                btnFullscreen.setAttribute('aria-label', 'Salir de pantalla completa');
+            }
+            mostrarNotificacion('⛶ Pantalla completa activada', 'success');
+            console.log('⛶ Pantalla completa activada');
         } else {
             await document.exitFullscreen();
+            fullscreenActivo = false;
+            if (btnFullscreen) {
+                btnFullscreen.classList.remove('activo');
+                btnFullscreen.title = 'Pantalla completa';
+                btnFullscreen.setAttribute('aria-label', 'Pantalla completa');
+            }
+            mostrarNotificacion('⛶ Pantalla completa desactivada', 'info');
+            console.log('⛶ Pantalla completa desactivada');
         }
     } catch (error) {
         console.error('❌ Error pantalla completa:', error);
+        mostrarNotificacion('Error al cambiar pantalla completa', 'error');
+        fullscreenActivo = false;
+        if (btnFullscreen) {
+            btnFullscreen.classList.remove('activo');
+        }
     }
 }
 
+// Detectar cambios en pantalla completa (por teclado ESC)
+document.addEventListener('fullscreenchange', function() {
+    if (!document.fullscreenElement) {
+        fullscreenActivo = false;
+        if (btnFullscreen) {
+            btnFullscreen.classList.remove('activo');
+            btnFullscreen.title = 'Pantalla completa';
+            btnFullscreen.setAttribute('aria-label', 'Pantalla completa');
+        }
+    }
+});
+
+// 6. BOTÓN RECONECTAR
 async function reconectarManual() {
     if (conectando || reconectando) {
         console.log('⏳ Ya hay una reconexión en progreso');
+        mostrarNotificacion('⏳ Ya hay una reconexión en progreso', 'warning');
         return;
+    }
+    
+    // Feedback visual
+    if (btnReconectar) {
+        btnReconectar.style.transition = 'transform 0.2s ease';
+        btnReconectar.style.transform = 'scale(0.95)';
+        btnReconectar.disabled = true;
+        btnReconectar.textContent = '⏳';
+        btnReconectar.title = 'Reconectando...';
+        setTimeout(function() {
+            if (btnReconectar) btnReconectar.style.transform = 'scale(1)';
+        }, 200);
     }
     
     reconectando = true;
@@ -1529,6 +1921,7 @@ async function reconectarManual() {
     
     actualizarEstado('Reconectando manual...', 'conectando');
     mostrarLoading();
+    mostrarNotificacion('🔄 Reconectando...', 'info');
     
     try {
         if (room) {
@@ -1538,24 +1931,30 @@ async function reconectarManual() {
         limpiarVideos();
         await new Promise(function(resolve) { setTimeout(resolve, 500); });
         await conectarLiveKit();
+        mostrarNotificacion('✅ Reconexión exitosa', 'success');
     } catch (error) {
         console.error('❌ Error reconectando:', error);
         actualizarEstado('Error al reconectar', 'error');
+        mostrarNotificacion('❌ Error al reconectar', 'error');
         ocultarLoading();
     } finally {
         reconectando = false;
+        if (btnReconectar) {
+            btnReconectar.disabled = false;
+            btnReconectar.textContent = '🔄';
+            btnReconectar.title = 'Reconectar';
+            btnReconectar.setAttribute('aria-label', 'Reconectar');
+        }
     }
 }
 
-// ============================================================
-// ✅ DIAGNÓSTICO
-// ============================================================
-
+// 7. BOTÓN DIAGNÓSTICO MEJORADO
 function diagnostico() {
     var info = '📊 DIAGNÓSTICO VENTANA DIGITAL PRO\n\n';
     info += '━'.repeat(50) + '\n\n';
     info += '🔗 LiveKit URL: ' + LIVEKIT_URL + '\n';
-    info += '📁 Sala: ' + ROOM_NAME + '\n\n';
+    info += '📁 Sala: ' + ROOM_NAME + '\n';
+    info += '🕐 Hora: ' + new Date().toLocaleString() + '\n\n';
     
     if (room) {
         info += '📡 Estado: ' + (room.state || 'desconocido') + '\n';
@@ -1607,39 +2006,247 @@ function diagnostico() {
         info += '   Habilitado: ' + (pub ? pub.isEnabled : false) + '\n';
         info += '   Track existe: ' + (!!(pub && pub.track)) + '\n';
         
+        info += '\n📊 ESTADO DE BOTONES:\n';
+        info += '   🎤 Micrófono: ' + (btnMicrofono?.classList.contains('activo') ? 'ACTIVO' : 'INACTIVO') + '\n';
+        info += '   📷 Cámara: ' + (btnCamara?.classList.contains('activo') ? 'ACTIVA' : 'INACTIVA') + '\n';
+        info += '   🔇 Silencio: ' + (silencioActivo ? 'ACTIVO' : 'INACTIVO') + '\n';
+        info += '   🖥️ Compartir: ' + (compartiendoPantalla ? 'ACTIVO' : 'INACTIVO') + '\n';
+        info += '   ⛶ Pantalla completa: ' + (fullscreenActivo ? 'ACTIVO' : 'INACTIVO') + '\n';
+        
         info += '\n🌐 ESTADO DE INTERNET:\n';
         info += '   📶 Online: ' + (navigator.onLine ? 'SÍ' : 'NO') + '\n';
         info += '   🔄 Reconectando: ' + (reconectando ? 'SÍ' : 'NO') + '\n';
+        info += '   🔗 Conectado: ' + (room.state === 'connected' ? 'SÍ' : 'NO') + '\n';
     } else {
         info += '❌ Room: NO CONECTADO\n';
     }
     
     info += '\n' + '━'.repeat(50) + '\n';
     info += '🌐 Navegador: ' + navigator.userAgent;
+    info += '\n📱 Dispositivo: ' + (window.innerWidth < 768 ? 'Móvil' : window.innerWidth < 1024 ? 'Tablet' : 'Desktop');
     
     console.log(info);
+    mostrarNotificacion('📊 Diagnóstico generado - Revisa la consola', 'success');
     alert(info);
 }
 
 // ============================================================
-// EVENT LISTENERS
+// ✅ SISTEMA DE NOTIFICACIONES
 // ============================================================
 
-if (btnMicrofono) btnMicrofono.addEventListener('click', alternarMicrofono);
-if (btnCamara) btnCamara.addEventListener('click', alternarCamara);
-if (btnSilenciar) btnSilenciar.addEventListener('click', silenciarTemporalmente);
-if (btnCompartir) btnCompartir.addEventListener('click', compartirPantalla);
-if (btnFullscreen) btnFullscreen.addEventListener('click', pantallaCompleta);
-if (btnReconectar) btnReconectar.addEventListener('click', reconectarManual);
-if (btnDiagnostico) btnDiagnostico.addEventListener('click', diagnostico);
+let notificacionTimeout = null;
 
+function mostrarNotificacion(mensaje, tipo) {
+    tipo = tipo || 'info';
+    
+    // Buscar o crear contenedor de notificaciones
+    var contenedor = document.getElementById('notificaciones');
+    if (!contenedor) {
+        contenedor = document.createElement('div');
+        contenedor.id = 'notificaciones';
+        contenedor.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 350px;
+            pointer-events: none;
+        `;
+        document.body.appendChild(contenedor);
+    }
+    
+    // Crear notificación
+    var notificacion = document.createElement('div');
+    var colores = {
+        success: '#10b981',
+        error: '#ef4444',
+        warning: '#f59e0b',
+        info: '#3b82f6'
+    };
+    
+    notificacion.style.cssText = `
+        background: #1e293b;
+        color: #f1f5f9;
+        padding: 12px 20px;
+        border-radius: 12px;
+        border-left: 4px solid ${colores[tipo] || colores.info};
+        box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        font-size: 14px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        animation: slideInRight 0.3s ease;
+        pointer-events: auto;
+        backdrop-filter: blur(10px);
+        background: rgba(30, 41, 59, 0.95);
+        border: 1px solid rgba(255,255,255,0.1);
+    `;
+    
+    notificacion.textContent = mensaje;
+    contenedor.appendChild(notificacion);
+    
+    // Remover después de 3 segundos
+    setTimeout(function() {
+        notificacion.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        notificacion.style.opacity = '0';
+        notificacion.style.transform = 'translateX(100px)';
+        setTimeout(function() {
+            if (notificacion.parentNode) {
+                notificacion.remove();
+            }
+        }, 300);
+    }, 3000);
+    
+    // Limpiar notificaciones antiguas
+    if (contenedor.children.length > 5) {
+        var primerElemento = contenedor.children[0];
+        if (primerElemento) {
+            primerElemento.remove();
+        }
+    }
+}
+
+// Agregar estilos de animación
+(function agregarEstilosNotificacion() {
+    var estilo = document.createElement('style');
+    estilo.textContent = `
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(100px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+    `;
+    document.head.appendChild(estilo);
+})();
+
+// ============================================================
+// EVENT LISTENERS MEJORADOS
+// ============================================================
+
+// Botón Micrófono
+if (btnMicrofono) {
+    btnMicrofono.addEventListener('click', alternarMicrofono);
+    btnMicrofono.title = 'Activar/Desactivar micrófono';
+    btnMicrofono.setAttribute('aria-label', 'Activar/Desactivar micrófono');
+}
+
+// Botón Cámara
+if (btnCamara) {
+    btnCamara.addEventListener('click', alternarCamara);
+    btnCamara.title = 'Activar/Desactivar cámara';
+    btnCamara.setAttribute('aria-label', 'Activar/Desactivar cámara');
+}
+
+// Botón Silenciar
+if (btnSilenciar) {
+    btnSilenciar.addEventListener('click', function(e) {
+        if (silencioActivo) {
+            cancelarSilencio();
+        } else {
+            silenciarTemporalmente();
+        }
+    });
+    btnSilenciar.title = 'Silenciar micrófono por 5 segundos';
+    btnSilenciar.setAttribute('aria-label', 'Silenciar micrófono por 5 segundos');
+}
+
+// Botón Compartir Pantalla
+if (btnCompartir) {
+    btnCompartir.addEventListener('click', compartirPantalla);
+    btnCompartir.title = 'Compartir pantalla';
+    btnCompartir.setAttribute('aria-label', 'Compartir pantalla');
+}
+
+// Botón Pantalla Completa
+if (btnFullscreen) {
+    btnFullscreen.addEventListener('click', pantallaCompleta);
+    btnFullscreen.title = 'Pantalla completa';
+    btnFullscreen.setAttribute('aria-label', 'Pantalla completa');
+}
+
+// Botón Reconectar
+if (btnReconectar) {
+    btnReconectar.addEventListener('click', reconectarManual);
+    btnReconectar.title = 'Reconectar';
+    btnReconectar.setAttribute('aria-label', 'Reconectar');
+}
+
+// Botón Diagnóstico
+if (btnDiagnostico) {
+    btnDiagnostico.addEventListener('click', diagnostico);
+    btnDiagnostico.title = 'Diagnóstico del sistema';
+    btnDiagnostico.setAttribute('aria-label', 'Diagnóstico del sistema');
+}
+
+// ✅ CONFIGURACIÓN PROFESIONAL DEL CONTROL DE VOLUMEN
 if (volumen) {
     if (volumen.min === '') volumen.min = '0';
     if (volumen.max === '') volumen.max = '1';
     if (volumen.step === '') volumen.step = '0.01';
     if (volumen.value === '') volumen.value = '1.0';
     
-    volumen.addEventListener('input', actualizarVolumen);
+    volumen.addEventListener('input', function() {
+        var valor = Number(this.value);
+        if (isNaN(valor)) valor = 0;
+        if (valor < 0) valor = 0;
+        if (valor > 1) valor = 1;
+        
+        if (volumenLabel) {
+            volumenLabel.textContent = Math.round(valor * 100) + '%';
+        }
+        
+        if (volumenTimeout) {
+            clearTimeout(volumenTimeout);
+        }
+        
+        volumenTimeout = setTimeout(function() {
+            actualizarVolumen();
+            volumenTimeout = null;
+        }, 50);
+    });
+    
+    volumen.addEventListener('change', function() {
+        actualizarVolumen();
+        console.log('✅ Volumen finalizado:', (volumenActual * 100).toFixed(0), '%');
+    });
+    
+    volumen.addEventListener('dblclick', function() {
+        this.value = '1.0';
+        if (volumenLabel) {
+            volumenLabel.textContent = '100%';
+        }
+        actualizarVolumen();
+        mostrarNotificacion('🔄 Volumen restablecido a 100%', 'info');
+        console.log('🔄 Volumen restablecido a 100%');
+    });
+    
+    volumen.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+            var valor = Number(this.value) + 0.05;
+            if (valor > 1) valor = 1;
+            this.value = String(valor);
+            if (volumenLabel) {
+                volumenLabel.textContent = Math.round(valor * 100) + '%';
+            }
+            actualizarVolumen();
+            e.preventDefault();
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+            var valor = Number(this.value) - 0.05;
+            if (valor < 0) valor = 0;
+            this.value = String(valor);
+            if (volumenLabel) {
+                volumenLabel.textContent = Math.round(valor * 100) + '%';
+            }
+            actualizarVolumen();
+            e.preventDefault();
+        }
+    });
 }
 
 window.addEventListener('resize', actualizarLayout);
@@ -1679,6 +2286,21 @@ window.forzarSuscripcionAudio = forzarSuscripcionAudio;
 window.reparacionCompletaAudio = reparacionCompletaAudio;
 window.publicarAudioConVerificacion = publicarAudioConVerificacion;
 window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
+window.sincronizarVolumenConAudios = sincronizarVolumenConAudios;
+window.repararVolumenAudio = repararVolumenAudio;
+window.repararVolumenTodosAudios = repararVolumenTodosAudios;
+window.restaurarVolumenDespuesReconexion = restaurarVolumenDespuesReconexion;
+
+// Funciones de botones expuestas globalmente
+window.alternarMicrofono = alternarMicrofono;
+window.alternarCamara = alternarCamara;
+window.silenciarTemporalmente = silenciarTemporalmente;
+window.cancelarSilencio = cancelarSilencio;
+window.compartirPantalla = compartirPantalla;
+window.pantallaCompleta = pantallaCompleta;
+window.reconectarManual = reconectarManual;
+window.diagnostico = diagnostico;
+window.mostrarNotificacion = mostrarNotificacion;
 
 // ============================================================
 // INICIALIZACIÓN
@@ -1729,6 +2351,21 @@ async function iniciarCamara() {
     window.reparacionCompletaAudio = reparacionCompletaAudio;
     window.publicarAudioConVerificacion = publicarAudioConVerificacion;
     window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
+    window.sincronizarVolumenConAudios = sincronizarVolumenConAudios;
+    window.repararVolumenAudio = repararVolumenAudio;
+    window.repararVolumenTodosAudios = repararVolumenTodosAudios;
+    window.restaurarVolumenDespuesReconexion = restaurarVolumenDespuesReconexion;
+    
+    // Funciones de botones expuestas globalmente
+    window.alternarMicrofono = alternarMicrofono;
+    window.alternarCamara = alternarCamara;
+    window.silenciarTemporalmente = silenciarTemporalmente;
+    window.cancelarSilencio = cancelarSilencio;
+    window.compartirPantalla = compartirPantalla;
+    window.pantallaCompleta = pantallaCompleta;
+    window.reconectarManual = reconectarManual;
+    window.diagnostico = diagnostico;
+    window.mostrarNotificacion = mostrarNotificacion;
     
     setTimeout(function() {
         console.log('✅ Sistema listo - Presiona "Diagnóstico" para ver detalles');

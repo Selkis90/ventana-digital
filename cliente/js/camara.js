@@ -30,8 +30,6 @@ let reconectando = false;
 let audioMuted = false;
 let monitorTracksInterval = null;
 let volumenActual = 1.0;
-let actualizandoVolumen = false;
-let volumenTimeout = null;
 
 let reconexionTimeout = null;
 let intentosReconexion = 0;
@@ -311,9 +309,6 @@ function iniciarMonitoreoTracks() {
                             if (typeof pub.subscribe === 'function') {
                                 pub.subscribe().then(function() {
                                     console.log('✅ Suscripción forzada para', identity);
-                                    setTimeout(function() {
-                                        repararVolumenAudio(identity);
-                                    }, 500);
                                 }).catch(function(error) {
                                     console.error('❌ Error forzando suscripción para', identity, ':', error);
                                 });
@@ -327,9 +322,6 @@ function iniciarMonitoreoTracks() {
                         if (!audioMap.has(identity)) {
                             console.log('🔊 Creando audio faltante para', identity, '...');
                             agregarAudioRemotoConGanancia(pub.track, participant);
-                            setTimeout(function() {
-                                repararVolumenAudio(identity);
-                            }, 500);
                         }
                     }
                 }
@@ -1040,8 +1032,7 @@ function agregarAudioRemotoConGanancia(track, participant) {
             var audioContext = new (window.AudioContext || window.webkitAudioContext)();
             var gainNode = audioContext.createGain();
             var volumenAmplificado = volumenActual * 1.5;
-            var valorFinal = Math.min(volumenAmplificado, 2.0);
-            gainNode.gain.value = valorFinal;
+            gainNode.gain.value = Math.min(volumenAmplificado, 2.0);
             
             var source = audioContext.createMediaStreamSource(
                 new MediaStream([track.mediaStreamTrack])
@@ -1086,192 +1077,36 @@ function agregarAudioRemotoConGanancia(track, participant) {
 }
 
 // ============================================================
-// ✅ CONTROL DE VOLUMEN PROFESIONAL
+// ✅ CONTROL DE VOLUMEN
 // ============================================================
 
 function actualizarVolumen() {
-    if (actualizandoVolumen) return;
-    actualizandoVolumen = true;
-    
-    try {
-        if (!volumen) {
-            actualizandoVolumen = false;
-            return;
-        }
-        
-        var nuevoVolumen = Number(volumen.value);
-        
-        if (isNaN(nuevoVolumen) || nuevoVolumen < 0) nuevoVolumen = 0;
-        if (nuevoVolumen > 1) nuevoVolumen = 1;
-        
-        volumenActual = nuevoVolumen;
-        
-        console.log('🎚️ Volumen ajustado a:', (volumenActual * 100).toFixed(0), '%');
-        
-        // 1. ACTUALIZAR AUDIOS HTML5
-        var html5Audios = document.querySelectorAll('audio[data-identity]');
-        var html5Count = 0;
-        
-        html5Audios.forEach(function(audio) {
-            if (audio) {
-                try {
-                    audio.volume = Math.min(volumenActual, 1.0);
-                    audio.muted = false;
-                    html5Count++;
-                    
-                    if (audio.paused) {
-                        audio.play().catch(function() {});
-                    }
-                } catch (error) {
-                    console.warn('⚠️ Error ajustando volumen de audio HTML5:', error);
-                }
-            }
-        });
-        
-        // 2. ACTUALIZAR WEB AUDIO API
-        var webAudioCount = 0;
-        
-        audioMap.forEach(function(audioInfo, identity) {
-            if (!audioInfo) return;
-            
-            try {
-                if (audioInfo.gainNode) {
-                    var volumenAmplificado = volumenActual * 1.5;
-                    var valorFinal = Math.min(volumenAmplificado, 2.0);
-                    audioInfo.gainNode.gain.setValueAtTime(valorFinal, audioInfo.context.currentTime);
-                    webAudioCount++;
-                }
-                
-                if (audioInfo.element) {
-                    audioInfo.element.volume = Math.min(volumenActual, 1.0);
-                    audioInfo.element.muted = false;
-                }
-            } catch (error) {
-                console.warn('⚠️ Error ajustando volumen Web Audio para', identity, ':', error);
-            }
-        });
-        
-        // 3. ACTUALIZAR AUDIOS DEL MAPA (respaldo)
-        audioMap.forEach(function(audioInfo, identity) {
-            if (audioInfo.isFallback && audioInfo.element) {
-                try {
-                    audioInfo.element.volume = Math.min(volumenActual, 1.0);
-                    audioInfo.element.muted = false;
-                } catch (error) {}
-            }
-        });
-        
-        // 4. ACTUALIZAR ETIQUETA
-        if (volumenLabel) {
-            volumenLabel.textContent = Math.round(volumenActual * 100) + '%';
-        }
-        
-        // 5. SINCronizar SLIDER
-        if (volumen.value !== String(volumenActual)) {
-            volumen.value = String(volumenActual);
-        }
-        
-        // 6. GUARDAR EN VARIABLE GLOBAL
-        window.volumenActual = volumenActual;
-        
-        console.log('✅ Volumen aplicado:', html5Count, 'audios HTML5,', webAudioCount, 'audios Web Audio');
-        
-    } catch (error) {
-        console.error('❌ Error en actualizarVolumen:', error);
-    } finally {
-        actualizandoVolumen = false;
-    }
-}
-
-// ============================================================
-// ✅ FUNCIONES DE REPARACIÓN DE VOLUMEN
-// ============================================================
-
-function sincronizarVolumenConAudios() {
-    console.log('🔄 Sincronizando volumen con todos los audios...');
-    
     if (!volumen) return;
     
-    if (volumen.value !== String(volumenActual)) {
-        volumen.value = String(volumenActual);
-        if (volumenLabel) {
-            volumenLabel.textContent = Math.round(volumenActual * 100) + '%';
-        }
-    }
+    volumenActual = Number(volumen.value);
+    console.log('🎚️ Volumen ajustado a:', (volumenActual * 100).toFixed(0), '%');
     
-    actualizarVolumen();
-}
-
-function repararVolumenAudio(identity) {
-    if (!identity) return false;
-    
-    var audioInfo = audioMap.get(identity);
-    if (!audioInfo) return false;
-    
-    try {
-        if (audioInfo.element) {
-            audioInfo.element.volume = Math.min(volumenActual, 1.0);
-            audioInfo.element.muted = false;
-            if (audioInfo.element.paused) {
-                audioInfo.element.play().catch(function() {});
-            }
-        }
-        
-        if (audioInfo.gainNode) {
-            var volumenAmplificado = volumenActual * 1.5;
-            var valorFinal = Math.min(volumenAmplificado, 2.0);
-            audioInfo.gainNode.gain.setValueAtTime(valorFinal, audioInfo.context.currentTime);
-        }
-        
-        console.log('✅ Volumen reparado para:', identity);
-        return true;
-    } catch (error) {
-        console.error('❌ Error reparando volumen para', identity, ':', error);
-        return false;
-    }
-}
-
-function repararVolumenTodosAudios() {
-    console.log('🔧 Reparando volumen de todos los audios...');
-    
-    var contador = 0;
+    document.querySelectorAll('audio[data-identity]').forEach(function(audio) {
+        audio.volume = Math.min(volumenActual, 1.0);
+        audio.muted = false;
+    });
     
     audioMap.forEach(function(audioInfo, identity) {
-        try {
-            if (audioInfo.element) {
-                audioInfo.element.volume = Math.min(volumenActual, 1.0);
-                audioInfo.element.muted = false;
-                contador++;
-            }
-            
-            if (audioInfo.gainNode) {
-                var volumenAmplificado = volumenActual * 1.5;
-                var valorFinal = Math.min(volumenAmplificado, 2.0);
-                audioInfo.gainNode.gain.setValueAtTime(valorFinal, audioInfo.context.currentTime);
-            }
-        } catch (error) {
-            console.warn('⚠️ Error reparando volumen para', identity, ':', error);
+        if (audioInfo.isFallback && audioInfo.element) {
+            return;
+        } else if (audioInfo.gainNode) {
+            var volumenAmplificado = volumenActual * 1.5;
+            var valorFinal = Math.min(volumenAmplificado, 2.0);
+            audioInfo.gainNode.gain.value = valorFinal;
+            console.log('🔊', identity, '(Web Audio): gain =', (valorFinal * 100).toFixed(0), '%');
         }
     });
     
-    console.log('✅ Volumen reparado para', contador, 'audios');
-    return contador;
-}
-
-function restaurarVolumenDespuesReconexion() {
-    console.log('🔄 Restaurando volumen después de reconexión...');
+    if (volumenLabel) {
+        volumenLabel.textContent = Math.round(volumenActual * 100) + '%';
+    }
     
-    setTimeout(function() {
-        if (volumen) {
-            volumen.value = String(volumenActual);
-            if (volumenLabel) {
-                volumenLabel.textContent = Math.round(volumenActual * 100) + '%';
-            }
-        }
-        
-        repararVolumenTodosAudios();
-        console.log('✅ Volumen restaurado:', (volumenActual * 100).toFixed(0), '%');
-    }, 1000);
+    window.volumenActual = volumenActual;
 }
 
 // ============================================================
@@ -1798,75 +1633,13 @@ if (btnFullscreen) btnFullscreen.addEventListener('click', pantallaCompleta);
 if (btnReconectar) btnReconectar.addEventListener('click', reconectarManual);
 if (btnDiagnostico) btnDiagnostico.addEventListener('click', diagnostico);
 
-// ✅ CONFIGURACIÓN PROFESIONAL DEL CONTROL DE VOLUMEN
 if (volumen) {
-    // Configurar valores por defecto
     if (volumen.min === '') volumen.min = '0';
     if (volumen.max === '') volumen.max = '1';
     if (volumen.step === '') volumen.step = '0.01';
     if (volumen.value === '') volumen.value = '1.0';
     
-    // Evento input - actualización en tiempo real con debounce
-    volumen.addEventListener('input', function() {
-        var valor = Number(this.value);
-        if (isNaN(valor)) valor = 0;
-        if (valor < 0) valor = 0;
-        if (valor > 1) valor = 1;
-        
-        // Actualizar etiqueta inmediatamente
-        if (volumenLabel) {
-            volumenLabel.textContent = Math.round(valor * 100) + '%';
-        }
-        
-        // Debounce para evitar muchas actualizaciones
-        if (volumenTimeout) {
-            clearTimeout(volumenTimeout);
-        }
-        
-        volumenTimeout = setTimeout(function() {
-            actualizarVolumen();
-            volumenTimeout = null;
-        }, 50);
-    });
-    
-    // Evento change - aplicar cuando se suelta el slider
-    volumen.addEventListener('change', function() {
-        actualizarVolumen();
-        console.log('✅ Volumen finalizado:', (volumenActual * 100).toFixed(0), '%');
-    });
-    
-    // Evento double-click - resetear a 100%
-    volumen.addEventListener('dblclick', function() {
-        this.value = '1.0';
-        if (volumenLabel) {
-            volumenLabel.textContent = '100%';
-        }
-        actualizarVolumen();
-        console.log('🔄 Volumen restablecido a 100%');
-    });
-    
-    // Soporte para teclado (flechas)
-    volumen.addEventListener('keydown', function(e) {
-        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-            var valor = Number(this.value) + 0.05;
-            if (valor > 1) valor = 1;
-            this.value = String(valor);
-            if (volumenLabel) {
-                volumenLabel.textContent = Math.round(valor * 100) + '%';
-            }
-            actualizarVolumen();
-            e.preventDefault();
-        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
-            var valor = Number(this.value) - 0.05;
-            if (valor < 0) valor = 0;
-            this.value = String(valor);
-            if (volumenLabel) {
-                volumenLabel.textContent = Math.round(valor * 100) + '%';
-            }
-            actualizarVolumen();
-            e.preventDefault();
-        }
-    });
+    volumen.addEventListener('input', actualizarVolumen);
 }
 
 window.addEventListener('resize', actualizarLayout);
@@ -1906,10 +1679,6 @@ window.forzarSuscripcionAudio = forzarSuscripcionAudio;
 window.reparacionCompletaAudio = reparacionCompletaAudio;
 window.publicarAudioConVerificacion = publicarAudioConVerificacion;
 window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
-window.sincronizarVolumenConAudios = sincronizarVolumenConAudios;
-window.repararVolumenAudio = repararVolumenAudio;
-window.repararVolumenTodosAudios = repararVolumenTodosAudios;
-window.restaurarVolumenDespuesReconexion = restaurarVolumenDespuesReconexion;
 
 // ============================================================
 // INICIALIZACIÓN
@@ -1960,10 +1729,6 @@ async function iniciarCamara() {
     window.reparacionCompletaAudio = reparacionCompletaAudio;
     window.publicarAudioConVerificacion = publicarAudioConVerificacion;
     window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
-    window.sincronizarVolumenConAudios = sincronizarVolumenConAudios;
-    window.repararVolumenAudio = repararVolumenAudio;
-    window.repararVolumenTodosAudios = repararVolumenTodosAudios;
-    window.restaurarVolumenDespuesReconexion = restaurarVolumenDespuesReconexion;
     
     setTimeout(function() {
         console.log('✅ Sistema listo - Presiona "Diagnóstico" para ver detalles');

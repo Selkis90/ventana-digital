@@ -248,7 +248,7 @@ html, body {
 }
 
 /* ============================================================
-   BOTONES DE CONTROL
+   BOTONES DE CONTROL - ESTILOS BASE
    ============================================================ */
 
 .btn-control {
@@ -290,7 +290,7 @@ html, body {
 }
 
 /* ============================================================
-   ESTADOS DE BOTONES
+   BOTÓN MICRÓFONO - ESTADOS
    ============================================================ */
 
 #btn-microfono {
@@ -302,6 +302,17 @@ html, body {
     background: rgba(79, 140, 247, 0.25);
 }
 
+/* Estado ACTIVO - Micrófono encendido (Verde) */
+#btn-microfono.activo {
+    background: rgba(52, 199, 89, 0.15);
+    color: var(--green);
+}
+
+#btn-microfono.activo:hover {
+    background: rgba(52, 199, 89, 0.25);
+}
+
+/* Estado INACTIVO - Micrófono apagado (Rojo) */
 #btn-microfono.inactivo {
     background: rgba(255, 59, 48, 0.15);
     color: var(--red);
@@ -311,14 +322,9 @@ html, body {
     background: rgba(255, 59, 48, 0.25);
 }
 
-#btn-microfono.activo {
-    background: rgba(52, 199, 89, 0.15);
-    color: var(--green);
-}
-
-#btn-microfono.activo:hover {
-    background: rgba(52, 199, 89, 0.25);
-}
+/* ============================================================
+   BOTÓN CÁMARA - ESTADOS
+   ============================================================ */
 
 #btn-camara {
     background: rgba(52, 199, 89, 0.12);
@@ -329,14 +335,29 @@ html, body {
     background: rgba(52, 199, 89, 0.22);
 }
 
+/* Estado ACTIVO - Cámara encendida (Verde) */
+#btn-camara.activo {
+    background: rgba(52, 199, 89, 0.15);
+    color: var(--green);
+}
+
+#btn-camara.activo:hover {
+    background: rgba(52, 199, 89, 0.25);
+}
+
+/* Estado INACTIVO - Cámara apagada (Rojo) */
 #btn-camara.inactivo {
-    background: rgba(255, 59, 48, 0.12);
+    background: rgba(255, 59, 48, 0.15);
     color: var(--red);
 }
 
 #btn-camara.inactivo:hover {
-    background: rgba(255, 59, 48, 0.22);
+    background: rgba(255, 59, 48, 0.25);
 }
+
+/* ============================================================
+   BOTÓN SILENCIAR
+   ============================================================ */
 
 #btn-silenciar {
     background: rgba(255, 149, 0, 0.12);
@@ -358,6 +379,10 @@ html, body {
     to { opacity: 0.5; transform: scale(0.95); }
 }
 
+/* ============================================================
+   BOTÓN COMPARTIR PANTALLA
+   ============================================================ */
+
 #btn-compartir {
     background: rgba(175, 82, 222, 0.12);
     color: var(--purple);
@@ -366,6 +391,10 @@ html, body {
 #btn-compartir:hover {
     background: rgba(175, 82, 222, 0.22);
 }
+
+/* ============================================================
+   BOTÓN PANTALLA COMPLETA
+   ============================================================ */
 
 #btn-fullscreen {
     background: rgba(255, 255, 255, 0.03);
@@ -376,6 +405,10 @@ html, body {
     background: rgba(255, 255, 255, 0.08);
 }
 
+/* ============================================================
+   BOTÓN RECONECTAR
+   ============================================================ */
+
 #btn-reconectar {
     background: rgba(255, 149, 0, 0.1);
     color: var(--orange);
@@ -384,6 +417,10 @@ html, body {
 #btn-reconectar:hover {
     background: rgba(255, 149, 0, 0.2);
 }
+
+/* ============================================================
+   BOTÓN DIAGNÓSTICO
+   ============================================================ */
 
 .btn-diagnostico {
     width: 26px;
@@ -1004,6 +1041,7 @@ html, body {
         color: var(--text-muted);
     }
 
+    /* Modo claro para botones de cámara y micrófono */
     #btn-microfono {
         background: rgba(79, 140, 247, 0.12);
     }
@@ -1012,12 +1050,48 @@ html, body {
         background: rgba(79, 140, 247, 0.2);
     }
 
+    #btn-microfono.activo {
+        background: rgba(52, 199, 89, 0.12);
+        color: var(--green);
+    }
+
+    #btn-microfono.activo:hover {
+        background: rgba(52, 199, 89, 0.2);
+    }
+
+    #btn-microfono.inactivo {
+        background: rgba(255, 59, 48, 0.12);
+        color: var(--red);
+    }
+
+    #btn-microfono.inactivo:hover {
+        background: rgba(255, 59, 48, 0.2);
+    }
+
     #btn-camara {
         background: rgba(52, 199, 89, 0.1);
     }
 
     #btn-camara:hover {
         background: rgba(52, 199, 89, 0.18);
+    }
+
+    #btn-camara.activo {
+        background: rgba(52, 199, 89, 0.12);
+        color: var(--green);
+    }
+
+    #btn-camara.activo:hover {
+        background: rgba(52, 199, 89, 0.2);
+    }
+
+    #btn-camara.inactivo {
+        background: rgba(255, 59, 48, 0.12);
+        color: var(--red);
+    }
+
+    #btn-camara.inactivo:hover {
+        background: rgba(255, 59, 48, 0.2);
     }
 
     #btn-silenciar {

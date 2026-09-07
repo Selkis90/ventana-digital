@@ -37,7 +37,8 @@ const MAX_INTENTOS_RECONEXION = 5;
 
 const videoMap = new Map();
 const audioMap = new Map();
-let videoSeleccionado = null; // Para tracking del video activo
+let videoSeleccionado = null;
+let localVideoWrapper = null; // Wrapper para el video local flotante
 
 let monitorInternet = null;
 let internetStatus = true;
@@ -73,48 +74,209 @@ function mostrarLoading() {
 }
 
 // ============================================================
-// ✅ NUEVO LAYOUT - FUNCIONES DE LAYOUT PROFESIONAL
+// ✅ PICTURE-IN-PICTURE - VIDEO LOCAL FLOTANTE
+// ============================================================
+
+function crearWrapperVideoLocal(videoElement) {
+    // Si ya existe, no crear de nuevo
+    if (localVideoWrapper) return;
+    
+    // Crear wrapper
+    const wrapper = document.createElement('div');
+    wrapper.className = 'video-local-wrapper';
+    wrapper.id = 'video-local-wrapper';
+    
+    // Posición inicial (esquina inferior derecha)
+    wrapper.style.position = 'fixed';
+    wrapper.style.bottom = '80px';
+    wrapper.style.right = '20px';
+    wrapper.style.width = '180px';
+    wrapper.style.height = '135px';
+    wrapper.style.zIndex = '50';
+    wrapper.style.cursor = 'grab';
+    wrapper.style.touchAction = 'none';
+    
+    // Mover el video dentro del wrapper
+    videoElement.style.width = '100%';
+    videoElement.style.height = '100%';
+    videoElement.style.objectFit = 'cover';
+    videoElement.style.display = 'block';
+    
+    // Crear elementos adicionales
+    const label = document.createElement('span');
+    label.className = 'video-local-label';
+    label.textContent = '📹 Tú';
+    
+    const status = document.createElement('span');
+    status.className = 'video-local-status';
+    status.id = 'video-local-status';
+    
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'video-local-close';
+    closeBtn.innerHTML = '✕';
+    closeBtn.title = 'Ocultar video local';
+    closeBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        ocultarVideoLocal();
+    });
+    
+    // Agregar elementos al wrapper
+    wrapper.appendChild(videoElement);
+    wrapper.appendChild(label);
+    wrapper.appendChild(status);
+    wrapper.appendChild(closeBtn);
+    
+    // Agregar al body (fuera del grid)
+    document.body.appendChild(wrapper);
+    localVideoWrapper = wrapper;
+    
+    // Agregar eventos de arrastre
+    hacerArrastrable(wrapper);
+    
+    // Evento para seleccionar video local al hacer click
+    wrapper.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (videoElement) {
+            toggleSeleccionVideo(videoElement);
+        }
+    });
+    
+    console.log('✅ Wrapper de video local creado');
+    return wrapper;
+}
+
+function hacerArrastrable(elemento) {
+    let isDragging = false;
+    let startX, startY, initialX, initialY;
+    
+    function onStart(e) {
+        isDragging = true;
+        const touch = e.touches ? e.touches[0] : e;
+        startX = touch.clientX;
+        startY = touch.clientY;
+        initialX = elemento.offsetLeft;
+        initialY = elemento.offsetTop;
+        elemento.style.cursor = 'grabbing';
+        elemento.style.transition = 'none';
+        elemento.style.boxShadow = '0 8px 48px rgba(0,0,0,0.8)';
+        e.preventDefault();
+    }
+    
+    function onMove(e) {
+        if (!isDragging) return;
+        const touch = e.touches ? e.touches[0] : e;
+        const deltaX = touch.clientX - startX;
+        const deltaY = touch.clientY - startY;
+        
+        // Obtener posición actual o usar la inicial
+        let currentX = elemento.offsetLeft || initialX;
+        let currentY = elemento.offsetTop || initialY;
+        
+        // Calcular nueva posición
+        let newX = currentX + deltaX;
+        let newY = currentY + deltaY;
+        
+        // Limitar al viewport
+        const rect = elemento.getBoundingClientRect();
+        const maxX = window.innerWidth - rect.width;
+        const maxY = window.innerHeight - rect.height;
+        newX = Math.max(0, Math.min(newX, maxX));
+        newY = Math.max(0, Math.min(newY, maxY));
+        
+        elemento.style.left = newX + 'px';
+        elemento.style.top = newY + 'px';
+        elemento.style.right = 'auto';
+        elemento.style.bottom = 'auto';
+        
+        startX = touch.clientX;
+        startY = touch.clientY;
+        e.preventDefault();
+    }
+    
+    function onEnd(e) {
+        if (isDragging) {
+            isDragging = false;
+            elemento.style.cursor = 'grab';
+            elemento.style.transition = '';
+            elemento.style.boxShadow = '';
+        }
+    }
+    
+    // Eventos mouse
+    elemento.addEventListener('mousedown', onStart);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+    
+    // Eventos touch
+    elemento.addEventListener('touchstart', onStart, { passive: false });
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
+}
+
+function ocultarVideoLocal() {
+    if (localVideoWrapper) {
+        localVideoWrapper.style.display = 'none';
+        console.log('👁️ Video local ocultado');
+    }
+}
+
+function mostrarVideoLocal() {
+    if (localVideoWrapper) {
+        localVideoWrapper.style.display = 'block';
+        console.log('👁️ Video local mostrado');
+    }
+}
+
+function toggleVideoLocal() {
+    if (localVideoWrapper) {
+        if (localVideoWrapper.style.display === 'none') {
+            mostrarVideoLocal();
+        } else {
+            ocultarVideoLocal();
+        }
+    }
+}
+
+// ============================================================
+// ✅ LAYOUT PARA VIDEOS REMOTOS (GRID PRINCIPAL)
 // ============================================================
 
 function aplicarLayout() {
     if (!gridVideos) return;
     
+    // Obtener SOLO videos remotos (los que están en el grid)
     const videos = gridVideos.querySelectorAll('video');
     const total = videos.length;
-    const localVideo = document.getElementById('video-local');
     
     // Resetear clases
     gridVideos.className = '';
-    gridVideos.classList.add('layout-' + total);
-    
-    // Remover clases de video grande
-    videos.forEach(v => v.classList.remove('video-grande', 'activo'));
-    
-    if (total === 0) {
-        gridVideos.style.gridTemplateColumns = '1fr';
-        gridVideos.style.gridTemplateRows = '1fr';
-        gridVideos.style.gap = '0';
-        gridVideos.style.padding = '0';
-        return;
-    }
+    videos.forEach(v => {
+        v.classList.remove('video-grande', 'activo');
+        v.style.gridColumn = '';
+        v.style.gridRow = '';
+        v.style.display = '';
+    });
     
     // Si hay un video seleccionado, mantenerlo activo
     if (videoSeleccionado && videoSeleccionado.parentNode === gridVideos) {
-        videoSeleccionado.classList.add('activo');
+        videoSeleccionado.classList.add('activo', 'video-grande');
         
-        // Aplicar layout especial cuando hay un video seleccionado
-        if (total === 3) {
-            // 3 participantes: 1 grande + 2 pequeños
-            aplicarLayout3ConSeleccionado(videoSeleccionado);
-        } else if (total === 4) {
-            // 4 participantes: 1 grande + 3 pequeños
-            aplicarLayout4ConSeleccionado(videoSeleccionado);
+        // Aplicar layout especial con selección
+        if (total >= 3) {
+            aplicarLayoutConSeleccionado(videoSeleccionado, videos);
+            return;
         }
-        return;
     }
     
     // Layout por defecto según cantidad
     switch(total) {
+        case 0:
+            gridVideos.style.gridTemplateColumns = '1fr';
+            gridVideos.style.gridTemplateRows = '1fr';
+            gridVideos.style.gap = '0';
+            gridVideos.style.padding = '0';
+            break;
+            
         case 1:
             gridVideos.style.gridTemplateColumns = '1fr';
             gridVideos.style.gridTemplateRows = '1fr';
@@ -123,17 +285,10 @@ function aplicarLayout() {
             break;
             
         case 2:
-            // Local pequeño, remoto grande
-            gridVideos.style.gridTemplateColumns = '1fr 3fr';
+            gridVideos.style.gridTemplateColumns = '1fr 1fr';
             gridVideos.style.gridTemplateRows = '1fr';
             gridVideos.style.gap = '4px';
             gridVideos.style.padding = '4px';
-            
-            // Marcar el local como pequeño
-            if (localVideo) {
-                localVideo.style.gridColumn = '1';
-                localVideo.style.gridRow = '1';
-            }
             break;
             
         case 3:
@@ -182,78 +337,44 @@ function aplicarLayout() {
     }
 }
 
-function aplicarLayout3ConSeleccionado(seleccionado) {
-    const videos = gridVideos.querySelectorAll('video');
+function aplicarLayoutConSeleccionado(seleccionado, videos) {
+    const total = videos.length;
+    
+    if (total === 0 || !seleccionado) return;
+    
     const videoArray = Array.from(videos);
-    const index = videoArray.indexOf(seleccionado);
     
-    if (index === -1) return;
-    
-    // Encontrar el video local
-    const localVideo = document.getElementById('video-local');
-    const isLocal = seleccionado === localVideo;
-    
-    // Layout: 1 grande + 2 pequeños
+    // Crear grid con una columna grande y otra pequeña
     gridVideos.style.gridTemplateColumns = '2fr 1fr';
     gridVideos.style.gridTemplateRows = '1fr 1fr';
     gridVideos.style.gap = '4px';
     gridVideos.style.padding = '4px';
     
-    // Asignar posiciones
-    const otros = videoArray.filter(v => v !== seleccionado);
-    
-    // El seleccionado ocupa toda la primera columna
+    // El seleccionado ocupa toda la columna izquierda
     seleccionado.style.gridColumn = '1';
     seleccionado.style.gridRow = '1 / span 2';
     seleccionado.classList.add('video-grande', 'activo');
     
-    // Los otros dos ocupan la segunda columna
-    if (otros.length >= 2) {
-        otros[0].style.gridColumn = '2';
-        otros[0].style.gridRow = '1';
-        otros[0].classList.remove('video-grande', 'activo');
-        
-        otros[1].style.gridColumn = '2';
-        otros[1].style.gridRow = '2';
-        otros[1].classList.remove('video-grande', 'activo');
-    }
-}
-
-function aplicarLayout4ConSeleccionado(seleccionado) {
-    const videos = gridVideos.querySelectorAll('video');
-    const videoArray = Array.from(videos);
-    const index = videoArray.indexOf(seleccionado);
-    
-    if (index === -1) return;
-    
-    // Layout: 1 grande + 3 pequeños (2 en la derecha arriba, 1 abajo)
-    gridVideos.style.gridTemplateColumns = '2fr 1fr';
-    gridVideos.style.gridTemplateRows = '1fr 1fr';
-    gridVideos.style.gap = '4px';
-    gridVideos.style.padding = '4px';
-    
-    // El seleccionado ocupa toda la primera columna
-    seleccionado.style.gridColumn = '1';
-    seleccionado.style.gridRow = '1 / span 2';
-    seleccionado.classList.add('video-grande', 'activo');
-    
-    // Los otros 3 ocupan la segunda columna
+    // Los demás se distribuyen en la columna derecha
     const otros = videoArray.filter(v => v !== seleccionado);
+    const otrosCount = otros.length;
     
-    if (otros.length >= 3) {
-        otros[0].style.gridColumn = '2';
-        otros[0].style.gridRow = '1';
-        otros[0].classList.remove('video-grande', 'activo');
-        
-        otros[1].style.gridColumn = '2';
-        otros[1].style.gridRow = '2';
-        otros[1].classList.remove('video-grande', 'activo');
-        
-        // El tercero va abajo a la izquierda
-        otros[2].style.gridColumn = '1';
-        otros[2].style.gridRow = '2';
-        otros[2].classList.remove('video-grande', 'activo');
-    }
+    // Asignar posiciones a los otros videos
+    otros.forEach(function(video, index) {
+        if (otrosCount <= 2) {
+            // Si hay 1 o 2 otros, cada uno ocupa su fila
+            video.style.gridColumn = '2';
+            video.style.gridRow = (index + 1).toString();
+            video.classList.remove('video-grande', 'activo');
+        } else {
+            // Si hay más de 2, distribuirlos
+            const row = Math.floor(index / 2) + 1;
+            const col = (index % 2) + 2;
+            video.style.gridColumn = col.toString();
+            video.style.gridRow = row.toString();
+            video.classList.remove('video-grande', 'activo');
+        }
+    });
 }
 
 // ============================================================
@@ -263,12 +384,22 @@ function aplicarLayout4ConSeleccionado(seleccionado) {
 function toggleSeleccionVideo(videoElement) {
     if (!videoElement) return;
     
+    // Verificar que el video esté en el grid (no el local flotante)
+    if (videoElement.parentNode !== gridVideos) {
+        // Si es el video local dentro del wrapper, no hacer nada
+        if (videoElement.id === 'video-local') {
+            console.log('📹 Video local - no se puede agrandar en el grid');
+            return;
+        }
+        return;
+    }
+    
     // Si el video ya está seleccionado, deseleccionar
     if (videoSeleccionado === videoElement) {
         videoSeleccionado = null;
         videoElement.classList.remove('activo', 'video-grande');
         // Reaplicar layout normal
-        setTimeout(aplicarLayout, 100);
+        setTimeout(aplicarLayout, 50);
         return;
     }
     
@@ -993,6 +1124,7 @@ async function conectarLiveKit() {
             }
         }
 
+        // Procesar participantes remotos existentes
         if (room.remoteParticipants && room.remoteParticipants.size > 0) {
             var participants = Array.from(room.remoteParticipants.values());
             for (var i = 0; i < participants.length; i++) {
@@ -1169,8 +1301,9 @@ function agregarVideoRemoto(track, participant) {
     
     var identity = participant.identity;
     
+    // No mostrar video propio en el grid (va en el wrapper flotante)
     if (identity === (room ? room.localParticipant.identity : null)) {
-        console.log('⏭️ Saltando video propio');
+        console.log('⏭️ Saltando video propio (será mostrado en PIP)');
         return;
     }
 
@@ -1188,7 +1321,7 @@ function agregarVideoRemoto(track, participant) {
     video.dataset.label = identity;
     gridVideos.appendChild(video);
     videoMap.set(identity, video);
-    console.log('📹 Video creado para:', identity);
+    console.log('📹 Video remoto creado para:', identity);
 
     // Agregar evento click para seleccionar video
     video.addEventListener('click', function(e) {
@@ -1478,12 +1611,13 @@ function agregarParticipante(participant) {
 }
 
 // ============================================================
-// VIDEO LOCAL
+// VIDEO LOCAL - CREAR EN WRAPPER FLOTANTE
 // ============================================================
 
 function mostrarVideoLocal(publication) {
     if (!publication || !publication.videoTrack) return;
 
+    // Buscar si ya existe un video local
     var video = document.getElementById('video-local');
     if (!video) {
         video = document.createElement('video');
@@ -1493,16 +1627,10 @@ function mostrarVideoLocal(publication) {
         video.muted = true;
         video.className = 'video-local';
         video.dataset.label = 'Tú';
-        gridVideos.prepend(video);
         console.log('📹 Video local creado');
-        
-        // Agregar evento click para seleccionar video local
-        video.addEventListener('click', function(e) {
-            e.stopPropagation();
-            toggleSeleccionVideo(video);
-        });
     }
 
+    // Adjuntar el track al video
     try {
         if (typeof publication.videoTrack.attach === 'function') {
             publication.videoTrack.attach(video);
@@ -1525,8 +1653,14 @@ function mostrarVideoLocal(publication) {
             console.error('❌ Error en fallback de video local:', e);
         }
     }
+
+    // Crear wrapper flotante si no existe
+    if (!localVideoWrapper) {
+        crearWrapperVideoLocal(video);
+    }
     
-    aplicarLayout();
+    // No agregar al grid - solo flotante
+    // No llamar a aplicarLayout() aquí para no afectar el grid
 }
 
 // ============================================================
@@ -1534,14 +1668,23 @@ function mostrarVideoLocal(publication) {
 // ============================================================
 
 function limpiarVideos() {
-    if (!gridVideos) return;
+    // Limpiar grid
+    if (gridVideos) {
+        gridVideos.querySelectorAll('video').forEach(function(video) {
+            try {
+                video.srcObject = null;
+                video.remove();
+            } catch (e) {}
+        });
+    }
     
-    gridVideos.querySelectorAll('video').forEach(function(video) {
+    // Limpiar wrapper de video local
+    if (localVideoWrapper) {
         try {
-            video.srcObject = null;
-            video.remove();
+            localVideoWrapper.remove();
+            localVideoWrapper = null;
         } catch (e) {}
-    });
+    }
     
     audioMap.forEach(function(audioInfo, identity) {
         try {
@@ -1586,10 +1729,9 @@ function actualizarParticipanteRemoto() {
 }
 
 // ============================================================
-// ✅ CONTROLES - BOTONES DE CÁMARA Y MICRÓFONO - VERSIÓN CORREGIDA
+// ✅ CONTROLES - BOTONES DE CÁMARA Y MICRÓFONO
 // ============================================================
 
-// ✅ 1. BOTÓN MICRÓFONO - CORREGIDO
 async function alternarMicrofono() {
     if (!room) {
         console.warn('⚠️ Room no disponible');
@@ -1612,6 +1754,16 @@ async function alternarMicrofono() {
         
         const newState = room.localParticipant.isMicrophoneEnabled;
         console.log('🎤 Nuevo estado micrófono:', newState);
+        
+        // Actualizar estado visual en el video local
+        const statusIndicator = document.getElementById('video-local-status');
+        if (statusIndicator) {
+            if (newState) {
+                statusIndicator.classList.remove('muted');
+            } else {
+                statusIndicator.classList.add('muted');
+            }
+        }
         
         if (btnMicrofono) {
             btnMicrofono.classList.remove('activo', 'inactivo');
@@ -1660,7 +1812,6 @@ async function alternarMicrofono() {
     }
 }
 
-// ✅ 2. BOTÓN CÁMARA - CORREGIDO
 async function alternarCamara() {
     if (!room) {
         console.warn('⚠️ Room no disponible');
@@ -1683,6 +1834,13 @@ async function alternarCamara() {
         
         const newState = room.localParticipant.isCameraEnabled;
         console.log('📷 Nuevo estado cámara:', newState);
+        
+        // Ocultar/mostrar el video local
+        if (!newState) {
+            ocultarVideoLocal();
+        } else {
+            mostrarVideoLocal();
+        }
         
         if (btnCamara) {
             btnCamara.classList.remove('activo', 'inactivo');
@@ -1742,12 +1900,23 @@ async function silenciarTemporalmente() {
         await room.localParticipant.setMicrophoneEnabled(false);
         console.log('🔇 Silenciado temporalmente');
         
+        // Actualizar estado visual en el video local
+        const statusIndicator = document.getElementById('video-local-status');
+        if (statusIndicator) {
+            statusIndicator.classList.add('muted');
+        }
+        
         setTimeout(async function() {
             try {
                 await room.localParticipant.setMicrophoneEnabled(true);
                 audioMuted = false;
                 if (btnSilenciar) {
                     btnSilenciar.classList.remove('activo');
+                }
+                // Actualizar estado visual
+                const statusIndicator = document.getElementById('video-local-status');
+                if (statusIndicator) {
+                    statusIndicator.classList.remove('muted');
                 }
                 console.log('🎤 Micrófono reactivado');
             } catch (error) {
@@ -1852,7 +2021,7 @@ function diagnostico() {
         info += '📡 Estado: ' + (room.state || 'desconocido') + '\n';
         info += '🆔 Mi ID: ' + (room.localParticipant ? room.localParticipant.identity : 'N/A') + '\n';
         info += '👥 Participantes remotos: ' + (room.remoteParticipants ? room.remoteParticipants.size : 0) + '\n';
-        info += '📹 Videos en pantalla: ' + gridVideos.querySelectorAll('video').length + '\n';
+        info += '📹 Videos en grid: ' + gridVideos.querySelectorAll('video').length + '\n';
         info += '🔊 Audios remotos: ' + audioMap.size + '\n\n';
         
         info += '📷 CÁMARA:\n';
@@ -1861,7 +2030,10 @@ function diagnostico() {
         info += '\n🎤 MICRÓFONO:\n';
         info += '   Estado: ' + (room.localParticipant.isMicrophoneEnabled ? '✅ ACTIVADO' : '❌ DESACTIVADO') + '\n\n';
         
-        info += '🔊 CONFIGURACIÓN ANTI-ECO:\n';
+        info += '🖼️ VIDEO LOCAL (PIP):\n';
+        info += '   Visible: ' + (localVideoWrapper && localVideoWrapper.style.display !== 'none' ? '✅ SÍ' : '❌ NO') + '\n';
+        
+        info += '\n🔊 CONFIGURACIÓN ANTI-ECO:\n';
         info += '   ✅ Echo Cancellation: ACTIVADO\n';
         info += '   ✅ Noise Suppression: ACTIVADO\n';
         info += '   ✅ Auto Gain Control: ACTIVADO\n';
@@ -1909,7 +2081,7 @@ function diagnostico() {
         info += '   🔄 Reconectando: ' + (reconectando ? 'SÍ' : 'NO') + '\n';
         
         info += '\n📐 LAYOUT:\n';
-        info += '   📹 Total videos: ' + gridVideos.querySelectorAll('video').length + '\n';
+        info += '   📹 Total videos en grid: ' + gridVideos.querySelectorAll('video').length + '\n';
         info += '   🎯 Video seleccionado: ' + (videoSeleccionado ? 'SÍ' : 'NO') + '\n';
     } else {
         info += '❌ Room: NO CONECTADO\n';
@@ -1985,6 +2157,7 @@ window.publicarAudioConVerificacion = publicarAudioConVerificacion;
 window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
 window.aplicarLayout = aplicarLayout;
 window.toggleSeleccionVideo = toggleSeleccionVideo;
+window.toggleVideoLocal = toggleVideoLocal;
 
 // ============================================================
 // INICIALIZACIÓN
@@ -1992,13 +2165,14 @@ window.toggleSeleccionVideo = toggleSeleccionVideo;
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 5.0.0 - Layout Profesional');
+    console.log('📋 Versión: 5.1.0 - PIP Profesional');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');
     console.log('📡 Monitoreo de tracks activado');
     console.log('🔍 Variables expuestas globalmente para diagnóstico');
-    console.log('🎯 Click en cualquier video para agrandarlo');
+    console.log('🎯 Click en cualquier video remoto para agrandarlo');
+    console.log('🖼️ Video local en Picture-in-Picture (arrastrable)');
     
     iniciarMonitorInternet();
     
@@ -2038,12 +2212,14 @@ async function iniciarCamara() {
     window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
     window.aplicarLayout = aplicarLayout;
     window.toggleSeleccionVideo = toggleSeleccionVideo;
+    window.toggleVideoLocal = toggleVideoLocal;
     
     setTimeout(function() {
         console.log('✅ Sistema listo - Presiona "Diagnóstico" para ver detalles');
         console.log('🔍 Variables globales disponibles: room, audioMap, videoMap, volumenActual');
         console.log('🔧 Funciones: reparacionCompletaAudio(), forzarSuscripcionAudio()');
-        console.log('🎯 Click en cualquier video para agrandarlo');
+        console.log('🎯 Click en cualquier video remoto para agrandarlo');
+        console.log('🖼️ Video local: arrastra la ventana para moverla');
         (function() {
             forzarReanudacionAudio().catch(function(error) {
                 console.error('❌ Error reanudando audio inicial:', error);

@@ -37,6 +37,7 @@ const MAX_INTENTOS_RECONEXION = 5;
 
 const videoMap = new Map();
 const audioMap = new Map();
+let videoSeleccionado = null; // Para tracking del video activo
 
 let monitorInternet = null;
 let internetStatus = true;
@@ -69,6 +70,219 @@ function mostrarLoading() {
     if (loadingOverlay) {
         loadingOverlay.classList.remove('oculto');
     }
+}
+
+// ============================================================
+// ✅ NUEVO LAYOUT - FUNCIONES DE LAYOUT PROFESIONAL
+// ============================================================
+
+function aplicarLayout() {
+    if (!gridVideos) return;
+    
+    const videos = gridVideos.querySelectorAll('video');
+    const total = videos.length;
+    const localVideo = document.getElementById('video-local');
+    
+    // Resetear clases
+    gridVideos.className = '';
+    gridVideos.classList.add('layout-' + total);
+    
+    // Remover clases de video grande
+    videos.forEach(v => v.classList.remove('video-grande', 'activo'));
+    
+    if (total === 0) {
+        gridVideos.style.gridTemplateColumns = '1fr';
+        gridVideos.style.gridTemplateRows = '1fr';
+        gridVideos.style.gap = '0';
+        gridVideos.style.padding = '0';
+        return;
+    }
+    
+    // Si hay un video seleccionado, mantenerlo activo
+    if (videoSeleccionado && videoSeleccionado.parentNode === gridVideos) {
+        videoSeleccionado.classList.add('activo');
+        
+        // Aplicar layout especial cuando hay un video seleccionado
+        if (total === 3) {
+            // 3 participantes: 1 grande + 2 pequeños
+            aplicarLayout3ConSeleccionado(videoSeleccionado);
+        } else if (total === 4) {
+            // 4 participantes: 1 grande + 3 pequeños
+            aplicarLayout4ConSeleccionado(videoSeleccionado);
+        }
+        return;
+    }
+    
+    // Layout por defecto según cantidad
+    switch(total) {
+        case 1:
+            gridVideos.style.gridTemplateColumns = '1fr';
+            gridVideos.style.gridTemplateRows = '1fr';
+            gridVideos.style.gap = '0';
+            gridVideos.style.padding = '0';
+            break;
+            
+        case 2:
+            // Local pequeño, remoto grande
+            gridVideos.style.gridTemplateColumns = '1fr 3fr';
+            gridVideos.style.gridTemplateRows = '1fr';
+            gridVideos.style.gap = '4px';
+            gridVideos.style.padding = '4px';
+            
+            // Marcar el local como pequeño
+            if (localVideo) {
+                localVideo.style.gridColumn = '1';
+                localVideo.style.gridRow = '1';
+            }
+            break;
+            
+        case 3:
+            gridVideos.style.gridTemplateColumns = '1fr 1fr 1fr';
+            gridVideos.style.gridTemplateRows = '1fr';
+            gridVideos.style.gap = '4px';
+            gridVideos.style.padding = '4px';
+            break;
+            
+        case 4:
+            gridVideos.style.gridTemplateColumns = '1fr 1fr';
+            gridVideos.style.gridTemplateRows = '1fr 1fr';
+            gridVideos.style.gap = '4px';
+            gridVideos.style.padding = '4px';
+            break;
+            
+        case 5:
+        case 6:
+            gridVideos.style.gridTemplateColumns = 'repeat(3, 1fr)';
+            gridVideos.style.gridTemplateRows = 'repeat(2, 1fr)';
+            gridVideos.style.gap = '4px';
+            gridVideos.style.padding = '4px';
+            break;
+            
+        case 7:
+        case 8:
+            gridVideos.style.gridTemplateColumns = 'repeat(4, 1fr)';
+            gridVideos.style.gridTemplateRows = 'repeat(2, 1fr)';
+            gridVideos.style.gap = '4px';
+            gridVideos.style.padding = '4px';
+            break;
+            
+        case 9:
+            gridVideos.style.gridTemplateColumns = 'repeat(3, 1fr)';
+            gridVideos.style.gridTemplateRows = 'repeat(3, 1fr)';
+            gridVideos.style.gap = '4px';
+            gridVideos.style.padding = '4px';
+            break;
+            
+        default:
+            var columns = Math.min(Math.ceil(Math.sqrt(total * 1.5)), 6);
+            gridVideos.style.gridTemplateColumns = 'repeat(' + columns + ', 1fr)';
+            gridVideos.style.gridTemplateRows = 'repeat(' + Math.ceil(total / columns) + ', 1fr)';
+            gridVideos.style.gap = '4px';
+            gridVideos.style.padding = '4px';
+    }
+}
+
+function aplicarLayout3ConSeleccionado(seleccionado) {
+    const videos = gridVideos.querySelectorAll('video');
+    const videoArray = Array.from(videos);
+    const index = videoArray.indexOf(seleccionado);
+    
+    if (index === -1) return;
+    
+    // Encontrar el video local
+    const localVideo = document.getElementById('video-local');
+    const isLocal = seleccionado === localVideo;
+    
+    // Layout: 1 grande + 2 pequeños
+    gridVideos.style.gridTemplateColumns = '2fr 1fr';
+    gridVideos.style.gridTemplateRows = '1fr 1fr';
+    gridVideos.style.gap = '4px';
+    gridVideos.style.padding = '4px';
+    
+    // Asignar posiciones
+    const otros = videoArray.filter(v => v !== seleccionado);
+    
+    // El seleccionado ocupa toda la primera columna
+    seleccionado.style.gridColumn = '1';
+    seleccionado.style.gridRow = '1 / span 2';
+    seleccionado.classList.add('video-grande', 'activo');
+    
+    // Los otros dos ocupan la segunda columna
+    if (otros.length >= 2) {
+        otros[0].style.gridColumn = '2';
+        otros[0].style.gridRow = '1';
+        otros[0].classList.remove('video-grande', 'activo');
+        
+        otros[1].style.gridColumn = '2';
+        otros[1].style.gridRow = '2';
+        otros[1].classList.remove('video-grande', 'activo');
+    }
+}
+
+function aplicarLayout4ConSeleccionado(seleccionado) {
+    const videos = gridVideos.querySelectorAll('video');
+    const videoArray = Array.from(videos);
+    const index = videoArray.indexOf(seleccionado);
+    
+    if (index === -1) return;
+    
+    // Layout: 1 grande + 3 pequeños (2 en la derecha arriba, 1 abajo)
+    gridVideos.style.gridTemplateColumns = '2fr 1fr';
+    gridVideos.style.gridTemplateRows = '1fr 1fr';
+    gridVideos.style.gap = '4px';
+    gridVideos.style.padding = '4px';
+    
+    // El seleccionado ocupa toda la primera columna
+    seleccionado.style.gridColumn = '1';
+    seleccionado.style.gridRow = '1 / span 2';
+    seleccionado.classList.add('video-grande', 'activo');
+    
+    // Los otros 3 ocupan la segunda columna
+    const otros = videoArray.filter(v => v !== seleccionado);
+    
+    if (otros.length >= 3) {
+        otros[0].style.gridColumn = '2';
+        otros[0].style.gridRow = '1';
+        otros[0].classList.remove('video-grande', 'activo');
+        
+        otros[1].style.gridColumn = '2';
+        otros[1].style.gridRow = '2';
+        otros[1].classList.remove('video-grande', 'activo');
+        
+        // El tercero va abajo a la izquierda
+        otros[2].style.gridColumn = '1';
+        otros[2].style.gridRow = '2';
+        otros[2].classList.remove('video-grande', 'activo');
+    }
+}
+
+// ============================================================
+// ✅ SELECCIÓN DE VIDEO (CLICK PARA AGRANDAR)
+// ============================================================
+
+function toggleSeleccionVideo(videoElement) {
+    if (!videoElement) return;
+    
+    // Si el video ya está seleccionado, deseleccionar
+    if (videoSeleccionado === videoElement) {
+        videoSeleccionado = null;
+        videoElement.classList.remove('activo', 'video-grande');
+        // Reaplicar layout normal
+        setTimeout(aplicarLayout, 100);
+        return;
+    }
+    
+    // Si hay otro video seleccionado, quitar selección
+    if (videoSeleccionado) {
+        videoSeleccionado.classList.remove('activo', 'video-grande');
+    }
+    
+    // Seleccionar el nuevo video
+    videoSeleccionado = videoElement;
+    videoElement.classList.add('activo', 'video-grande');
+    
+    // Aplicar layout con selección
+    aplicarLayout();
 }
 
 // ============================================================
@@ -143,7 +357,7 @@ async function obtenerAudioProfesional() {
 }
 
 // ============================================================
-// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN - CORREGIDO
+// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN
 // ============================================================
 
 async function publicarAudioConVerificacion() {
@@ -725,12 +939,57 @@ async function conectarLiveKit() {
             if (btnCamara) {
                 btnCamara.classList.remove('inactivo');
                 btnCamara.classList.add('activo');
+                btnCamara.innerHTML = `
+                    <svg viewBox="0 0 24 24">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                        <circle cx="12" cy="13" r="4"/>
+                    </svg>
+                `;
             }
             console.log('✅ Cámara activada');
         } catch (error) { 
             console.warn('⚠️ Cámara no disponible:', error); 
             if (btnCamara) {
+                btnCamara.classList.remove('activo');
                 btnCamara.classList.add('inactivo');
+                btnCamara.innerHTML = `
+                    <svg viewBox="0 0 24 24">
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                        <path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3m3-3h6l2 3h4a2 2 0 0 1 2 2v9.34m-7.72-2.06a4 4 0 1 1-5.56-5.56"/>
+                    </svg>
+                `;
+            }
+        }
+
+        try { 
+            await room.localParticipant.setMicrophoneEnabled(true);
+            if (btnMicrofono) {
+                btnMicrofono.classList.remove('inactivo');
+                btnMicrofono.classList.add('activo');
+                btnMicrofono.innerHTML = `
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                    </svg>
+                `;
+            }
+            console.log('✅ Micrófono activado');
+        } catch (error) { 
+            console.warn('⚠️ Micrófono no disponible:', error); 
+            if (btnMicrofono) {
+                btnMicrofono.classList.remove('activo');
+                btnMicrofono.classList.add('inactivo');
+                btnMicrofono.innerHTML = `
+                    <svg viewBox="0 0 24 24">
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                        <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+                        <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                    </svg>
+                `;
             }
         }
 
@@ -753,7 +1012,7 @@ async function conectarLiveKit() {
 
         actualizarEstado('Conectado', 'conectado');
         actualizarParticipanteRemoto();
-        actualizarLayout();
+        aplicarLayout();
         ocultarLoading();
         console.log('✅ Conexión exitosa');
 
@@ -792,7 +1051,7 @@ function registrarEventosLiveKit() {
                         agregarVideoRemoto(pub.track, p);
                     }
                 });
-                actualizarLayout();
+                aplicarLayout();
                 actualizarParticipanteRemoto();
             }).catch(function(error) {
                 console.error('❌ Error procesando participante:', error);
@@ -803,7 +1062,7 @@ function registrarEventosLiveKit() {
     room.on(LivekitClient.RoomEvent.ParticipantDisconnected, function(participant) {
         console.log('❌ Participante desconectado:', participant.identity);
         eliminarParticipante(participant);
-        actualizarLayout();
+        aplicarLayout();
         actualizarParticipanteRemoto();
     });
 
@@ -856,7 +1115,7 @@ function registrarEventosLiveKit() {
         
         (function() {
             restaurarAudioDespuesReconexion().then(function() {
-                actualizarLayout();
+                aplicarLayout();
             }).catch(function(error) {
                 console.error('❌ Error restaurando audio:', error);
             });
@@ -926,9 +1185,16 @@ function agregarVideoRemoto(track, participant) {
     video.controls = false;
     video.dataset.identity = identity;
     video.className = 'video-remoto';
+    video.dataset.label = identity;
     gridVideos.appendChild(video);
     videoMap.set(identity, video);
     console.log('📹 Video creado para:', identity);
+
+    // Agregar evento click para seleccionar video
+    video.addEventListener('click', function(e) {
+        e.stopPropagation();
+        toggleSeleccionVideo(video);
+    });
 
     try {
         if (typeof track.attach === 'function') {
@@ -951,7 +1217,7 @@ function agregarVideoRemoto(track, participant) {
         }
     }
     
-    actualizarLayout();
+    aplicarLayout();
 }
 
 // ============================================================
@@ -1157,7 +1423,7 @@ function eliminarTrackRemoto(track, participant) {
         }
     }
 
-    actualizarLayout();
+    aplicarLayout();
 }
 
 function eliminarParticipante(participant) {
@@ -1190,6 +1456,11 @@ function eliminarParticipante(participant) {
         } catch (e) {}
         audioMap.delete(identity);
     }
+    
+    // Limpiar selección si el video eliminado era el seleccionado
+    if (videoSeleccionado && !videoSeleccionado.parentNode) {
+        videoSeleccionado = null;
+    }
 }
 
 function agregarParticipante(participant) {
@@ -1221,8 +1492,15 @@ function mostrarVideoLocal(publication) {
         video.playsInline = true;
         video.muted = true;
         video.className = 'video-local';
+        video.dataset.label = 'Tú';
         gridVideos.prepend(video);
         console.log('📹 Video local creado');
+        
+        // Agregar evento click para seleccionar video local
+        video.addEventListener('click', function(e) {
+            e.stopPropagation();
+            toggleSeleccionVideo(video);
+        });
     }
 
     try {
@@ -1248,7 +1526,7 @@ function mostrarVideoLocal(publication) {
         }
     }
     
-    actualizarLayout();
+    aplicarLayout();
 }
 
 // ============================================================
@@ -1292,6 +1570,7 @@ function limpiarVideos() {
     
     videoMap.clear();
     audioMap.clear();
+    videoSeleccionado = null;
     
     console.log('🧹 Videos y audios limpiados');
 }
@@ -1306,67 +1585,6 @@ function actualizarParticipanteRemoto() {
     peerConectado.textContent = cantidad;
 }
 
-function actualizarLayout() {
-    if (!gridVideos) return;
-    
-    var videos = gridVideos.querySelectorAll('video');
-    var total = videos.length;
-    
-    if (total === 0) {
-        gridVideos.style.gridTemplateColumns = '1fr';
-        gridVideos.style.gridTemplateRows = '1fr';
-        gridVideos.style.gap = '0';
-        return;
-    }
-
-    if (total === 1) {
-        gridVideos.style.gridTemplateColumns = '1fr';
-        gridVideos.style.gridTemplateRows = '1fr';
-        gridVideos.style.gap = '0';
-        return;
-    }
-
-    if (total === 2) {
-        gridVideos.style.gridTemplateColumns = 'repeat(2, 1fr)';
-        gridVideos.style.gridTemplateRows = '1fr';
-        gridVideos.style.gap = '2px';
-        return;
-    }
-
-    if (total <= 4) {
-        gridVideos.style.gridTemplateColumns = 'repeat(2, 1fr)';
-        gridVideos.style.gridTemplateRows = 'repeat(2, 1fr)';
-        gridVideos.style.gap = '2px';
-        return;
-    }
-
-    if (total <= 6) {
-        gridVideos.style.gridTemplateColumns = 'repeat(3, 1fr)';
-        gridVideos.style.gridTemplateRows = 'repeat(2, 1fr)';
-        gridVideos.style.gap = '2px';
-        return;
-    }
-
-    if (total <= 9) {
-        gridVideos.style.gridTemplateColumns = 'repeat(3, 1fr)';
-        gridVideos.style.gridTemplateRows = 'repeat(3, 1fr)';
-        gridVideos.style.gap = '2px';
-        return;
-    }
-
-    if (total <= 12) {
-        gridVideos.style.gridTemplateColumns = 'repeat(4, 1fr)';
-        gridVideos.style.gridTemplateRows = 'repeat(3, 1fr)';
-        gridVideos.style.gap = '2px';
-        return;
-    }
-
-    var columns = Math.min(Math.ceil(Math.sqrt(total * 1.5)), 6);
-    gridVideos.style.gridTemplateColumns = 'repeat(' + columns + ', 1fr)';
-    gridVideos.style.gridTemplateRows = 'repeat(' + Math.ceil(total / columns) + ', 1fr)';
-    gridVideos.style.gap = '2px';
-}
-
 // ============================================================
 // ✅ CONTROLES - BOTONES DE CÁMARA Y MICRÓFONO - VERSIÓN CORREGIDA
 // ============================================================
@@ -1379,7 +1597,6 @@ async function alternarMicrofono() {
     }
     
     try {
-        // Feedback visual de clic
         if (btnMicrofono) {
             btnMicrofono.style.transition = 'transform 0.15s ease';
             btnMicrofono.style.transform = 'scale(0.85)';
@@ -1388,24 +1605,18 @@ async function alternarMicrofono() {
             }, 200);
         }
         
-        // Obtener estado actual usando la propiedad correcta
         const isEnabled = room.localParticipant.isMicrophoneEnabled;
         console.log('🎤 Estado actual micrófono:', isEnabled);
         
-        // Alternar estado
         await room.localParticipant.setMicrophoneEnabled(!isEnabled);
         
-        // Obtener nuevo estado después de la operación
         const newState = room.localParticipant.isMicrophoneEnabled;
         console.log('🎤 Nuevo estado micrófono:', newState);
         
-        // Actualizar UI - Usando las clases correctas del CSS
         if (btnMicrofono) {
-            // Remover todas las clases de estado
             btnMicrofono.classList.remove('activo', 'inactivo');
             
             if (newState) {
-                // Micrófono ACTIVADO - verde (clase 'activo')
                 btnMicrofono.classList.add('activo');
                 btnMicrofono.innerHTML = `
                     <svg viewBox="0 0 24 24">
@@ -1418,7 +1629,6 @@ async function alternarMicrofono() {
                 btnMicrofono.title = 'Desactivar micrófono';
                 btnMicrofono.setAttribute('aria-label', 'Desactivar micrófono');
             } else {
-                // Micrófono DESACTIVADO - rojo (clase 'inactivo')
                 btnMicrofono.classList.add('inactivo');
                 btnMicrofono.innerHTML = `
                     <svg viewBox="0 0 24 24">
@@ -1438,7 +1648,6 @@ async function alternarMicrofono() {
         
     } catch (error) {
         console.error('❌ Error con micrófono:', error);
-        // Revertir UI en caso de error
         if (btnMicrofono) {
             try {
                 const isEnabled = room.localParticipant.isMicrophoneEnabled;
@@ -1459,7 +1668,6 @@ async function alternarCamara() {
     }
     
     try {
-        // Feedback visual de clic
         if (btnCamara) {
             btnCamara.style.transition = 'transform 0.15s ease';
             btnCamara.style.transform = 'scale(0.85)';
@@ -1468,24 +1676,18 @@ async function alternarCamara() {
             }, 200);
         }
         
-        // Obtener estado actual usando la propiedad correcta
         const isEnabled = room.localParticipant.isCameraEnabled;
         console.log('📷 Estado actual cámara:', isEnabled);
         
-        // Alternar estado
         await room.localParticipant.setCameraEnabled(!isEnabled);
         
-        // Obtener nuevo estado después de la operación
         const newState = room.localParticipant.isCameraEnabled;
         console.log('📷 Nuevo estado cámara:', newState);
         
-        // Actualizar UI - Usando las clases correctas del CSS
         if (btnCamara) {
-            // Remover todas las clases de estado
             btnCamara.classList.remove('activo', 'inactivo');
             
             if (newState) {
-                // Cámara ACTIVADA - verde (clase 'activo')
                 btnCamara.classList.add('activo');
                 btnCamara.innerHTML = `
                     <svg viewBox="0 0 24 24">
@@ -1496,7 +1698,6 @@ async function alternarCamara() {
                 btnCamara.title = 'Desactivar cámara';
                 btnCamara.setAttribute('aria-label', 'Desactivar cámara');
             } else {
-                // Cámara DESACTIVADA - rojo (clase 'inactivo')
                 btnCamara.classList.add('inactivo');
                 btnCamara.innerHTML = `
                     <svg viewBox="0 0 24 24">
@@ -1513,7 +1714,6 @@ async function alternarCamara() {
         
     } catch (error) {
         console.error('❌ Error con cámara:', error);
-        // Revertir UI en caso de error
         if (btnCamara) {
             try {
                 const isEnabled = room.localParticipant.isCameraEnabled;
@@ -1655,6 +1855,12 @@ function diagnostico() {
         info += '📹 Videos en pantalla: ' + gridVideos.querySelectorAll('video').length + '\n';
         info += '🔊 Audios remotos: ' + audioMap.size + '\n\n';
         
+        info += '📷 CÁMARA:\n';
+        info += '   Estado: ' + (room.localParticipant.isCameraEnabled ? '✅ ACTIVADA' : '❌ DESACTIVADA') + '\n';
+        
+        info += '\n🎤 MICRÓFONO:\n';
+        info += '   Estado: ' + (room.localParticipant.isMicrophoneEnabled ? '✅ ACTIVADO' : '❌ DESACTIVADO') + '\n\n';
+        
         info += '🔊 CONFIGURACIÓN ANTI-ECO:\n';
         info += '   ✅ Echo Cancellation: ACTIVADO\n';
         info += '   ✅ Noise Suppression: ACTIVADO\n';
@@ -1701,6 +1907,10 @@ function diagnostico() {
         info += '\n🌐 ESTADO DE INTERNET:\n';
         info += '   📶 Online: ' + (navigator.onLine ? 'SÍ' : 'NO') + '\n';
         info += '   🔄 Reconectando: ' + (reconectando ? 'SÍ' : 'NO') + '\n';
+        
+        info += '\n📐 LAYOUT:\n';
+        info += '   📹 Total videos: ' + gridVideos.querySelectorAll('video').length + '\n';
+        info += '   🎯 Video seleccionado: ' + (videoSeleccionado ? 'SÍ' : 'NO') + '\n';
     } else {
         info += '❌ Room: NO CONECTADO\n';
     }
@@ -1733,14 +1943,17 @@ if (volumen) {
     volumen.addEventListener('input', actualizarVolumen);
 }
 
-window.addEventListener('resize', actualizarLayout);
+window.addEventListener('resize', function() {
+    aplicarLayout();
+});
+
 window.addEventListener('orientationchange', function() {
-    setTimeout(actualizarLayout, 300);
+    setTimeout(aplicarLayout, 300);
 });
 
 document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible') {
-        actualizarLayout();
+        aplicarLayout();
     }
 });
 
@@ -1770,6 +1983,8 @@ window.forzarSuscripcionAudio = forzarSuscripcionAudio;
 window.reparacionCompletaAudio = reparacionCompletaAudio;
 window.publicarAudioConVerificacion = publicarAudioConVerificacion;
 window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
+window.aplicarLayout = aplicarLayout;
+window.toggleSeleccionVideo = toggleSeleccionVideo;
 
 // ============================================================
 // INICIALIZACIÓN
@@ -1777,12 +1992,13 @@ window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 4.8.2 - Solo Botones Corregidos');
+    console.log('📋 Versión: 5.0.0 - Layout Profesional');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');
     console.log('📡 Monitoreo de tracks activado');
     console.log('🔍 Variables expuestas globalmente para diagnóstico');
+    console.log('🎯 Click en cualquier video para agrandarlo');
     
     iniciarMonitorInternet();
     
@@ -1794,7 +2010,7 @@ async function iniciarCamara() {
     }
     
     actualizarVolumen();
-    actualizarLayout();
+    aplicarLayout();
     await conectarLiveKit();
     
     iniciarMonitoreoTracks();
@@ -1820,11 +2036,14 @@ async function iniciarCamara() {
     window.reparacionCompletaAudio = reparacionCompletaAudio;
     window.publicarAudioConVerificacion = publicarAudioConVerificacion;
     window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
+    window.aplicarLayout = aplicarLayout;
+    window.toggleSeleccionVideo = toggleSeleccionVideo;
     
     setTimeout(function() {
         console.log('✅ Sistema listo - Presiona "Diagnóstico" para ver detalles');
         console.log('🔍 Variables globales disponibles: room, audioMap, videoMap, volumenActual');
         console.log('🔧 Funciones: reparacionCompletaAudio(), forzarSuscripcionAudio()');
+        console.log('🎯 Click en cualquier video para agrandarlo');
         (function() {
             forzarReanudacionAudio().catch(function(error) {
                 console.error('❌ Error reanudando audio inicial:', error);

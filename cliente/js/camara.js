@@ -33,9 +33,9 @@ let volumenActual = 1.0;
 let actualizandoVolumen = false;
 let volumenTimeout = null;
 
-// ✅ ESTADO DE BOTONES (trackeado manualmente)
-let estadoMicrofono = true;  // true = activado, false = desactivado
-let estadoCamara = true;    // true = activado, false = desactivado
+// ✅ ESTADO DE BOTONES - MANUAL
+let estadoMicrofono = true;
+let estadoCamara = true;
 
 let reconexionTimeout = null;
 let intentosReconexion = 0;
@@ -149,7 +149,7 @@ async function obtenerAudioProfesional() {
 }
 
 // ============================================================
-// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN - CORREGIDO
+// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN
 // ============================================================
 
 async function publicarAudioConVerificacion() {
@@ -1532,13 +1532,13 @@ function actualizarEstadoMicrofono() {
         btnMicrofono.classList.remove('inactivo');
         btnMicrofono.title = 'Desactivar micrófono';
         btnMicrofono.setAttribute('aria-label', 'Desactivar micrófono');
-        btnMicrofono.textContent = '🎤';
+        btnMicrofono.innerHTML = '🎤';
     } else {
         btnMicrofono.classList.remove('activo');
         btnMicrofono.classList.add('inactivo');
         btnMicrofono.title = 'Activar micrófono';
         btnMicrofono.setAttribute('aria-label', 'Activar micrófono');
-        btnMicrofono.textContent = '🎤';
+        btnMicrofono.innerHTML = '🎤';
     }
 }
 
@@ -1549,18 +1549,18 @@ function actualizarEstadoCamara() {
         btnCamara.classList.remove('inactivo');
         btnCamara.title = 'Desactivar cámara';
         btnCamara.setAttribute('aria-label', 'Desactivar cámara');
-        btnCamara.textContent = '📷';
+        btnCamara.innerHTML = '📷';
     } else {
         btnCamara.classList.remove('activo');
         btnCamara.classList.add('inactivo');
         btnCamara.title = 'Activar cámara';
         btnCamara.setAttribute('aria-label', 'Activar cámara');
-        btnCamara.textContent = '📷';
+        btnCamara.innerHTML = '📷';
     }
 }
 
 // ============================================================
-// ✅ BOTÓN MICRÓFONO - SOLUCIÓN DEFINITIVA
+// ✅ BOTÓN MICRÓFONO - VERSIÓN DEFINITIVA
 // ============================================================
 
 async function alternarMicrofono() {
@@ -1578,54 +1578,58 @@ async function alternarMicrofono() {
     try {
         // ✅ 1. FEEDBACK VISUAL INMEDIATO
         if (btnMicrofono) {
-            btnMicrofono.style.transition = 'transform 0.2s ease';
-            btnMicrofono.style.transform = 'scale(0.90)';
-            btnMicrofono.style.opacity = '0.7';
-            setTimeout(function() {
-                if (btnMicrofono) {
-                    btnMicrofono.style.transform = 'scale(1)';
-                    btnMicrofono.style.opacity = '1';
-                }
-            }, 200);
+            btnMicrofono.style.transition = 'transform 0.15s ease, opacity 0.15s ease';
+            btnMicrofono.style.transform = 'scale(0.85)';
+            btnMicrofono.style.opacity = '0.6';
         }
         
-        // ✅ 2. CAMBIAR EL ESTADO MANUALMENTE
+        // ✅ 2. INVERTIR EL ESTADO
         var nuevoEstado = !estadoMicrofono;
-        estadoMicrofono = nuevoEstado;
+        console.log('🔄 Cambiando micrófono de', estadoMicrofono, 'a', nuevoEstado);
         
-        // ✅ 3. ACTUALIZAR UI INMEDIATAMENTE
+        // ✅ 3. ACTUALIZAR ESTADO MANUAL Y UI INMEDIATAMENTE
+        estadoMicrofono = nuevoEstado;
         actualizarEstadoMicrofono();
         
         // ✅ 4. SINCRONIZAR CON LIVEKIT
         if (room.localParticipant && room.localParticipant.setMicrophoneEnabled) {
             await room.localParticipant.setMicrophoneEnabled(nuevoEstado);
+            console.log('✅ LiveKit sincronizado:', nuevoEstado ? 'activado' : 'desactivado');
         }
         
-        // ✅ 5. VERIFICAR QUE EL CAMBIO SE APLICÓ
-        await new Promise(function(resolve) { setTimeout(resolve, 100); });
-        
-        // ✅ 6. VERIFICAR EL ESTADO REAL
-        var micPub = null;
-        try {
-            micPub = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
-            if (!micPub) {
-                micPub = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
+        // ✅ 5. RESTAURAR FEEDBACK VISUAL
+        setTimeout(function() {
+            if (btnMicrofono) {
+                btnMicrofono.style.transform = 'scale(1)';
+                btnMicrofono.style.opacity = '1';
             }
-        } catch (e) {
-            console.warn('⚠️ No se pudo verificar el estado del micrófono:', e);
-        }
+        }, 200);
         
-        // ✅ 7. SI EL ESTADO REAL NO COINCIDE, FORZARLO
-        if (micPub && micPub.isEnabled !== undefined) {
-            var estadoReal = micPub.isEnabled !== false;
-            if (estadoReal !== estadoMicrofono) {
-                console.log('🔄 Corrigiendo discrepancia de estado...');
-                estadoMicrofono = estadoReal;
-                actualizarEstadoMicrofono();
+        // ✅ 6. VERIFICAR ESTADO REAL Y CORREGIR SI ES NECESARIO
+        setTimeout(async function() {
+            try {
+                var micPub = null;
+                if (room.localParticipant.getTrack) {
+                    micPub = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+                }
+                if (!micPub && room.localParticipant.getPublication) {
+                    micPub = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
+                }
+                
+                if (micPub && micPub.isEnabled !== undefined) {
+                    var estadoReal = micPub.isEnabled !== false;
+                    if (estadoReal !== estadoMicrofono) {
+                        console.warn('⚠️ Discrepancia detectada - Corrigiendo...');
+                        estadoMicrofono = estadoReal;
+                        actualizarEstadoMicrofono();
+                    }
+                }
+            } catch (e) {
+                console.warn('⚠️ No se pudo verificar el estado:', e);
             }
-        }
+        }, 300);
         
-        // ✅ 8. MOSTRAR NOTIFICACIÓN
+        // ✅ 7. MOSTRAR NOTIFICACIÓN
         if (estadoMicrofono) {
             mostrarNotificacion('🎤 Micrófono activado ✅', 'success');
             console.log('🎤 Micrófono activado');
@@ -1637,14 +1641,18 @@ async function alternarMicrofono() {
     } catch (error) {
         console.error('❌ Error con micrófono:', error);
         mostrarNotificacion('Error al cambiar el micrófono', 'error');
-        // Revertir el estado
+        // REVERTIR EL ESTADO EN CASO DE ERROR
         estadoMicrofono = !estadoMicrofono;
         actualizarEstadoMicrofono();
+        if (btnMicrofono) {
+            btnMicrofono.style.transform = 'scale(1)';
+            btnMicrofono.style.opacity = '1';
+        }
     }
 }
 
 // ============================================================
-// ✅ BOTÓN CÁMARA - YA FUNCIONA BIEN
+// ✅ BOTÓN CÁMARA - VERSIÓN MEJORADA
 // ============================================================
 
 async function alternarCamara() {
@@ -1661,26 +1669,28 @@ async function alternarCamara() {
     
     try {
         if (btnCamara) {
-            btnCamara.style.transition = 'transform 0.2s ease';
-            btnCamara.style.transform = 'scale(0.90)';
-            btnCamara.style.opacity = '0.7';
-            setTimeout(function() {
-                if (btnCamara) {
-                    btnCamara.style.transform = 'scale(1)';
-                    btnCamara.style.opacity = '1';
-                }
-            }, 200);
+            btnCamara.style.transition = 'transform 0.15s ease, opacity 0.15s ease';
+            btnCamara.style.transform = 'scale(0.85)';
+            btnCamara.style.opacity = '0.6';
         }
         
         var nuevoEstado = !estadoCamara;
+        console.log('🔄 Cambiando cámara de', estadoCamara, 'a', nuevoEstado);
+        
         estadoCamara = nuevoEstado;
         actualizarEstadoCamara();
         
         if (room.localParticipant && room.localParticipant.setCameraEnabled) {
             await room.localParticipant.setCameraEnabled(nuevoEstado);
+            console.log('✅ LiveKit sincronizado:', nuevoEstado ? 'activado' : 'desactivado');
         }
         
-        await new Promise(function(resolve) { setTimeout(resolve, 100); });
+        setTimeout(function() {
+            if (btnCamara) {
+                btnCamara.style.transform = 'scale(1)';
+                btnCamara.style.opacity = '1';
+            }
+        }, 200);
         
         if (estadoCamara) {
             mostrarNotificacion('📷 Cámara activada ✅', 'success');
@@ -1695,11 +1705,15 @@ async function alternarCamara() {
         mostrarNotificacion('Error al cambiar la cámara', 'error');
         estadoCamara = !estadoCamara;
         actualizarEstadoCamara();
+        if (btnCamara) {
+            btnCamara.style.transform = 'scale(1)';
+            btnCamara.style.opacity = '1';
+        }
     }
 }
 
 // ============================================================
-// ✅ BOTÓN SILENCIAR (Mantener igual)
+// ✅ BOTÓN SILENCIAR
 // ============================================================
 
 let silencioTimeout = null;
@@ -1728,7 +1742,7 @@ async function silenciarTemporalmente() {
         if (btnSilenciar) {
             btnSilenciar.classList.add('activo');
             btnSilenciar.style.transition = 'transform 0.2s ease';
-            btnSilenciar.style.transform = 'scale(0.90)';
+            btnSilenciar.style.transform = 'scale(0.85)';
             btnSilenciar.title = 'Micrófono silenciado (presiona para reactivar)';
             btnSilenciar.setAttribute('aria-label', 'Micrófono silenciado');
             setTimeout(function() {
@@ -2060,6 +2074,20 @@ function diagnostico() {
         info += '📊 ESTADO DE TRACKS LOCALES:\n';
         info += '   🎤 Micrófono (MANUAL): ' + (estadoMicrofono ? 'ACTIVO ✅' : 'INACTIVO ❌') + '\n';
         info += '   📷 Cámara (MANUAL): ' + (estadoCamara ? 'ACTIVA ✅' : 'INACTIVA ❌') + '\n\n';
+        
+        // Verificar estado real de LiveKit
+        try {
+            var micPub = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
+            if (!micPub) micPub = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
+            var camPub = room.localParticipant.getTrack(LivekitClient.Track.Source.Camera);
+            if (!camPub) camPub = room.localParticipant.getPublication(LivekitClient.Track.Source.Camera);
+            
+            info += '📊 ESTADO LIVEKIT REAL:\n';
+            info += '   🎤 Micrófono: ' + (micPub ? (micPub.isEnabled !== false ? 'ACTIVO ✅' : 'INACTIVO ❌') : 'NO PUBLICADO ⚠️') + '\n';
+            info += '   📷 Cámara: ' + (camPub ? (camPub.isEnabled !== false ? 'ACTIVA ✅' : 'INACTIVA ❌') : 'NO PUBLICADA ⚠️') + '\n\n';
+        } catch (e) {
+            info += '⚠️ No se pudo verificar estado LiveKit\n\n';
+        }
         
         info += '📊 ESTADO DE BOTONES:\n';
         info += '   🎤 Micrófono: ' + (btnMicrofono?.classList.contains('activo') ? 'ACTIVO ✅' : 'INACTIVO ❌') + '\n';
@@ -2432,7 +2460,7 @@ async function iniciarCamara() {
         estadoCamara = true;
         actualizarEstadoMicrofono();
         actualizarEstadoCamara();
-        console.log('✅ Estados de botones inicializados');
+        console.log('✅ Estados de botones inicializados - Micrófono: ACTIVO, Cámara: ACTIVA');
     }, 1500);
     
     setTimeout(function() {

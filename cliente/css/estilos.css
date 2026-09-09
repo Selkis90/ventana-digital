@@ -125,10 +125,24 @@ html, body {
     min-height: 0;
     border-radius: 4px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
 }
 
 #grid-videos video.video-remoto {
     border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+#grid-videos video.video-remoto:hover {
+    border-color: rgba(79, 140, 247, 0.3);
+}
+
+/* Video seleccionado/agrandado */
+#grid-videos video.activo,
+#grid-videos video.video-grande {
+    border-color: rgba(79, 140, 247, 0.6) !important;
+    box-shadow: 0 0 60px rgba(79, 140, 247, 0.15);
+    z-index: 2;
+    transform: scale(1.02);
 }
 
 /* ============================================================
@@ -840,6 +854,14 @@ html, body {
         right: 6px;
     }
 
+    .video-local-close {
+        width: 18px;
+        height: 18px;
+        font-size: 10px;
+        top: 4px;
+        left: 4px;
+    }
+
     #grid-videos {
         gap: 1px;
     }
@@ -965,6 +987,21 @@ html, body {
         padding: 1px 6px;
         bottom: 4px;
         left: 4px;
+    }
+
+    .video-local-close {
+        width: 16px;
+        height: 16px;
+        font-size: 8px;
+        top: 3px;
+        left: 3px;
+    }
+
+    .video-local-status {
+        width: 5px;
+        height: 5px;
+        top: 4px;
+        right: 4px;
     }
 
     #estado {
@@ -1262,6 +1299,21 @@ html, body {
 
     #btn-compartir:hover {
         background: rgba(175, 82, 222, 0.18);
+    }
+
+    .video-local-wrapper {
+        border-color: rgba(79, 140, 247, 0.3);
+        background: #f0f0f5;
+    }
+
+    .video-local-wrapper:hover {
+        border-color: rgba(79, 140, 247, 0.6);
+    }
+
+    .video-local-label {
+        background: rgba(255, 255, 255, 0.85);
+        color: #1a1a1a;
+        border-color: rgba(0, 0, 0, 0.05);
     }
 }
 

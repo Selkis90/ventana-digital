@@ -5,11 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ventana Digital Pro</title>
     
-    <!-- LiveKit CDN -->
-    <script src="https://cdn.livekit.io/livekit/livekit-latest.js"></script>
+    <!-- 🔥 LIVEKIT CDN (con fallback) -->
+    <script src="https://unpkg.com/livekit-client@latest/dist/livekit-client.umd.min.js"></script>
     
     <!-- CSS -->
     <link rel="stylesheet" href="css/estilos.css">
+    
+    <script>
+        // Verificar que LiveKit se cargó correctamente
+        (function verificarLiveKit() {
+            if (typeof LivekitClient === 'undefined') {
+                console.error('❌ LiveKit no se cargó - intentando con CDN alternativo...');
+                // Si falla, cargar desde CDN alternativo
+                var script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/livekit-client@latest/dist/livekit-client.umd.min.js';
+                script.onload = function() {
+                    console.log('✅ LiveKit cargado desde CDN alternativo');
+                };
+                script.onerror = function() {
+                    console.error('❌ No se pudo cargar LiveKit desde ningún CDN');
+                    alert('Error crítico: No se pudo cargar LiveKit. Verifica tu conexión a internet.');
+                };
+                document.head.appendChild(script);
+            } else {
+                console.log('✅ LiveKit cargado correctamente');
+            }
+        })();
+    </script>
 </head>
 <body>
     <!-- LOADING OVERLAY -->
@@ -117,7 +139,7 @@
         </div>
     </div>
 
-    <!-- JavaScript -->
+    <!-- JAVASCRIPT -->
     <script src="js/camara.js"></script>
 </body>
 </html>

@@ -38,7 +38,7 @@ const MAX_INTENTOS_RECONEXION = 5;
 const videoMap = new Map();
 const audioMap = new Map();
 let videoSeleccionado = null;
-let localVideoWrapper = null; // Wrapper para el video local flotante
+let localVideoWrapper = null;
 
 let monitorInternet = null;
 let internetStatus = true;
@@ -74,19 +74,16 @@ function mostrarLoading() {
 }
 
 // ============================================================
-// ✅ PICTURE-IN-PICTURE - VIDEO LOCAL FLOTANTE
+// ✅ PICTURE-IN-PICTURE - VIDEO LOCAL FLOTANTE (DEL SEGUNDO ARCHIVO)
 // ============================================================
 
 function crearWrapperVideoLocal(videoElement) {
-    // Si ya existe, no crear de nuevo
     if (localVideoWrapper) return;
     
-    // Crear wrapper
     const wrapper = document.createElement('div');
     wrapper.className = 'video-local-wrapper';
     wrapper.id = 'video-local-wrapper';
     
-    // Posición inicial (esquina inferior derecha)
     wrapper.style.position = 'fixed';
     wrapper.style.bottom = '80px';
     wrapper.style.right = '20px';
@@ -96,13 +93,11 @@ function crearWrapperVideoLocal(videoElement) {
     wrapper.style.cursor = 'grab';
     wrapper.style.touchAction = 'none';
     
-    // Mover el video dentro del wrapper
     videoElement.style.width = '100%';
     videoElement.style.height = '100%';
     videoElement.style.objectFit = 'cover';
     videoElement.style.display = 'block';
     
-    // Crear elementos adicionales
     const label = document.createElement('span');
     label.className = 'video-local-label';
     label.textContent = '📹 Tú';
@@ -120,20 +115,16 @@ function crearWrapperVideoLocal(videoElement) {
         ocultarVideoLocal();
     });
     
-    // Agregar elementos al wrapper
     wrapper.appendChild(videoElement);
     wrapper.appendChild(label);
     wrapper.appendChild(status);
     wrapper.appendChild(closeBtn);
     
-    // Agregar al body (fuera del grid)
     document.body.appendChild(wrapper);
     localVideoWrapper = wrapper;
     
-    // Agregar eventos de arrastre
     hacerArrastrable(wrapper);
     
-    // Evento para seleccionar video local al hacer click
     wrapper.addEventListener('click', function(e) {
         e.stopPropagation();
         if (videoElement) {
@@ -168,15 +159,12 @@ function hacerArrastrable(elemento) {
         const deltaX = touch.clientX - startX;
         const deltaY = touch.clientY - startY;
         
-        // Obtener posición actual o usar la inicial
         let currentX = elemento.offsetLeft || initialX;
         let currentY = elemento.offsetTop || initialY;
         
-        // Calcular nueva posición
         let newX = currentX + deltaX;
         let newY = currentY + deltaY;
         
-        // Limitar al viewport
         const rect = elemento.getBoundingClientRect();
         const maxX = window.innerWidth - rect.width;
         const maxY = window.innerHeight - rect.height;
@@ -202,12 +190,10 @@ function hacerArrastrable(elemento) {
         }
     }
     
-    // Eventos mouse
     elemento.addEventListener('mousedown', onStart);
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onEnd);
     
-    // Eventos touch
     elemento.addEventListener('touchstart', onStart, { passive: false });
     document.addEventListener('touchmove', onMove, { passive: false });
     document.addEventListener('touchend', onEnd);
@@ -238,17 +224,15 @@ function toggleVideoLocal() {
 }
 
 // ============================================================
-// ✅ LAYOUT PARA VIDEOS REMOTOS (GRID PRINCIPAL)
+// ✅ LAYOUT PARA VIDEOS REMOTOS (DEL SEGUNDO ARCHIVO)
 // ============================================================
 
 function aplicarLayout() {
     if (!gridVideos) return;
     
-    // Obtener SOLO videos remotos (los que están en el grid)
     const videos = gridVideos.querySelectorAll('video');
     const total = videos.length;
     
-    // Resetear clases
     gridVideos.className = '';
     videos.forEach(v => {
         v.classList.remove('video-grande', 'activo');
@@ -257,18 +241,14 @@ function aplicarLayout() {
         v.style.display = '';
     });
     
-    // Si hay un video seleccionado, mantenerlo activo
     if (videoSeleccionado && videoSeleccionado.parentNode === gridVideos) {
         videoSeleccionado.classList.add('activo', 'video-grande');
-        
-        // Aplicar layout especial con selección
         if (total >= 3) {
             aplicarLayoutConSeleccionado(videoSeleccionado, videos);
             return;
         }
     }
     
-    // Layout por defecto según cantidad
     switch(total) {
         case 0:
             gridVideos.style.gridTemplateColumns = '1fr';
@@ -276,35 +256,30 @@ function aplicarLayout() {
             gridVideos.style.gap = '0';
             gridVideos.style.padding = '0';
             break;
-            
         case 1:
             gridVideos.style.gridTemplateColumns = '1fr';
             gridVideos.style.gridTemplateRows = '1fr';
             gridVideos.style.gap = '0';
             gridVideos.style.padding = '0';
             break;
-            
         case 2:
             gridVideos.style.gridTemplateColumns = '1fr 1fr';
             gridVideos.style.gridTemplateRows = '1fr';
             gridVideos.style.gap = '4px';
             gridVideos.style.padding = '4px';
             break;
-            
         case 3:
             gridVideos.style.gridTemplateColumns = '1fr 1fr 1fr';
             gridVideos.style.gridTemplateRows = '1fr';
             gridVideos.style.gap = '4px';
             gridVideos.style.padding = '4px';
             break;
-            
         case 4:
             gridVideos.style.gridTemplateColumns = '1fr 1fr';
             gridVideos.style.gridTemplateRows = '1fr 1fr';
             gridVideos.style.gap = '4px';
             gridVideos.style.padding = '4px';
             break;
-            
         case 5:
         case 6:
             gridVideos.style.gridTemplateColumns = 'repeat(3, 1fr)';
@@ -312,7 +287,6 @@ function aplicarLayout() {
             gridVideos.style.gap = '4px';
             gridVideos.style.padding = '4px';
             break;
-            
         case 7:
         case 8:
             gridVideos.style.gridTemplateColumns = 'repeat(4, 1fr)';
@@ -320,14 +294,12 @@ function aplicarLayout() {
             gridVideos.style.gap = '4px';
             gridVideos.style.padding = '4px';
             break;
-            
         case 9:
             gridVideos.style.gridTemplateColumns = 'repeat(3, 1fr)';
             gridVideos.style.gridTemplateRows = 'repeat(3, 1fr)';
             gridVideos.style.gap = '4px';
             gridVideos.style.padding = '4px';
             break;
-            
         default:
             var columns = Math.min(Math.ceil(Math.sqrt(total * 1.5)), 6);
             gridVideos.style.gridTemplateColumns = 'repeat(' + columns + ', 1fr)';
@@ -339,35 +311,28 @@ function aplicarLayout() {
 
 function aplicarLayoutConSeleccionado(seleccionado, videos) {
     const total = videos.length;
-    
     if (total === 0 || !seleccionado) return;
     
     const videoArray = Array.from(videos);
     
-    // Crear grid con una columna grande y otra pequeña
     gridVideos.style.gridTemplateColumns = '2fr 1fr';
     gridVideos.style.gridTemplateRows = '1fr 1fr';
     gridVideos.style.gap = '4px';
     gridVideos.style.padding = '4px';
     
-    // El seleccionado ocupa toda la columna izquierda
     seleccionado.style.gridColumn = '1';
     seleccionado.style.gridRow = '1 / span 2';
     seleccionado.classList.add('video-grande', 'activo');
     
-    // Los demás se distribuyen en la columna derecha
     const otros = videoArray.filter(v => v !== seleccionado);
     const otrosCount = otros.length;
     
-    // Asignar posiciones a los otros videos
     otros.forEach(function(video, index) {
         if (otrosCount <= 2) {
-            // Si hay 1 o 2 otros, cada uno ocupa su fila
             video.style.gridColumn = '2';
             video.style.gridRow = (index + 1).toString();
             video.classList.remove('video-grande', 'activo');
         } else {
-            // Si hay más de 2, distribuirlos
             const row = Math.floor(index / 2) + 1;
             const col = (index % 2) + 2;
             video.style.gridColumn = col.toString();
@@ -377,16 +342,10 @@ function aplicarLayoutConSeleccionado(seleccionado, videos) {
     });
 }
 
-// ============================================================
-// ✅ SELECCIÓN DE VIDEO (CLICK PARA AGRANDAR)
-// ============================================================
-
 function toggleSeleccionVideo(videoElement) {
     if (!videoElement) return;
     
-    // Verificar que el video esté en el grid (no el local flotante)
     if (videoElement.parentNode !== gridVideos) {
-        // Si es el video local dentro del wrapper, no hacer nada
         if (videoElement.id === 'video-local') {
             console.log('📹 Video local - no se puede agrandar en el grid');
             return;
@@ -394,30 +353,24 @@ function toggleSeleccionVideo(videoElement) {
         return;
     }
     
-    // Si el video ya está seleccionado, deseleccionar
     if (videoSeleccionado === videoElement) {
         videoSeleccionado = null;
         videoElement.classList.remove('activo', 'video-grande');
-        // Reaplicar layout normal
         setTimeout(aplicarLayout, 50);
         return;
     }
     
-    // Si hay otro video seleccionado, quitar selección
     if (videoSeleccionado) {
         videoSeleccionado.classList.remove('activo', 'video-grande');
     }
     
-    // Seleccionar el nuevo video
     videoSeleccionado = videoElement;
     videoElement.classList.add('activo', 'video-grande');
-    
-    // Aplicar layout con selección
     aplicarLayout();
 }
 
 // ============================================================
-// ✅ OBTENER AUDIO CON MEJOR CONFIGURACIÓN
+// ✅ OBTENER AUDIO CON MEJOR CONFIGURACIÓN (DEL PRIMER ARCHIVO - VERSIÓN PROFESIONAL)
 // ============================================================
 
 async function obtenerAudioProfesional() {
@@ -488,7 +441,7 @@ async function obtenerAudioProfesional() {
 }
 
 // ============================================================
-// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN
+// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN (DEL PRIMER ARCHIVO - CORREGIDO)
 // ============================================================
 
 async function publicarAudioConVerificacion() {
@@ -577,7 +530,7 @@ async function publicarAudioConVerificacion() {
 }
 
 // ============================================================
-// ✅ FORZAR SUSCRIPCIÓN DE AUDIO PARA TODOS LOS PARTICIPANTES
+// ✅ FORZAR SUSCRIPCIÓN DE AUDIO PARA TODOS LOS PARTICIPANTES (DEL PRIMER ARCHIVO)
 // ============================================================
 
 async function forzarSuscripcionAudio(participant) {
@@ -627,7 +580,7 @@ async function forzarSuscripcionAudio(participant) {
 }
 
 // ============================================================
-// ✅ MONITOREO DE TRACKS REMOTOS
+// ✅ MONITOREO DE TRACKS REMOTOS (DEL PRIMER ARCHIVO)
 // ============================================================
 
 function iniciarMonitoreoTracks() {
@@ -689,7 +642,7 @@ function iniciarMonitoreoTracks() {
 }
 
 // ============================================================
-// ✅ REPARACIÓN COMPLETA DE AUDIO
+// ✅ REPARACIÓN COMPLETA DE AUDIO (DEL PRIMER ARCHIVO)
 // ============================================================
 
 async function reparacionCompletaAudio() {
@@ -793,7 +746,7 @@ async function reparacionCompletaAudio() {
 }
 
 // ============================================================
-// ✅ FORZAR REANUDACIÓN DE AUDIO CONTEXT
+// ✅ FORZAR REANUDACIÓN DE AUDIO CONTEXT (DEL PRIMER ARCHIVO)
 // ============================================================
 
 async function forzarReanudacionAudio() {
@@ -849,7 +802,7 @@ async function forzarReanudacionAudio() {
 }
 
 // ============================================================
-// ✅ RESTAURAR AUDIO DESPUÉS DE RECONEXIÓN
+// ✅ RESTAURAR AUDIO DESPUÉS DE RECONEXIÓN (DEL PRIMER ARCHIVO)
 // ============================================================
 
 async function restaurarAudioDespuesReconexion() {
@@ -867,7 +820,7 @@ async function restaurarAudioDespuesReconexion() {
 }
 
 // ============================================================
-// ✅ RECONEXIÓN POR PÉRDIDA DE INTERNET
+// ✅ RECONEXIÓN POR PÉRDIDA DE INTERNET (DEL PRIMER ARCHIVO)
 // ============================================================
 
 function iniciarMonitorInternet() {
@@ -997,7 +950,7 @@ function recuperarEstadoSala() {
 }
 
 // ============================================================
-// ✅ CONEXIÓN
+// ✅ CONEXIÓN (COMBINADA)
 // ============================================================
 
 async function conectarLiveKit() {
@@ -1063,8 +1016,10 @@ async function conectarLiveKit() {
             miId.textContent = participantName;
         }
 
+        // Audio profesional del primer archivo
         await publicarAudioConVerificacion();
 
+        // Video con PIP del segundo archivo
         try { 
             await room.localParticipant.setCameraEnabled(true);
             if (btnCamara) {
@@ -1092,6 +1047,7 @@ async function conectarLiveKit() {
             }
         }
 
+        // Micrófono con UI mejorada del segundo archivo
         try { 
             await room.localParticipant.setMicrophoneEnabled(true);
             if (btnMicrofono) {
@@ -1124,7 +1080,7 @@ async function conectarLiveKit() {
             }
         }
 
-        // Procesar participantes remotos existentes
+        // Procesar participantes remotos
         if (room.remoteParticipants && room.remoteParticipants.size > 0) {
             var participants = Array.from(room.remoteParticipants.values());
             for (var i = 0; i < participants.length; i++) {
@@ -1167,7 +1123,7 @@ async function conectarLiveKit() {
 }
 
 // ============================================================
-// ✅ EVENTOS
+// ✅ EVENTOS (COMBINADOS)
 // ============================================================
 
 function registrarEventosLiveKit() {
@@ -1293,7 +1249,7 @@ function registrarEventosLiveKit() {
 }
 
 // ============================================================
-// ✅ VIDEO REMOTO
+// ✅ VIDEO REMOTO (DEL SEGUNDO ARCHIVO)
 // ============================================================
 
 function agregarVideoRemoto(track, participant) {
@@ -1301,7 +1257,6 @@ function agregarVideoRemoto(track, participant) {
     
     var identity = participant.identity;
     
-    // No mostrar video propio en el grid (va en el wrapper flotante)
     if (identity === (room ? room.localParticipant.identity : null)) {
         console.log('⏭️ Saltando video propio (será mostrado en PIP)');
         return;
@@ -1323,7 +1278,6 @@ function agregarVideoRemoto(track, participant) {
     videoMap.set(identity, video);
     console.log('📹 Video remoto creado para:', identity);
 
-    // Agregar evento click para seleccionar video
     video.addEventListener('click', function(e) {
         e.stopPropagation();
         toggleSeleccionVideo(video);
@@ -1354,7 +1308,7 @@ function agregarVideoRemoto(track, participant) {
 }
 
 // ============================================================
-// ✅ AUDIO REMOTO
+// ✅ AUDIO REMOTO (DEL PRIMER ARCHIVO)
 // ============================================================
 
 function agregarAudioRemotoConGanancia(track, participant) {
@@ -1474,7 +1428,7 @@ function agregarAudioRemotoConGanancia(track, participant) {
 }
 
 // ============================================================
-// ✅ CONTROL DE VOLUMEN
+// ✅ CONTROL DE VOLUMEN (DEL PRIMER ARCHIVO)
 // ============================================================
 
 function actualizarVolumen() {
@@ -1507,7 +1461,7 @@ function actualizarVolumen() {
 }
 
 // ============================================================
-// ELIMINAR TRACKS
+// ELIMINAR TRACKS (COMBINADO)
 // ============================================================
 
 function eliminarTrackRemoto(track, participant) {
@@ -1590,7 +1544,6 @@ function eliminarParticipante(participant) {
         audioMap.delete(identity);
     }
     
-    // Limpiar selección si el video eliminado era el seleccionado
     if (videoSeleccionado && !videoSeleccionado.parentNode) {
         videoSeleccionado = null;
     }
@@ -1611,13 +1564,12 @@ function agregarParticipante(participant) {
 }
 
 // ============================================================
-// VIDEO LOCAL - CREAR EN WRAPPER FLOTANTE
+// VIDEO LOCAL (DEL SEGUNDO ARCHIVO - CON PIP)
 // ============================================================
 
 function mostrarVideoLocal(publication) {
     if (!publication || !publication.videoTrack) return;
 
-    // Buscar si ya existe un video local
     var video = document.getElementById('video-local');
     if (!video) {
         video = document.createElement('video');
@@ -1630,7 +1582,6 @@ function mostrarVideoLocal(publication) {
         console.log('📹 Video local creado');
     }
 
-    // Adjuntar el track al video
     try {
         if (typeof publication.videoTrack.attach === 'function') {
             publication.videoTrack.attach(video);
@@ -1654,21 +1605,16 @@ function mostrarVideoLocal(publication) {
         }
     }
 
-    // Crear wrapper flotante si no existe
     if (!localVideoWrapper) {
         crearWrapperVideoLocal(video);
     }
-    
-    // No agregar al grid - solo flotante
-    // No llamar a aplicarLayout() aquí para no afectar el grid
 }
 
 // ============================================================
-// LIMPIAR
+// LIMPIAR (COMBINADO)
 // ============================================================
 
 function limpiarVideos() {
-    // Limpiar grid
     if (gridVideos) {
         gridVideos.querySelectorAll('video').forEach(function(video) {
             try {
@@ -1678,7 +1624,6 @@ function limpiarVideos() {
         });
     }
     
-    // Limpiar wrapper de video local
     if (localVideoWrapper) {
         try {
             localVideoWrapper.remove();
@@ -1719,7 +1664,7 @@ function limpiarVideos() {
 }
 
 // ============================================================
-// UI
+// UI (COMBINADO)
 // ============================================================
 
 function actualizarParticipanteRemoto() {
@@ -1729,7 +1674,7 @@ function actualizarParticipanteRemoto() {
 }
 
 // ============================================================
-// ✅ CONTROLES - BOTONES DE CÁMARA Y MICRÓFONO
+// ✅ CONTROLES - BOTONES DE CÁMARA Y MICRÓFONO (DEL SEGUNDO ARCHIVO - MEJOR UI)
 // ============================================================
 
 async function alternarMicrofono() {
@@ -1755,7 +1700,6 @@ async function alternarMicrofono() {
         const newState = room.localParticipant.isMicrophoneEnabled;
         console.log('🎤 Nuevo estado micrófono:', newState);
         
-        // Actualizar estado visual en el video local
         const statusIndicator = document.getElementById('video-local-status');
         if (statusIndicator) {
             if (newState) {
@@ -1835,7 +1779,6 @@ async function alternarCamara() {
         const newState = room.localParticipant.isCameraEnabled;
         console.log('📷 Nuevo estado cámara:', newState);
         
-        // Ocultar/mostrar el video local
         if (!newState) {
             ocultarVideoLocal();
         } else {
@@ -1885,7 +1828,7 @@ async function alternarCamara() {
 }
 
 // ============================================================
-// OTROS CONTROLES
+// OTROS CONTROLES (DEL PRIMER ARCHIVO)
 // ============================================================
 
 async function silenciarTemporalmente() {
@@ -1900,7 +1843,6 @@ async function silenciarTemporalmente() {
         await room.localParticipant.setMicrophoneEnabled(false);
         console.log('🔇 Silenciado temporalmente');
         
-        // Actualizar estado visual en el video local
         const statusIndicator = document.getElementById('video-local-status');
         if (statusIndicator) {
             statusIndicator.classList.add('muted');
@@ -1913,7 +1855,6 @@ async function silenciarTemporalmente() {
                 if (btnSilenciar) {
                     btnSilenciar.classList.remove('activo');
                 }
-                // Actualizar estado visual
                 const statusIndicator = document.getElementById('video-local-status');
                 if (statusIndicator) {
                     statusIndicator.classList.remove('muted');
@@ -2008,7 +1949,7 @@ async function reconectarManual() {
 }
 
 // ============================================================
-// ✅ DIAGNÓSTICO
+// ✅ DIAGNÓSTICO (COMBINADO - CON INFO DE AUDIO Y VIDEO)
 // ============================================================
 
 function diagnostico() {
@@ -2165,7 +2106,9 @@ window.toggleVideoLocal = toggleVideoLocal;
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 5.1.0 - PIP Profesional');
+    console.log('📋 Versión: 6.0.0 - Fusión Profesional');
+    console.log('🎵 Audio: Configuración profesional anti-eco');
+    console.log('🖼️ Video: Picture-in-Picture flotante y arrastrable');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');

@@ -9,9 +9,9 @@
 }
 
 :root {
-    --bg-primary: #0a0a0f;
-    --bg-secondary: #14141c;
-    --bg-panel: rgba(10, 10, 15, 0.92);
+    --bg-primary: #000000;
+    --bg-secondary: #0a0a0f;
+    --bg-panel: rgba(0, 0, 0, 0.7);
     --border-panel: rgba(255, 255, 255, 0.06);
     --text-primary: #ffffff;
     --text-secondary: rgba(255, 255, 255, 0.6);
@@ -24,7 +24,7 @@
     --red-glow: rgba(255, 59, 48, 0.25);
     --orange: #ff9500;
     --purple: #af52de;
-    --shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    --shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
     --radius: 16px;
     --radius-sm: 10px;
     --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -98,7 +98,7 @@ html, body {
 }
 
 /* ============================================================
-   GRID DE VIDEOS - DISEÑO PROFESIONAL CORREGIDO
+   GRID DE VIDEOS - DISEÑO INMERSIVO MEJORADO
    ============================================================ */
 
 #grid-videos {
@@ -110,8 +110,8 @@ html, body {
     background: var(--bg-primary);
     z-index: 1;
     overflow: hidden;
-    gap: 4px;
-    padding: 4px;
+    gap: 3px;
+    padding: 3px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -122,23 +122,24 @@ html, body {
     height: 100%;
     border-radius: var(--radius);
     overflow: hidden;
-    background: #111118;
+    background: #0a0a0a;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-/* VIDEO DENTRO DEL CONTENEDOR - CORREGIDO */
+/* VIDEO DENTRO DEL CONTENEDOR */
 #grid-videos video {
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: center center;
-    background: #111118;
+    background: #0a0a0a;
     display: block;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     position: relative;
+    border-radius: var(--radius-sm);
 }
 
 /* Para videos verticales (retrato) - ajuste automático */
@@ -149,10 +150,11 @@ html, body {
 
 #grid-videos video.video-remoto {
     border: 2px solid transparent;
+    border-radius: var(--radius-sm);
 }
 
 #grid-videos video.video-remoto:hover {
-    border-color: rgba(79, 140, 247, 0.3);
+    border-color: rgba(79, 140, 247, 0.25);
     transform: scale(1.01);
 }
 
@@ -160,27 +162,28 @@ html, body {
 #grid-videos video.activo,
 #grid-videos video.video-grande {
     border-color: rgba(79, 140, 247, 0.5) !important;
-    box-shadow: 0 0 60px rgba(79, 140, 247, 0.1);
+    box-shadow: 0 0 60px rgba(79, 140, 247, 0.08);
     z-index: 2;
-    transform: scale(1.02);
+    transform: scale(1.01);
+    border-radius: var(--radius-sm);
 }
 
 /* ============================================================
-   NOMBRE DEL VIDEO REMOTO
+   NOMBRE DEL VIDEO REMOTO - MEJORADO
    ============================================================ */
 
 .video-remote-name {
     position: absolute;
-    bottom: 12px;
-    left: 12px;
-    background: rgba(0, 0, 0, 0.65);
+    bottom: 14px;
+    left: 14px;
+    background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    color: #fff;
+    color: rgba(255, 255, 255, 0.95);
     font-size: 12px;
     font-weight: 500;
-    padding: 4px 14px;
-    border-radius: 20px;
+    padding: 5px 16px;
+    border-radius: 30px;
     border: 1px solid rgba(255, 255, 255, 0.06);
     pointer-events: none;
     z-index: 3;
@@ -189,23 +192,26 @@ html, body {
     overflow: hidden;
     text-overflow: ellipsis;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    letter-spacing: 0.2px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* ============================================================
-   BADGE DE "HABLANDO"
+   BADGE DE "HABLANDO" - MEJORADO
    ============================================================ */
 
 .video-remote-speaking {
     position: absolute;
-    top: 12px;
-    left: 12px;
+    top: 14px;
+    left: 14px;
     background: rgba(52, 199, 89, 0.15);
     backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     color: var(--green);
     font-size: 9px;
     font-weight: 600;
-    padding: 2px 10px;
-    border-radius: 12px;
+    padding: 3px 12px;
+    border-radius: 16px;
     border: 1px solid rgba(52, 199, 89, 0.15);
     pointer-events: none;
     z-index: 3;
@@ -220,8 +226,8 @@ html, body {
 }
 
 @keyframes pulse-speaking {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.95); }
 }
 
 /* ============================================================
@@ -252,16 +258,16 @@ html, body {
 #grid-videos.layout-3 {
     grid-template-columns: 1fr 1fr 1fr;
     grid-template-rows: 1fr;
-    gap: 4px;
-    padding: 4px;
+    gap: 3px;
+    padding: 3px;
 }
 
 /* 4 participantes - 2x2 */
 #grid-videos.layout-4 {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
-    gap: 4px;
-    padding: 4px;
+    gap: 3px;
+    padding: 3px;
 }
 
 /* 5-6 participantes - 3x2 */
@@ -269,8 +275,8 @@ html, body {
 #grid-videos.layout-6 {
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(2, 1fr);
-    gap: 4px;
-    padding: 4px;
+    gap: 3px;
+    padding: 3px;
 }
 
 /* 7-8 participantes - 4x2 */
@@ -278,16 +284,16 @@ html, body {
 #grid-videos.layout-8 {
     grid-template-columns: repeat(4, 1fr);
     grid-template-rows: repeat(2, 1fr);
-    gap: 4px;
-    padding: 4px;
+    gap: 3px;
+    padding: 3px;
 }
 
 /* 9 participantes - 3x3 */
 #grid-videos.layout-9 {
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(3, 1fr);
-    gap: 4px;
-    padding: 4px;
+    gap: 3px;
+    padding: 3px;
 }
 
 /* 10-12 participantes - 4x3 */
@@ -296,39 +302,39 @@ html, body {
 #grid-videos.layout-12 {
     grid-template-columns: repeat(4, 1fr);
     grid-template-rows: repeat(3, 1fr);
-    gap: 4px;
-    padding: 4px;
+    gap: 3px;
+    padding: 3px;
 }
 
 /* Más de 12 - auto ajuste */
 #grid-videos.layout-many {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     grid-template-rows: repeat(auto-fit, minmax(135px, 1fr));
-    gap: 4px;
-    padding: 4px;
+    gap: 3px;
+    padding: 3px;
 }
 
 /* ============================================================
-   VIDEO LOCAL - PICTURE IN PICTURE (FLOTANTE)
+   VIDEO LOCAL - PICTURE IN PICTURE (FLOTANTE) - MEJORADO
    ============================================================ */
 
 .video-local-wrapper {
     position: fixed;
     z-index: 50;
-    width: 200px;
-    height: 150px;
+    width: 220px;
+    height: 165px;
     border-radius: var(--radius);
     overflow: hidden;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7);
-    border: 2px solid rgba(79, 140, 247, 0.5);
-    background: #0a0a12;
+    box-shadow: 0 16px 64px rgba(0, 0, 0, 0.8);
+    border: 2px solid rgba(79, 140, 247, 0.4);
+    background: #0a0a0a;
     cursor: grab;
     touch-action: none;
-    transition: opacity 0.3s ease, transform 0.3s ease, border-color 0.3s ease;
-    min-width: 140px;
-    min-height: 105px;
-    max-width: 320px;
-    max-height: 240px;
+    transition: opacity 0.3s ease, transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    min-width: 160px;
+    min-height: 120px;
+    max-width: 340px;
+    max-height: 255px;
 }
 
 .video-local-wrapper:active {
@@ -336,8 +342,8 @@ html, body {
 }
 
 .video-local-wrapper:hover {
-    border-color: rgba(79, 140, 247, 0.8);
-    box-shadow: 0 12px 56px rgba(79, 140, 247, 0.2);
+    border-color: rgba(79, 140, 247, 0.7);
+    box-shadow: 0 16px 72px rgba(79, 140, 247, 0.15);
 }
 
 .video-local-wrapper video {
@@ -348,31 +354,32 @@ html, body {
     display: block;
 }
 
-/* Nombre del usuario local */
+/* Nombre del usuario local - MEJORADO */
 .video-local-label {
     position: absolute;
-    bottom: 10px;
-    left: 10px;
-    background: rgba(0, 0, 0, 0.7);
+    bottom: 12px;
+    left: 12px;
+    background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     color: #fff;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 12px;
-    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 14px;
+    border-radius: 30px;
     border: 1px solid rgba(255, 255, 255, 0.06);
     pointer-events: none;
     letter-spacing: 0.3px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
 }
 
 .video-local-label::before {
     content: '●';
     color: var(--green);
     font-size: 8px;
+    transition: all 0.3s ease;
 }
 
 .video-local-wrapper.muted .video-local-label::before {
@@ -401,22 +408,22 @@ html, body {
 /* Botón de cerrar/minimizar del video local */
 .video-local-close {
     position: absolute;
-    top: 8px;
-    left: 8px;
-    width: 24px;
-    height: 24px;
+    top: 10px;
+    right: 10px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     border: none;
     background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(8px);
     color: #fff;
-    font-size: 12px;
+    font-size: 14px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     opacity: 0;
-    transition: opacity 0.3s ease, transform 0.2s ease;
+    transition: opacity 0.25s ease, transform 0.2s ease;
     transform: scale(0.8);
 }
 
@@ -426,37 +433,37 @@ html, body {
 }
 
 .video-local-close:hover {
-    background: rgba(255, 59, 48, 0.7);
-    transform: scale(1.1);
+    background: rgba(255, 59, 48, 0.8);
+    transform: scale(1.05);
 }
 
 /* ============================================================
-   ESTADO DE CONEXIÓN
+   ESTADO DE CONEXIÓN - MEJORADO
    ============================================================ */
 
 #estado {
     position: fixed;
-    top: 16px;
+    top: 20px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 100;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 16px;
-    border-radius: 30px;
-    background: rgba(0, 0, 0, 0.7);
+    gap: 10px;
+    padding: 8px 20px;
+    border-radius: 40px;
+    background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     box-shadow: var(--shadow);
     transition: var(--transition);
     pointer-events: none;
 }
 
 .estado-indicador {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: var(--orange);
     animation: pulse-dot 1.5s ease-in-out infinite;
@@ -465,13 +472,13 @@ html, body {
 .estado-conectado .estado-indicador {
     background: var(--green);
     animation: none;
-    box-shadow: 0 0 16px rgba(52, 199, 89, 0.3);
+    box-shadow: 0 0 16px rgba(52, 199, 89, 0.4);
 }
 
 .estado-error .estado-indicador {
     background: var(--red);
     animation: pulse-dot 0.6s ease-in-out infinite;
-    box-shadow: 0 0 16px rgba(255, 59, 48, 0.3);
+    box-shadow: 0 0 16px rgba(255, 59, 48, 0.4);
 }
 
 @keyframes pulse-dot {
@@ -480,25 +487,25 @@ html, body {
 }
 
 .estado-texto {
-    color: #fff;
-    font-size: 12px;
-    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    font-weight: 500;
     letter-spacing: 0.2px;
     white-space: nowrap;
 }
 
 /* ============================================================
-   PANEL DE CONTROLES
+   PANEL DE CONTROLES - MEJORADO (GLASSMORPHISM)
    ============================================================ */
 
 #panel-controles {
     position: fixed;
     left: 50%;
-    bottom: 20px;
+    bottom: 24px;
     transform: translateX(-50%);
     z-index: 100;
     width: auto;
-    max-width: calc(100vw - 24px);
+    max-width: calc(100vw - 32px);
     background: var(--bg-panel);
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
@@ -511,8 +518,8 @@ html, body {
 .panel-inner {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 10px 14px;
+    gap: 8px;
+    padding: 14px 20px;
 }
 
 /* ============================================================
@@ -522,7 +529,7 @@ html, body {
 .controles-fila {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     flex-wrap: wrap;
     justify-content: center;
 }
@@ -530,8 +537,8 @@ html, body {
 .controles-fila-inferior {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding-top: 6px;
+    gap: 12px;
+    padding-top: 8px;
     border-top: 1px solid rgba(255, 255, 255, 0.04);
     flex-wrap: wrap;
     justify-content: center;
@@ -539,41 +546,41 @@ html, body {
 
 .separador {
     width: 1px;
-    height: 28px;
+    height: 32px;
     background: rgba(255, 255, 255, 0.06);
-    margin: 0 4px;
+    margin: 0 6px;
 }
 
 /* ============================================================
-   BOTONES DE CONTROL
+   BOTONES DE CONTROL - MEJORADOS
    ============================================================ */
 
 .btn-control {
-    width: 38px;
-    height: 38px;
+    width: 42px;
+    height: 42px;
     display: flex;
     align-items: center;
     justify-content: center;
     border: none;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.05);
     color: #fff;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     flex-shrink: 0;
 }
 
 .btn-control svg {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     stroke: currentColor;
     stroke-width: 2;
     fill: none;
 }
 
 .btn-control:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.12);
     transform: scale(1.05);
 }
 
@@ -586,23 +593,24 @@ html, body {
     outline-offset: 2px;
 }
 
-/* Tooltip en hover */
+/* Tooltip en hover - MEJORADO */
 .btn-control::after {
     content: attr(title);
     position: absolute;
-    bottom: calc(100% + 8px);
+    bottom: calc(100% + 10px);
     left: 50%;
     transform: translateX(-50%) scale(0.8);
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(8px);
     color: #fff;
-    padding: 3px 10px;
+    padding: 4px 12px;
     border-radius: 6px;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 500;
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
 }
 
 .btn-control:hover::after {
@@ -693,7 +701,7 @@ html, body {
 
 @keyframes pulse-btn {
     from { opacity: 1; transform: scale(1); }
-    to { opacity: 0.5; transform: scale(0.95); }
+    to { opacity: 0.6; transform: scale(0.95); }
 }
 
 /* ============================================================
@@ -740,8 +748,8 @@ html, body {
    ============================================================ */
 
 .btn-diagnostico {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -750,7 +758,7 @@ html, body {
     background: rgba(255, 255, 255, 0.02);
     color: var(--text-muted);
     cursor: pointer;
-    font-size: 13px;
+    font-size: 14px;
     transition: var(--transition);
     flex-shrink: 0;
 }
@@ -761,20 +769,20 @@ html, body {
 }
 
 /* ============================================================
-   CONTROL DE VOLUMEN
+   CONTROL DE VOLUMEN - MEJORADO
    ============================================================ */
 
 .control-volumen {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     flex: 1;
-    min-width: 90px;
-    max-width: 150px;
+    min-width: 100px;
+    max-width: 180px;
 }
 
 .icono-volumen {
-    font-size: 13px;
+    font-size: 16px;
     color: var(--text-muted);
     flex-shrink: 0;
 }
@@ -784,23 +792,23 @@ html, body {
     height: 3px;
     appearance: none;
     -webkit-appearance: none;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.12);
     border-radius: 4px;
     outline: none;
     cursor: pointer;
     transition: var(--transition);
-    min-width: 40px;
+    min-width: 50px;
 }
 
 #volumen::-webkit-slider-thumb {
     appearance: none;
     -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
-    background: var(--blue);
+    background: #ffffff;
     cursor: pointer;
-    box-shadow: 0 0 16px rgba(79, 140, 247, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     transition: var(--transition);
 }
 
@@ -809,24 +817,25 @@ html, body {
 }
 
 #volumen::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
-    background: var(--blue);
+    background: #ffffff;
     cursor: pointer;
     border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
 #volumen::-moz-range-track {
     height: 3px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.12);
     border-radius: 4px;
 }
 
 .texto-volumen {
-    min-width: 32px;
+    min-width: 36px;
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     text-align: center;
     font-variant-numeric: tabular-nums;
@@ -834,17 +843,17 @@ html, body {
 }
 
 /* ============================================================
-   INFO DE CONEXIÓN
+   INFO DE CONEXIÓN - MEJORADA
    ============================================================ */
 
 .info-conexion {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 3px 10px;
+    gap: 12px;
+    padding: 4px 12px;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.02);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.04);
     flex-wrap: wrap;
     justify-content: center;
 }
@@ -852,9 +861,9 @@ html, body {
 .info-item {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     color: var(--text-secondary);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 500;
     white-space: nowrap;
 }
@@ -866,8 +875,8 @@ html, body {
 
 .info-divider {
     width: 1px;
-    height: 14px;
-    background: rgba(255, 255, 255, 0.04);
+    height: 16px;
+    background: rgba(255, 255, 255, 0.06);
 }
 
 /* ============================================================
@@ -876,17 +885,17 @@ html, body {
 
 @media (max-width: 1024px) {
     .video-local-wrapper {
-        width: 160px;
-        height: 120px;
-        min-width: 110px;
-        min-height: 82px;
-        max-width: 260px;
-        max-height: 195px;
+        width: 180px;
+        height: 135px;
+        min-width: 130px;
+        min-height: 97px;
+        max-width: 280px;
+        max-height: 210px;
     }
 
     .video-local-label {
-        font-size: 10px;
-        padding: 2px 10px;
+        font-size: 11px;
+        padding: 3px 12px;
     }
 
     #grid-videos {
@@ -895,51 +904,51 @@ html, body {
     }
 
     .video-remote-name {
-        font-size: 10px;
-        padding: 3px 10px;
-        bottom: 8px;
-        left: 8px;
+        font-size: 11px;
+        padding: 4px 14px;
+        bottom: 12px;
+        left: 12px;
     }
 
     #estado {
-        top: 14px;
-        padding: 5px 14px;
-        gap: 6px;
+        top: 16px;
+        padding: 6px 16px;
+        gap: 8px;
     }
 
     .estado-texto {
-        font-size: 11px;
+        font-size: 12px;
     }
 
     #panel-controles {
-        bottom: 16px;
-        max-width: calc(100vw - 18px);
+        bottom: 20px;
+        max-width: calc(100vw - 20px);
         border-radius: var(--radius-sm);
     }
 
     .panel-inner {
-        padding: 8px 12px;
-        gap: 5px;
+        padding: 12px 16px;
+        gap: 6px;
     }
 
     .btn-control {
-        width: 34px;
-        height: 34px;
+        width: 38px;
+        height: 38px;
     }
 
     .btn-control svg {
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
     }
 
     .control-volumen {
-        max-width: 120px;
-        min-width: 60px;
+        max-width: 140px;
+        min-width: 80px;
     }
 
     .texto-volumen {
-        font-size: 10px;
-        min-width: 28px;
+        font-size: 11px;
+        min-width: 30px;
     }
 
     #grid-videos.layout-3,
@@ -969,50 +978,51 @@ html, body {
 
 @media (max-width: 767px) {
     .video-local-wrapper {
-        width: 140px;
-        height: 105px;
-        min-width: 100px;
-        min-height: 75px;
-        max-width: 210px;
-        max-height: 157px;
+        width: 150px;
+        height: 112px;
+        min-width: 110px;
+        min-height: 82px;
+        max-width: 220px;
+        max-height: 165px;
         border-radius: var(--radius-sm);
     }
 
     .video-local-label {
-        font-size: 9px;
-        padding: 2px 8px;
-        bottom: 7px;
-        left: 7px;
+        font-size: 10px;
+        padding: 2px 10px;
+        bottom: 8px;
+        left: 8px;
+        gap: 6px;
     }
 
     .video-local-status {
         width: 8px;
         height: 8px;
-        top: 7px;
-        right: 7px;
+        top: 8px;
+        right: 8px;
     }
 
     .video-local-close {
-        width: 20px;
-        height: 20px;
-        font-size: 10px;
-        top: 6px;
-        left: 6px;
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+        top: 8px;
+        right: 8px;
     }
 
     .video-remote-name {
-        font-size: 9px;
-        padding: 2px 8px;
-        bottom: 6px;
-        left: 6px;
-        max-width: 75%;
+        font-size: 10px;
+        padding: 3px 12px;
+        bottom: 10px;
+        left: 10px;
+        max-width: 80%;
     }
 
     .video-remote-speaking {
-        font-size: 7px;
-        padding: 1px 8px;
-        top: 8px;
-        left: 8px;
+        font-size: 8px;
+        padding: 2px 10px;
+        top: 10px;
+        left: 10px;
     }
 
     #grid-videos {
@@ -1021,87 +1031,87 @@ html, body {
     }
 
     #estado {
-        top: 10px;
-        padding: 4px 12px;
-        gap: 5px;
+        top: 12px;
+        padding: 5px 14px;
+        gap: 6px;
     }
 
     .estado-texto {
-        font-size: 10px;
+        font-size: 11px;
     }
 
     .estado-indicador {
-        width: 6px;
-        height: 6px;
+        width: 7px;
+        height: 7px;
     }
 
     #panel-controles {
-        bottom: 12px;
-        max-width: calc(100vw - 14px);
+        bottom: 16px;
+        max-width: calc(100vw - 16px);
         border-radius: var(--radius-sm);
     }
 
     .panel-inner {
-        padding: 6px 10px;
-        gap: 4px;
+        padding: 10px 14px;
+        gap: 5px;
     }
 
     .btn-control {
-        width: 32px;
-        height: 32px;
+        width: 34px;
+        height: 34px;
     }
 
     .btn-control svg {
-        width: 14px;
-        height: 14px;
+        width: 16px;
+        height: 16px;
     }
 
     .controles-fila {
-        gap: 4px;
+        gap: 5px;
     }
 
     .controles-fila-inferior {
-        gap: 6px;
-        padding-top: 4px;
+        gap: 8px;
+        padding-top: 6px;
     }
 
     .separador {
-        height: 22px;
-        margin: 0 2px;
+        height: 24px;
+        margin: 0 4px;
     }
 
     .control-volumen {
-        max-width: 100px;
-        min-width: 50px;
-        gap: 5px;
+        max-width: 110px;
+        min-width: 60px;
+        gap: 6px;
     }
 
     .texto-volumen {
-        font-size: 9px;
-        min-width: 24px;
+        font-size: 10px;
+        min-width: 26px;
     }
 
     .info-conexion {
-        padding: 2px 8px;
-        gap: 5px;
+        padding: 2px 10px;
+        gap: 6px;
     }
 
     .info-item {
-        font-size: 9px;
-    }
-
-    .info-divider {
-        height: 10px;
-    }
-
-    .btn-diagnostico {
-        width: 22px;
-        height: 22px;
         font-size: 10px;
     }
 
+    .info-divider {
+        height: 12px;
+    }
+
+    .btn-diagnostico {
+        width: 26px;
+        height: 26px;
+        font-size: 12px;
+    }
+
     .icono-volumen {
-        font-size: 11px;
+        font-size: 13px;
     }
 
     #grid-videos.layout-3 {
@@ -1163,51 +1173,51 @@ html, body {
 
 @media (max-width: 480px) {
     .video-local-wrapper {
-        width: 120px;
-        height: 90px;
-        min-width: 80px;
-        min-height: 60px;
-        max-width: 170px;
-        max-height: 127px;
+        width: 130px;
+        height: 97px;
+        min-width: 90px;
+        min-height: 67px;
+        max-width: 180px;
+        max-height: 135px;
         border-radius: 8px;
     }
 
     .video-local-label {
-        font-size: 8px;
-        padding: 2px 7px;
-        bottom: 5px;
-        left: 5px;
+        font-size: 9px;
+        padding: 2px 8px;
+        bottom: 6px;
+        left: 6px;
         gap: 4px;
     }
 
     .video-local-status {
         width: 7px;
         height: 7px;
-        top: 5px;
-        right: 5px;
+        top: 6px;
+        right: 6px;
     }
 
     .video-local-close {
-        width: 18px;
-        height: 18px;
-        font-size: 9px;
-        top: 4px;
-        left: 4px;
+        width: 20px;
+        height: 20px;
+        font-size: 10px;
+        top: 6px;
+        right: 6px;
     }
 
     .video-remote-name {
-        font-size: 8px;
-        padding: 2px 6px;
-        bottom: 4px;
-        left: 4px;
-        max-width: 70%;
+        font-size: 9px;
+        padding: 2px 10px;
+        bottom: 8px;
+        left: 8px;
+        max-width: 75%;
     }
 
     .video-remote-speaking {
-        font-size: 6px;
-        padding: 1px 6px;
-        top: 6px;
-        left: 6px;
+        font-size: 7px;
+        padding: 1px 8px;
+        top: 8px;
+        left: 8px;
     }
 
     #grid-videos {
@@ -1216,59 +1226,59 @@ html, body {
     }
 
     #estado {
-        top: 8px;
-        padding: 3px 10px;
+        top: 10px;
+        padding: 4px 12px;
         gap: 5px;
     }
 
     .estado-texto {
-        font-size: 9px;
+        font-size: 10px;
     }
 
     .estado-indicador {
-        width: 5px;
-        height: 5px;
+        width: 6px;
+        height: 6px;
     }
 
     #panel-controles {
-        bottom: 10px;
-        max-width: calc(100vw - 12px);
+        bottom: 12px;
+        max-width: calc(100vw - 14px);
         border-radius: 8px;
     }
 
     .panel-inner {
-        padding: 5px 8px;
+        padding: 8px 10px;
         gap: 4px;
     }
 
     .btn-control {
-        width: 28px;
-        height: 28px;
+        width: 30px;
+        height: 30px;
     }
 
     .btn-control svg {
-        width: 13px;
-        height: 13px;
+        width: 14px;
+        height: 14px;
     }
 
     .controles-fila {
-        gap: 3px;
+        gap: 4px;
     }
 
     .controles-fila-inferior {
-        gap: 4px;
-        padding-top: 3px;
+        gap: 6px;
+        padding-top: 4px;
     }
 
     .separador {
-        height: 18px;
-        margin: 0 1px;
+        height: 20px;
+        margin: 0 2px;
     }
 
     .control-volumen {
-        max-width: 80px;
-        min-width: 40px;
-        gap: 4px;
+        max-width: 90px;
+        min-width: 50px;
+        gap: 5px;
     }
 
     #volumen {
@@ -1276,43 +1286,43 @@ html, body {
     }
 
     #volumen::-webkit-slider-thumb {
-        width: 12px;
-        height: 12px;
+        width: 14px;
+        height: 14px;
     }
 
     #volumen::-moz-range-thumb {
-        width: 12px;
-        height: 12px;
+        width: 14px;
+        height: 14px;
     }
 
     .texto-volumen {
-        font-size: 8px;
-        min-width: 20px;
+        font-size: 9px;
+        min-width: 22px;
     }
 
     .info-conexion {
-        padding: 1px 6px;
-        gap: 4px;
+        padding: 1px 8px;
+        gap: 5px;
         border-radius: 6px;
     }
 
     .info-item {
-        font-size: 8px;
-        gap: 2px;
+        font-size: 9px;
+        gap: 3px;
     }
 
     .info-divider {
-        height: 8px;
+        height: 10px;
     }
 
     .btn-diagnostico {
-        width: 20px;
-        height: 20px;
-        font-size: 9px;
+        width: 22px;
+        height: 22px;
+        font-size: 10px;
     }
 
     .icono-volumen {
-        font-size: 10px;
+        font-size: 12px;
     }
 
     #grid-videos.layout-3 {
@@ -1374,20 +1384,21 @@ html, body {
 
 @media (max-width: 320px) {
     .video-local-wrapper {
-        width: 100px;
-        height: 75px;
+        width: 110px;
+        height: 82px;
         min-width: 70px;
         min-height: 52px;
-        max-width: 140px;
-        max-height: 105px;
+        max-width: 150px;
+        max-height: 112px;
         border-radius: 6px;
     }
 
     .video-local-label {
-        font-size: 7px;
-        padding: 1px 6px;
+        font-size: 8px;
+        padding: 2px 6px;
         bottom: 4px;
         left: 4px;
+        gap: 3px;
     }
 
     .video-local-status {
@@ -1398,27 +1409,27 @@ html, body {
     }
 
     .video-local-close {
-        width: 16px;
-        height: 16px;
-        font-size: 8px;
-        top: 3px;
-        left: 3px;
+        width: 18px;
+        height: 18px;
+        font-size: 9px;
+        top: 4px;
+        right: 4px;
     }
 
     .video-remote-name {
-        font-size: 7px;
-        padding: 1px 5px;
-        bottom: 3px;
-        left: 3px;
-        max-width: 65%;
+        font-size: 8px;
+        padding: 2px 8px;
+        bottom: 6px;
+        left: 6px;
+        max-width: 70%;
         border-radius: 12px;
     }
 
     .video-remote-speaking {
-        font-size: 5px;
-        padding: 1px 4px;
-        top: 4px;
-        left: 4px;
+        font-size: 6px;
+        padding: 1px 6px;
+        top: 6px;
+        left: 6px;
     }
 
     #grid-videos {
@@ -1427,58 +1438,58 @@ html, body {
     }
 
     #estado {
-        top: 6px;
-        padding: 2px 8px;
+        top: 8px;
+        padding: 3px 10px;
         gap: 4px;
     }
 
     .estado-texto {
-        font-size: 8px;
+        font-size: 9px;
     }
 
     .estado-indicador {
-        width: 4px;
-        height: 4px;
+        width: 5px;
+        height: 5px;
     }
 
     #panel-controles {
-        bottom: 8px;
+        bottom: 10px;
         max-width: calc(100vw - 10px);
         border-radius: 6px;
     }
 
     .panel-inner {
-        padding: 4px 6px;
+        padding: 6px 8px;
         gap: 3px;
     }
 
     .btn-control {
-        width: 24px;
-        height: 24px;
+        width: 26px;
+        height: 26px;
     }
 
     .btn-control svg {
-        width: 11px;
-        height: 11px;
+        width: 12px;
+        height: 12px;
     }
 
     .controles-fila {
-        gap: 2px;
+        gap: 3px;
     }
 
     .controles-fila-inferior {
-        gap: 3px;
-        padding-top: 2px;
+        gap: 4px;
+        padding-top: 3px;
     }
 
     .separador {
-        height: 14px;
-        margin: 0;
+        height: 16px;
+        margin: 0 2px;
     }
 
     .control-volumen {
-        max-width: 60px;
-        min-width: 30px;
+        max-width: 70px;
+        min-width: 40px;
         gap: 3px;
     }
 
@@ -1487,42 +1498,42 @@ html, body {
     }
 
     #volumen::-webkit-slider-thumb {
-        width: 10px;
-        height: 10px;
+        width: 12px;
+        height: 12px;
     }
 
     #volumen::-moz-range-thumb {
-        width: 10px;
-        height: 10px;
+        width: 12px;
+        height: 12px;
     }
 
     .texto-volumen {
-        font-size: 7px;
-        min-width: 16px;
+        font-size: 8px;
+        min-width: 18px;
     }
 
     .info-conexion {
-        padding: 1px 4px;
-        gap: 3px;
+        padding: 1px 6px;
+        gap: 4px;
     }
 
     .info-item {
-        font-size: 7px;
-        gap: 1px;
+        font-size: 8px;
+        gap: 2px;
     }
 
     .info-divider {
-        height: 6px;
+        height: 8px;
     }
 
     .btn-diagnostico {
-        width: 16px;
-        height: 16px;
-        font-size: 8px;
+        width: 18px;
+        height: 18px;
+        font-size: 9px;
     }
 
     .icono-volumen {
-        font-size: 8px;
+        font-size: 10px;
     }
 
     .loading-text {
@@ -1572,19 +1583,19 @@ html, body {
 }
 
 /* ============================================================
-   MODO CLARO (prefers-color-scheme: light)
+   MODO CLARO (prefers-color-scheme: light) - COMPLETO
    ============================================================ */
 
 @media (prefers-color-scheme: light) {
     :root {
         --bg-primary: #e8e8ef;
         --bg-secondary: #d8d8e0;
-        --bg-panel: rgba(255, 255, 255, 0.92);
+        --bg-panel: rgba(255, 255, 255, 0.85);
         --border-panel: rgba(0, 0, 0, 0.04);
         --text-primary: #1a1a1a;
         --text-secondary: rgba(0, 0, 0, 0.5);
         --text-muted: rgba(0, 0, 0, 0.3);
-        --shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        --shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
     }
 
     #estado {
@@ -1597,12 +1608,12 @@ html, body {
     }
 
     .btn-control {
-        background: rgba(0, 0, 0, 0.03);
+        background: rgba(0, 0, 0, 0.04);
         color: #1a1a1a;
     }
 
     .btn-control:hover {
-        background: rgba(0, 0, 0, 0.06);
+        background: rgba(0, 0, 0, 0.08);
     }
 
     #btn-fullscreen {
@@ -1650,6 +1661,14 @@ html, body {
 
     #volumen {
         background: rgba(0, 0, 0, 0.08);
+    }
+
+    #volumen::-webkit-slider-thumb {
+        background: var(--blue);
+    }
+
+    #volumen::-moz-range-thumb {
+        background: var(--blue);
     }
 
     .texto-volumen {
@@ -1813,8 +1832,8 @@ html, body {
     }
 
     #estado {
-        top: 8px;
-        padding: 3px 12px;
+        top: 10px;
+        padding: 4px 14px;
     }
 
     .estado-texto {
@@ -1822,31 +1841,33 @@ html, body {
     }
 
     #panel-controles {
-        bottom: 8px;
-        max-width: calc(100vw - 18px);
+        bottom: 12px;
+        max-width: calc(100vw - 20px);
+        border-radius: var(--radius-sm);
     }
 
     .panel-inner {
-        padding: 5px 10px;
+        padding: 8px 12px;
         gap: 4px;
     }
 
     .btn-control {
-        width: 30px;
-        height: 30px;
+        width: 32px;
+        height: 32px;
     }
 
     .btn-control svg {
-        width: 14px;
-        height: 14px;
+        width: 15px;
+        height: 15px;
     }
 
     .control-volumen {
         max-width: 100px;
+        min-width: 60px;
     }
 
     .info-item {
-        font-size: 8px;
+        font-size: 9px;
     }
 
     #grid-videos {
@@ -1854,22 +1875,10 @@ html, body {
         padding: 2px;
     }
 
-    #grid-videos.layout-3 {
-        gap: 2px;
-        padding: 2px;
-    }
-
-    #grid-videos.layout-4 {
-        gap: 2px;
-        padding: 2px;
-    }
-
+    #grid-videos.layout-3,
+    #grid-videos.layout-4,
     #grid-videos.layout-5,
-    #grid-videos.layout-6 {
-        gap: 2px;
-        padding: 2px;
-    }
-
+    #grid-videos.layout-6,
     #grid-videos.layout-many {
         gap: 2px;
         padding: 2px;
@@ -1891,20 +1900,20 @@ html, body {
     }
 
     .video-local-label {
-        font-size: 14px;
-        padding: 5px 16px;
+        font-size: 15px;
+        padding: 6px 18px;
     }
 
     .video-remote-name {
-        font-size: 14px;
-        padding: 6px 18px;
-        bottom: 16px;
-        left: 16px;
+        font-size: 15px;
+        padding: 6px 20px;
+        bottom: 18px;
+        left: 18px;
     }
 
     #grid-videos {
-        gap: 8px;
-        padding: 8px;
+        gap: 6px;
+        padding: 6px;
     }
 
     #estado {
@@ -1925,22 +1934,22 @@ html, body {
     #panel-controles {
         bottom: 36px;
         max-width: calc(100vw - 56px);
-        border-radius: 18px;
+        border-radius: 20px;
     }
 
     .panel-inner {
-        padding: 16px 28px;
+        padding: 18px 28px;
         gap: 12px;
     }
 
     .btn-control {
-        width: 48px;
-        height: 48px;
+        width: 50px;
+        height: 50px;
     }
 
     .btn-control svg {
-        width: 22px;
-        height: 22px;
+        width: 24px;
+        height: 24px;
     }
 
     .controles-fila {
@@ -1957,13 +1966,13 @@ html, body {
     }
 
     #volumen::-webkit-slider-thumb {
-        width: 18px;
-        height: 18px;
+        width: 20px;
+        height: 20px;
     }
 
     #volumen::-moz-range-thumb {
-        width: 18px;
-        height: 18px;
+        width: 20px;
+        height: 20px;
     }
 
     .texto-volumen {
@@ -2028,8 +2037,8 @@ html, body {
     }
 
     #grid-videos {
-        gap: 6px;
-        padding: 6px;
+        gap: 5px;
+        padding: 5px;
     }
 
     #estado {

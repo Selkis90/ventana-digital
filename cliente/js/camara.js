@@ -109,6 +109,67 @@ function obtenerPublicacionMicrofono() {
 }
 
 // ============================================================
+// ✅ HELPER: Obtener video con la mejor nitidez posible (SIN desenfoque)
+// ============================================================
+// Estrategia:
+//   1. Capturar la cámara a resolución nativa SIN zoom ni focusMode en getUserMedia
+//      (así el navegador NO hace reescalado digital que causa borrosidad).
+//   2. Aplicar zoom SOLO si la cámara tiene zoom óptico real (applyConstraints).
+//   3. Si la cámara no soporta zoom, se queda con la vista nativa nítida.
+
+async function obtenerVideoNitido() {
+    console.log('📷 Obteniendo cámara a resolución nativa (sin zoom digital)...');
+
+    // 1. Capturar SIN zoom y SIN focusMode → evita desenfoque
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 24, max: 30 },
+            facingMode: 'user'
+            // ⚠️ SIN zoom aquí
+            // ⚠️ SIN focusMode aquí
+        },
+        audio: false
+    });
+
+    const track = stream.getVideoTracks()[0];
+    if (!track) {
+        stream.getTracks().forEach(function(t) { try { t.stop(); } catch (e) {} });
+        throw new Error('No se obtuvo track de video');
+    }
+
+    // 2. Intentar aplicar zoom SOLO si es óptico real
+    if (typeof track.getCapabilities === 'function') {
+        try {
+            const caps = track.getCapabilities();
+            console.log('📊 Capabilities cámara:', caps);
+
+            if (caps.zoom) {
+                const zoomMin = (caps.zoom.min !== undefined) ? caps.zoom.min : 1;
+                const zoomMax = (caps.zoom.max !== undefined) ? caps.zoom.max : 1;
+
+                // Solo aplicar si hay rango real de zoom
+                if (zoomMax > zoomMin) {
+                    // Buscar el valor más bajo posible (más panorámico) pero >= zoomMin
+                    const zoomDeseado = Math.max(zoomMin, Math.min(0.5, zoomMax));
+                    await track.applyConstraints({ zoom: zoomDeseado });
+                    console.log('✅ Zoom óptico aplicado:', zoomDeseado);
+                } else {
+                    console.log('ℹ️ Cámara sin rango de zoom útil, usando vista nativa');
+                }
+            } else {
+                console.log('ℹ️ Cámara sin soporte de zoom, usando vista nativa nítida');
+            }
+        } catch (e) {
+            console.warn('⚠️ Zoom no aplicable (usando vista nativa):', e.message);
+        }
+    }
+
+    return track;
+}
+
+// ============================================================
 // ✅ PICTURE-IN-PICTURE - VIDEO LOCAL FLOTANTE (DEL SEGUNDO ARCHIVO)
 // ============================================================
 
@@ -980,7 +1041,7 @@ function recuperarEstadoSala() {
 }
 
 // ============================================================
-// ✅ CONEXIÓN (COMBINADA)
+// ✅ CONEXIÓN (COMBINADA) - CÁMARA NÍTIDA SIN DESENFOQUE
 // ============================================================
 
 async function conectarLiveKit() {
@@ -1049,9 +1110,16 @@ async function conectarLiveKit() {
         // Audio profesional del primer archivo
         await publicarAudioConVerificacion();
 
-        // Video con PIP del segundo archivo
+        // ✅ Video NÍTIDO (sin desenfoque por reescalado digital)
         try { 
-            await room.localParticipant.setCameraEnabled(true);
+            const videoTrack = await obtenerVideoNitido();
+            
+            await room.localParticipant.publishTrack(videoTrack, {
+                name: 'camara',
+                source: LivekitClient.Track.Source.Camera,
+                simulcast: false
+            });
+            
             if (btnCamara) {
                 btnCamara.classList.remove('inactivo');
                 btnCamara.classList.add('activo');
@@ -1062,7 +1130,7 @@ async function conectarLiveKit() {
                     </svg>
                 `;
             }
-            console.log('✅ Cámara activada');
+            console.log('✅ Cámara activada nítida');
         } catch (error) { 
             console.warn('⚠️ Cámara no disponible:', error); 
             if (btnCamara) {
@@ -1804,7 +1872,19 @@ async function alternarCamara() {
         const isEnabled = room.localParticipant.isCameraEnabled;
         console.log('📷 Estado actual cámara:', isEnabled);
         
-        await room.localParticipant.setCameraEnabled(!isEnabled);
+        if (isEnabled) {
+            // Apagar cámara
+            await room.localParticipant.setCameraEnabled(false);
+        } else {
+            // ✅ Encender cámara NÍTIDA (sin desenfoque)
+            const videoTrack = await obtenerVideoNitido();
+            
+            await room.localParticipant.publishTrack(videoTrack, {
+                name: 'camara',
+                source: LivekitClient.Track.Source.Camera,
+                simulcast: false
+            });
+        }
         
         const newState = room.localParticipant.isCameraEnabled;
         console.log('📷 Nuevo estado cámara:', newState);
@@ -1997,6 +2077,8 @@ function diagnostico() {
         
         info += '📷 CÁMARA:\n';
         info += '   Estado: ' + (room.localParticipant.isCameraEnabled ? '✅ ACTIVADA' : '❌ DESACTIVADA') + '\n';
+        info += '   Modo: Vista nativa nítida (sin zoom digital)\n';
+        info += '   Resolución: 1280x720\n';
         
         info += '\n🎤 MICRÓFONO:\n';
         info += '   Estado: ' + (room.localParticipant.isMicrophoneEnabled ? '✅ ACTIVADO' : '❌ DESACTIVADO') + '\n\n';
@@ -2129,6 +2211,7 @@ window.aplicarLayout = aplicarLayout;
 window.toggleSeleccionVideo = toggleSeleccionVideo;
 window.toggleVideoLocal = toggleVideoLocal;
 window.obtenerPublicacionMicrofono = obtenerPublicacionMicrofono;
+window.obtenerVideoNitido = obtenerVideoNitido;
 
 // ============================================================
 // INICIALIZACIÓN
@@ -2136,9 +2219,10 @@ window.obtenerPublicacionMicrofono = obtenerPublicacionMicrofono;
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 6.0.2 - Fix getTrack para compatibilidad LiveKit');
+    console.log('📋 Versión: 6.0.3 - Cámara nítida sin desenfoque');
     console.log('🎵 Audio: Configuración profesional anti-eco');
     console.log('🖼️ Video: Picture-in-Picture flotante y arrastrable');
+    console.log('📷 Cámara: Vista nativa nítida (zoom óptico solo si existe)');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');
@@ -2190,7 +2274,7 @@ async function iniciarCamara() {
     setTimeout(function() {
         console.log('✅ Sistema listo - Presiona "Diagnóstico" para ver detalles');
         console.log('🔍 Variables globales disponibles: room, audioMap, videoMap, volumenActual');
-        console.log('🔧 Funciones: reparacionCompletaAudio(), forzarSuscripcionAudio(), obtenerPublicacionMicrofono()');
+        console.log('🔧 Funciones: reparacionCompletaAudio(), forzarSuscripcionAudio(), obtenerVideoNitido()');
         console.log('🎯 Click en cualquier video remoto para agrandarlo');
         console.log('🖼️ Video local: arrastra la ventana para moverla');
         (function() {

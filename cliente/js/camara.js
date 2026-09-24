@@ -4,6 +4,16 @@
 const LIVEKIT_URL = 'wss://ventana-digital-scr9uykx.livekit.cloud';
 const ROOM_NAME = 'sala-principal';
 
+// ✅ CONFIGURACIÓN DE CÁMARA (ZOOM REDUCIDO PARA MÁS VISIBILIDAD)
+const CAMERA_CONSTRAINTS = {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 24, max: 30 },
+    facingMode: 'user',
+    zoom: { ideal: 0.5 },          // 👈 0.5 = más panorámico. Baja a 0.3 para aún más campo
+    focusMode: 'continuous'
+};
+
 // DOM Elements
 const gridVideos = document.getElementById('grid-videos');
 const estado = document.getElementById('estado');
@@ -74,7 +84,60 @@ function mostrarLoading() {
 }
 
 // ============================================================
-// ✅ PICTURE-IN-PICTURE - VIDEO LOCAL FLOTANTE (DEL SEGUNDO ARCHIVO)
+// ✅ OBTENER VIDEO CON ZOOM REDUCIDO (MAYOR VISIBILIDAD)
+// ============================================================
+
+async function obtenerVideoConZoomReducido() {
+    console.log('📷 Obteniendo cámara con zoom reducido...');
+    
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video: CAMERA_CONSTRAINTS,
+        audio: false
+    });
+    
+    const track = stream.getVideoTracks()[0];
+    if (!track) {
+        throw new Error('No se obtuvo track de video');
+    }
+    
+    // Intentar aplicar constraints de zoom de forma explícita
+    if (track.getCapabilities) {
+        try {
+            const caps = track.getCapabilities();
+            console.log('📊 Capabilities de cámara:', caps);
+            
+            const constraintsAplicar = {};
+            
+            if (caps.zoom) {
+                const zoomMin = (caps.zoom.min !== undefined) ? caps.zoom.min : 0.5;
+                // Usar el mínimo disponible para máximo campo de visión
+                constraintsAplicar.zoom = Math.max(zoomMin, 0.5);
+            }
+            if (caps.width && caps.width.max) {
+                constraintsAplicar.width = Math.min(caps.width.max, 1280);
+            }
+            if (caps.height && caps.height.max) {
+                constraintsAplicar.height = Math.min(caps.height.max, 720);
+            }
+            if (caps.frameRate && caps.frameRate.max) {
+                constraintsAplicar.frameRate = Math.min(caps.frameRate.max, 30);
+            }
+            
+            if (Object.keys(constraintsAplicar).length > 0) {
+                await track.applyConstraints(constraintsAplicar);
+                console.log('✅ Constraints de cámara aplicadas:', constraintsAplicar);
+            }
+        } catch (e) {
+            console.warn('⚠️ No se pudieron aplicar constraints de zoom:', e);
+        }
+    }
+    
+    console.log('✅ Cámara obtenida con zoom reducido');
+    return track;
+}
+
+// ============================================================
+// ✅ PICTURE-IN-PICTURE - VIDEO LOCAL FLOTANTE
 // ============================================================
 
 function crearWrapperVideoLocal(videoElement) {
@@ -224,7 +287,7 @@ function toggleVideoLocal() {
 }
 
 // ============================================================
-// ✅ LAYOUT PARA VIDEOS REMOTOS (DEL SEGUNDO ARCHIVO)
+// ✅ LAYOUT PARA VIDEOS REMOTOS
 // ============================================================
 
 function aplicarLayout() {
@@ -370,7 +433,7 @@ function toggleSeleccionVideo(videoElement) {
 }
 
 // ============================================================
-// ✅ OBTENER AUDIO CON MEJOR CONFIGURACIÓN (DEL PRIMER ARCHIVO - VERSIÓN PROFESIONAL)
+// ✅ OBTENER AUDIO CON MEJOR CONFIGURACIÓN (VERSIÓN PROFESIONAL)
 // ============================================================
 
 async function obtenerAudioProfesional() {
@@ -441,7 +504,7 @@ async function obtenerAudioProfesional() {
 }
 
 // ============================================================
-// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN (DEL PRIMER ARCHIVO - CORREGIDO)
+// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN
 // ============================================================
 
 async function publicarAudioConVerificacion() {
@@ -530,7 +593,7 @@ async function publicarAudioConVerificacion() {
 }
 
 // ============================================================
-// ✅ FORZAR SUSCRIPCIÓN DE AUDIO PARA TODOS LOS PARTICIPANTES (DEL PRIMER ARCHIVO)
+// ✅ FORZAR SUSCRIPCIÓN DE AUDIO PARA TODOS LOS PARTICIPANTES
 // ============================================================
 
 async function forzarSuscripcionAudio(participant) {
@@ -580,7 +643,7 @@ async function forzarSuscripcionAudio(participant) {
 }
 
 // ============================================================
-// ✅ MONITOREO DE TRACKS REMOTOS (DEL PRIMER ARCHIVO)
+// ✅ MONITOREO DE TRACKS REMOTOS
 // ============================================================
 
 function iniciarMonitoreoTracks() {
@@ -642,7 +705,7 @@ function iniciarMonitoreoTracks() {
 }
 
 // ============================================================
-// ✅ REPARACIÓN COMPLETA DE AUDIO (DEL PRIMER ARCHIVO)
+// ✅ REPARACIÓN COMPLETA DE AUDIO
 // ============================================================
 
 async function reparacionCompletaAudio() {
@@ -746,7 +809,7 @@ async function reparacionCompletaAudio() {
 }
 
 // ============================================================
-// ✅ FORZAR REANUDACIÓN DE AUDIO CONTEXT (DEL PRIMER ARCHIVO)
+// ✅ FORZAR REANUDACIÓN DE AUDIO CONTEXT
 // ============================================================
 
 async function forzarReanudacionAudio() {
@@ -802,7 +865,7 @@ async function forzarReanudacionAudio() {
 }
 
 // ============================================================
-// ✅ RESTAURAR AUDIO DESPUÉS DE RECONEXIÓN (DEL PRIMER ARCHIVO)
+// ✅ RESTAURAR AUDIO DESPUÉS DE RECONEXIÓN
 // ============================================================
 
 async function restaurarAudioDespuesReconexion() {
@@ -820,7 +883,7 @@ async function restaurarAudioDespuesReconexion() {
 }
 
 // ============================================================
-// ✅ RECONEXIÓN POR PÉRDIDA DE INTERNET (DEL PRIMER ARCHIVO)
+// ✅ RECONEXIÓN POR PÉRDIDA DE INTERNET
 // ============================================================
 
 function iniciarMonitorInternet() {
@@ -950,7 +1013,7 @@ function recuperarEstadoSala() {
 }
 
 // ============================================================
-// ✅ CONEXIÓN (COMBINADA)
+// ✅ CONEXIÓN (CON ZOOM DE CÁMARA REDUCIDO)
 // ============================================================
 
 async function conectarLiveKit() {
@@ -1016,12 +1079,19 @@ async function conectarLiveKit() {
             miId.textContent = participantName;
         }
 
-        // Audio profesional del primer archivo
+        // Audio profesional
         await publicarAudioConVerificacion();
 
-        // Video con PIP del segundo archivo
+        // ✅ Video con ZOOM REDUCIDO (mayor visibilidad)
         try { 
-            await room.localParticipant.setCameraEnabled(true);
+            const videoTrack = await obtenerVideoConZoomReducido();
+            
+            await room.localParticipant.publishTrack(videoTrack, {
+                name: 'camara',
+                source: LivekitClient.Track.Source.Camera,
+                simulcast: true
+            });
+            
             if (btnCamara) {
                 btnCamara.classList.remove('inactivo');
                 btnCamara.classList.add('activo');
@@ -1032,7 +1102,7 @@ async function conectarLiveKit() {
                     </svg>
                 `;
             }
-            console.log('✅ Cámara activada');
+            console.log('✅ Cámara activada con zoom reducido');
         } catch (error) { 
             console.warn('⚠️ Cámara no disponible:', error); 
             if (btnCamara) {
@@ -1047,7 +1117,7 @@ async function conectarLiveKit() {
             }
         }
 
-        // Micrófono con UI mejorada del segundo archivo
+        // Micrófono con UI mejorada
         try { 
             await room.localParticipant.setMicrophoneEnabled(true);
             if (btnMicrofono) {
@@ -1123,7 +1193,7 @@ async function conectarLiveKit() {
 }
 
 // ============================================================
-// ✅ EVENTOS (COMBINADOS)
+// ✅ EVENTOS
 // ============================================================
 
 function registrarEventosLiveKit() {
@@ -1249,7 +1319,7 @@ function registrarEventosLiveKit() {
 }
 
 // ============================================================
-// ✅ VIDEO REMOTO (DEL SEGUNDO ARCHIVO)
+// ✅ VIDEO REMOTO
 // ============================================================
 
 function agregarVideoRemoto(track, participant) {
@@ -1308,7 +1378,7 @@ function agregarVideoRemoto(track, participant) {
 }
 
 // ============================================================
-// ✅ AUDIO REMOTO (DEL PRIMER ARCHIVO)
+// ✅ AUDIO REMOTO
 // ============================================================
 
 function agregarAudioRemotoConGanancia(track, participant) {
@@ -1428,7 +1498,7 @@ function agregarAudioRemotoConGanancia(track, participant) {
 }
 
 // ============================================================
-// ✅ CONTROL DE VOLUMEN (DEL PRIMER ARCHIVO)
+// ✅ CONTROL DE VOLUMEN
 // ============================================================
 
 function actualizarVolumen() {
@@ -1461,7 +1531,7 @@ function actualizarVolumen() {
 }
 
 // ============================================================
-// ELIMINAR TRACKS (COMBINADO)
+// ELIMINAR TRACKS
 // ============================================================
 
 function eliminarTrackRemoto(track, participant) {
@@ -1564,7 +1634,7 @@ function agregarParticipante(participant) {
 }
 
 // ============================================================
-// VIDEO LOCAL (DEL SEGUNDO ARCHIVO - CON PIP)
+// VIDEO LOCAL (CON PIP)
 // ============================================================
 
 function mostrarVideoLocal(publication) {
@@ -1611,7 +1681,7 @@ function mostrarVideoLocal(publication) {
 }
 
 // ============================================================
-// LIMPIAR (COMBINADO)
+// LIMPIAR
 // ============================================================
 
 function limpiarVideos() {
@@ -1664,7 +1734,7 @@ function limpiarVideos() {
 }
 
 // ============================================================
-// UI (COMBINADO)
+// UI
 // ============================================================
 
 function actualizarParticipanteRemoto() {
@@ -1674,7 +1744,7 @@ function actualizarParticipanteRemoto() {
 }
 
 // ============================================================
-// ✅ CONTROLES - BOTONES DE CÁMARA Y MICRÓFONO (DEL SEGUNDO ARCHIVO - MEJOR UI)
+// ✅ CONTROLES - BOTONES DE CÁMARA Y MICRÓFONO
 // ============================================================
 
 async function alternarMicrofono() {
@@ -1774,7 +1844,19 @@ async function alternarCamara() {
         const isEnabled = room.localParticipant.isCameraEnabled;
         console.log('📷 Estado actual cámara:', isEnabled);
         
-        await room.localParticipant.setCameraEnabled(!isEnabled);
+        if (isEnabled) {
+            // Apagar cámara
+            await room.localParticipant.setCameraEnabled(false);
+        } else {
+            // ✅ Encender cámara con ZOOM REDUCIDO
+            const videoTrack = await obtenerVideoConZoomReducido();
+            
+            await room.localParticipant.publishTrack(videoTrack, {
+                name: 'camara',
+                source: LivekitClient.Track.Source.Camera,
+                simulcast: true
+            });
+        }
         
         const newState = room.localParticipant.isCameraEnabled;
         console.log('📷 Nuevo estado cámara:', newState);
@@ -1828,7 +1910,7 @@ async function alternarCamara() {
 }
 
 // ============================================================
-// OTROS CONTROLES (DEL PRIMER ARCHIVO)
+// OTROS CONTROLES
 // ============================================================
 
 async function silenciarTemporalmente() {
@@ -1949,7 +2031,7 @@ async function reconectarManual() {
 }
 
 // ============================================================
-// ✅ DIAGNÓSTICO (COMBINADO - CON INFO DE AUDIO Y VIDEO)
+// ✅ DIAGNÓSTICO
 // ============================================================
 
 function diagnostico() {
@@ -1967,6 +2049,8 @@ function diagnostico() {
         
         info += '📷 CÁMARA:\n';
         info += '   Estado: ' + (room.localParticipant.isCameraEnabled ? '✅ ACTIVADA' : '❌ DESACTIVADA') + '\n';
+        info += '   Zoom configurado: ' + (CAMERA_CONSTRAINTS.zoom ? CAMERA_CONSTRAINTS.zoom.ideal : 'default') + '\n';
+        info += '   Resolución: ' + CAMERA_CONSTRAINTS.width.ideal + 'x' + CAMERA_CONSTRAINTS.height.ideal + '\n';
         
         info += '\n🎤 MICRÓFONO:\n';
         info += '   Estado: ' + (room.localParticipant.isMicrophoneEnabled ? '✅ ACTIVADO' : '❌ DESACTIVADO') + '\n\n';
@@ -2099,6 +2183,8 @@ window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
 window.aplicarLayout = aplicarLayout;
 window.toggleSeleccionVideo = toggleSeleccionVideo;
 window.toggleVideoLocal = toggleVideoLocal;
+window.CAMERA_CONSTRAINTS = CAMERA_CONSTRAINTS;
+window.obtenerVideoConZoomReducido = obtenerVideoConZoomReducido;
 
 // ============================================================
 // INICIALIZACIÓN
@@ -2106,9 +2192,10 @@ window.toggleVideoLocal = toggleVideoLocal;
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 6.0.0 - Fusión Profesional');
+    console.log('📋 Versión: 6.1.0 - Zoom reducido para mayor visibilidad');
     console.log('🎵 Audio: Configuración profesional anti-eco');
     console.log('🖼️ Video: Picture-in-Picture flotante y arrastrable');
+    console.log('📷 Cámara: zoom=' + CAMERA_CONSTRAINTS.zoom.ideal + ', resolución=' + CAMERA_CONSTRAINTS.width.ideal + 'x' + CAMERA_CONSTRAINTS.height.ideal);
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');
@@ -2116,6 +2203,7 @@ async function iniciarCamara() {
     console.log('🔍 Variables expuestas globalmente para diagnóstico');
     console.log('🎯 Click en cualquier video remoto para agrandarlo');
     console.log('🖼️ Video local en Picture-in-Picture (arrastrable)');
+    console.log('🔧 Para ajustar zoom: window.CAMERA_CONSTRAINTS.zoom.ideal');
     
     iniciarMonitorInternet();
     
@@ -2163,6 +2251,7 @@ async function iniciarCamara() {
         console.log('🔧 Funciones: reparacionCompletaAudio(), forzarSuscripcionAudio()');
         console.log('🎯 Click en cualquier video remoto para agrandarlo');
         console.log('🖼️ Video local: arrastra la ventana para moverla');
+        console.log('📷 Para ajustar zoom de cámara: window.CAMERA_CONSTRAINTS.zoom.ideal');
         (function() {
             forzarReanudacionAudio().catch(function(error) {
                 console.error('❌ Error reanudando audio inicial:', error);

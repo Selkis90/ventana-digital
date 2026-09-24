@@ -111,24 +111,16 @@ function obtenerPublicacionMicrofono() {
 // ============================================================
 // ✅ HELPER: Obtener video con la mejor nitidez posible (SIN desenfoque)
 // ============================================================
-// Estrategia:
-//   1. Capturar la cámara a resolución nativa SIN zoom ni focusMode en getUserMedia
-//      (así el navegador NO hace reescalado digital que causa borrosidad).
-//   2. Aplicar zoom SOLO si la cámara tiene zoom óptico real (applyConstraints).
-//   3. Si la cámara no soporta zoom, se queda con la vista nativa nítida.
 
 async function obtenerVideoNitido() {
     console.log('📷 Obteniendo cámara a resolución nativa (sin zoom digital)...');
 
-    // 1. Capturar SIN zoom y SIN focusMode → evita desenfoque
     const stream = await navigator.mediaDevices.getUserMedia({
         video: {
             width: { ideal: 1280 },
             height: { ideal: 720 },
             frameRate: { ideal: 24, max: 30 },
             facingMode: 'user'
-            // ⚠️ SIN zoom aquí
-            // ⚠️ SIN focusMode aquí
         },
         audio: false
     });
@@ -139,7 +131,6 @@ async function obtenerVideoNitido() {
         throw new Error('No se obtuvo track de video');
     }
 
-    // 2. Intentar aplicar zoom SOLO si es óptico real
     if (typeof track.getCapabilities === 'function') {
         try {
             const caps = track.getCapabilities();
@@ -149,9 +140,7 @@ async function obtenerVideoNitido() {
                 const zoomMin = (caps.zoom.min !== undefined) ? caps.zoom.min : 1;
                 const zoomMax = (caps.zoom.max !== undefined) ? caps.zoom.max : 1;
 
-                // Solo aplicar si hay rango real de zoom
                 if (zoomMax > zoomMin) {
-                    // Buscar el valor más bajo posible (más panorámico) pero >= zoomMin
                     const zoomDeseado = Math.max(zoomMin, Math.min(0.5, zoomMax));
                     await track.applyConstraints({ zoom: zoomDeseado });
                     console.log('✅ Zoom óptico aplicado:', zoomDeseado);
@@ -170,7 +159,7 @@ async function obtenerVideoNitido() {
 }
 
 // ============================================================
-// ✅ PICTURE-IN-PICTURE - VIDEO LOCAL FLOTANTE (DEL SEGUNDO ARCHIVO)
+// ✅ PICTURE-IN-PICTURE - VIDEO LOCAL FLOTANTE
 // ============================================================
 
 function crearWrapperVideoLocal(videoElement) {
@@ -320,7 +309,7 @@ function toggleVideoLocal() {
 }
 
 // ============================================================
-// ✅ LAYOUT PARA VIDEOS REMOTOS (DEL SEGUNDO ARCHIVO)
+// ✅ LAYOUT PARA VIDEOS REMOTOS
 // ============================================================
 
 function aplicarLayout() {
@@ -466,7 +455,7 @@ function toggleSeleccionVideo(videoElement) {
 }
 
 // ============================================================
-// ✅ OBTENER AUDIO CON MEJOR CONFIGURACIÓN (DEL PRIMER ARCHIVO - VERSIÓN PROFESIONAL)
+// ✅ OBTENER AUDIO CON MEJOR CONFIGURACIÓN (VERSIÓN PROFESIONAL)
 // ============================================================
 
 async function obtenerAudioProfesional() {
@@ -537,7 +526,7 @@ async function obtenerAudioProfesional() {
 }
 
 // ============================================================
-// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN (CORREGIDO - SIN getTrack)
+// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN
 // ============================================================
 
 async function publicarAudioConVerificacion() {
@@ -549,7 +538,6 @@ async function publicarAudioConVerificacion() {
     }
     
     try {
-        // ✅ CORRECCIÓN: usar helper compatible con cualquier versión de LiveKit
         var audioPublication = obtenerPublicacionMicrofono();
         
         if (audioPublication) {
@@ -586,7 +574,6 @@ async function publicarAudioConVerificacion() {
         
         console.log('✅ Audio publicado exitosamente');
         
-        // ✅ CORRECCIÓN: usar helper compatible
         audioPublication = obtenerPublicacionMicrofono();
         
         if (audioPublication && audioPublication.track) {
@@ -621,7 +608,7 @@ async function publicarAudioConVerificacion() {
 }
 
 // ============================================================
-// ✅ FORZAR SUSCRIPCIÓN DE AUDIO PARA TODOS LOS PARTICIPANTES (DEL PRIMER ARCHIVO)
+// ✅ FORZAR SUSCRIPCIÓN DE AUDIO PARA TODOS LOS PARTICIPANTES
 // ============================================================
 
 async function forzarSuscripcionAudio(participant) {
@@ -671,7 +658,7 @@ async function forzarSuscripcionAudio(participant) {
 }
 
 // ============================================================
-// ✅ MONITOREO DE TRACKS REMOTOS (DEL PRIMER ARCHIVO)
+// ✅ MONITOREO DE TRACKS REMOTOS
 // ============================================================
 
 function iniciarMonitoreoTracks() {
@@ -733,7 +720,7 @@ function iniciarMonitoreoTracks() {
 }
 
 // ============================================================
-// ✅ REPARACIÓN COMPLETA DE AUDIO (DEL PRIMER ARCHIVO)
+// ✅ REPARACIÓN COMPLETA DE AUDIO
 // ============================================================
 
 async function reparacionCompletaAudio() {
@@ -837,7 +824,7 @@ async function reparacionCompletaAudio() {
 }
 
 // ============================================================
-// ✅ FORZAR REANUDACIÓN DE AUDIO CONTEXT (DEL PRIMER ARCHIVO)
+// ✅ FORZAR REANUDACIÓN DE AUDIO CONTEXT
 // ============================================================
 
 async function forzarReanudacionAudio() {
@@ -893,7 +880,7 @@ async function forzarReanudacionAudio() {
 }
 
 // ============================================================
-// ✅ RESTAURAR AUDIO DESPUÉS DE RECONEXIÓN (DEL PRIMER ARCHIVO)
+// ✅ RESTAURAR AUDIO DESPUÉS DE RECONEXIÓN
 // ============================================================
 
 async function restaurarAudioDespuesReconexion() {
@@ -911,7 +898,7 @@ async function restaurarAudioDespuesReconexion() {
 }
 
 // ============================================================
-// ✅ RECONEXIÓN POR PÉRDIDA DE INTERNET (DEL PRIMER ARCHIVO)
+// ✅ RECONEXIÓN POR PÉRDIDA DE INTERNET
 // ============================================================
 
 function iniciarMonitorInternet() {
@@ -1041,7 +1028,7 @@ function recuperarEstadoSala() {
 }
 
 // ============================================================
-// ✅ CONEXIÓN (COMBINADA) - CÁMARA NÍTIDA SIN DESENFOQUE
+// ✅ CONEXIÓN - CON CÓDEC H.264 FORZADO (COMPATIBILIDAD PC↔CELULAR)
 // ============================================================
 
 async function conectarLiveKit() {
@@ -1092,9 +1079,15 @@ async function conectarLiveKit() {
             throw new Error('No se recibió token');
         }
 
+        // ✅ ROOM CON CÓDEC H.264 (máxima compatibilidad PC ↔ celular)
         room = new LivekitClient.Room({ 
             adaptiveStream: false,
-            dynacast: true
+            dynacast: false,   // ⬅️ Desactivar dynacast evita capas de baja calidad
+            publishDefaults: {
+                videoCodec: 'h264',           // ✅ H.264 universal
+                simulcast: false,
+                videoSimulcastLayers: []
+            }
         });
         
         registrarEventosLiveKit();
@@ -1107,17 +1100,18 @@ async function conectarLiveKit() {
             miId.textContent = participantName;
         }
 
-        // Audio profesional del primer archivo
+        // Audio profesional
         await publicarAudioConVerificacion();
 
-        // ✅ Video NÍTIDO (sin desenfoque por reescalado digital)
+        // ✅ Video con H.264 forzado
         try { 
             const videoTrack = await obtenerVideoNitido();
             
             await room.localParticipant.publishTrack(videoTrack, {
                 name: 'camara',
                 source: LivekitClient.Track.Source.Camera,
-                simulcast: false
+                simulcast: false,
+                videoCodec: 'h264'   // ✅ Forzar H.264 también aquí (refuerzo)
             });
             
             if (btnCamara) {
@@ -1130,7 +1124,7 @@ async function conectarLiveKit() {
                     </svg>
                 `;
             }
-            console.log('✅ Cámara activada nítida');
+            console.log('✅ Cámara activada (H.264, nítida)');
         } catch (error) { 
             console.warn('⚠️ Cámara no disponible:', error); 
             if (btnCamara) {
@@ -1145,7 +1139,7 @@ async function conectarLiveKit() {
             }
         }
 
-        // Micrófono con UI mejorada del segundo archivo
+        // Micrófono
         try { 
             await room.localParticipant.setMicrophoneEnabled(true);
             if (btnMicrofono) {
@@ -1221,7 +1215,7 @@ async function conectarLiveKit() {
 }
 
 // ============================================================
-// ✅ EVENTOS (COMBINADOS)
+// ✅ EVENTOS
 // ============================================================
 
 function registrarEventosLiveKit() {
@@ -1347,7 +1341,7 @@ function registrarEventosLiveKit() {
 }
 
 // ============================================================
-// ✅ VIDEO REMOTO (DEL SEGUNDO ARCHIVO)
+// ✅ VIDEO REMOTO - CON RENDERIZADO LIMPIO (evita aspecto blanco/lavado)
 // ============================================================
 
 function agregarVideoRemoto(track, participant) {
@@ -1369,9 +1363,24 @@ function agregarVideoRemoto(track, participant) {
     video.autoplay = true;
     video.playsInline = true;
     video.controls = false;
+    video.muted = false;
     video.dataset.identity = identity;
     video.className = 'video-remoto';
     video.dataset.label = identity;
+    
+    // ✅ Forzar estilos limpios para evitar aspecto blanco/lavado en PC
+    video.style.filter = 'none';
+    video.style.opacity = '1';
+    video.style.mixBlendMode = 'normal';
+    video.style.background = '#000';
+    video.style.transform = 'none';
+    video.style.backdropFilter = 'none';
+    video.style.isolation = 'isolate';
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'cover';
+    video.style.display = 'block';
+    
     gridVideos.appendChild(video);
     videoMap.set(identity, video);
     console.log('📹 Video remoto creado para:', identity);
@@ -1406,7 +1415,7 @@ function agregarVideoRemoto(track, participant) {
 }
 
 // ============================================================
-// ✅ AUDIO REMOTO (DEL PRIMER ARCHIVO)
+// ✅ AUDIO REMOTO
 // ============================================================
 
 function agregarAudioRemotoConGanancia(track, participant) {
@@ -1526,7 +1535,7 @@ function agregarAudioRemotoConGanancia(track, participant) {
 }
 
 // ============================================================
-// ✅ CONTROL DE VOLUMEN (DEL PRIMER ARCHIVO)
+// ✅ CONTROL DE VOLUMEN
 // ============================================================
 
 function actualizarVolumen() {
@@ -1559,7 +1568,7 @@ function actualizarVolumen() {
 }
 
 // ============================================================
-// ELIMINAR TRACKS (COMBINADO)
+// ELIMINAR TRACKS
 // ============================================================
 
 function eliminarTrackRemoto(track, participant) {
@@ -1662,7 +1671,7 @@ function agregarParticipante(participant) {
 }
 
 // ============================================================
-// VIDEO LOCAL (DEL SEGUNDO ARCHIVO - CON PIP)
+// VIDEO LOCAL (CON PIP)
 // ============================================================
 
 function mostrarVideoLocal(publication) {
@@ -1709,7 +1718,7 @@ function mostrarVideoLocal(publication) {
 }
 
 // ============================================================
-// LIMPIAR (COMBINADO)
+// LIMPIAR
 // ============================================================
 
 function limpiarVideos() {
@@ -1762,7 +1771,7 @@ function limpiarVideos() {
 }
 
 // ============================================================
-// UI (COMBINADO)
+// UI
 // ============================================================
 
 function actualizarParticipanteRemoto() {
@@ -1772,7 +1781,7 @@ function actualizarParticipanteRemoto() {
 }
 
 // ============================================================
-// ✅ CONTROLES - BOTONES DE CÁMARA Y MICRÓFONO (DEL SEGUNDO ARCHIVO - MEJOR UI)
+// ✅ CONTROLES - BOTONES DE CÁMARA Y MICRÓFONO
 // ============================================================
 
 async function alternarMicrofono() {
@@ -1873,16 +1882,15 @@ async function alternarCamara() {
         console.log('📷 Estado actual cámara:', isEnabled);
         
         if (isEnabled) {
-            // Apagar cámara
             await room.localParticipant.setCameraEnabled(false);
         } else {
-            // ✅ Encender cámara NÍTIDA (sin desenfoque)
             const videoTrack = await obtenerVideoNitido();
             
             await room.localParticipant.publishTrack(videoTrack, {
                 name: 'camara',
                 source: LivekitClient.Track.Source.Camera,
-                simulcast: false
+                simulcast: false,
+                videoCodec: 'h264'   // ✅ H.264 también aquí
             });
         }
         
@@ -1938,7 +1946,7 @@ async function alternarCamara() {
 }
 
 // ============================================================
-// OTROS CONTROLES (DEL PRIMER ARCHIVO)
+// OTROS CONTROLES
 // ============================================================
 
 async function silenciarTemporalmente() {
@@ -1998,7 +2006,8 @@ async function compartirPantalla() {
         if (track) {
             await room.localParticipant.publishTrack(track, {
                 name: 'screen-share',
-                source: LivekitClient.Track.Source.ScreenShare
+                source: LivekitClient.Track.Source.ScreenShare,
+                videoCodec: 'h264'   // ✅ También H.264 para pantalla
             });
             console.log('🖥️ Pantalla compartida');
             track.onended = function() { console.log('🖥️ Compartición finalizada'); };
@@ -2059,7 +2068,7 @@ async function reconectarManual() {
 }
 
 // ============================================================
-// ✅ DIAGNÓSTICO (COMBINADO - CON INFO DE AUDIO Y VIDEO)
+// ✅ DIAGNÓSTICO
 // ============================================================
 
 function diagnostico() {
@@ -2077,7 +2086,7 @@ function diagnostico() {
         
         info += '📷 CÁMARA:\n';
         info += '   Estado: ' + (room.localParticipant.isCameraEnabled ? '✅ ACTIVADA' : '❌ DESACTIVADA') + '\n';
-        info += '   Modo: Vista nativa nítida (sin zoom digital)\n';
+        info += '   Códec: H.264 (máxima compatibilidad)\n';
         info += '   Resolución: 1280x720\n';
         
         info += '\n🎤 MICRÓFONO:\n';
@@ -2120,7 +2129,6 @@ function diagnostico() {
             });
         }
         
-        // ✅ CORRECCIÓN: usar helper compatible
         var pub = obtenerPublicacionMicrofono();
         
         info += '\n📤 AUDIO LOCAL:\n';
@@ -2219,10 +2227,10 @@ window.obtenerVideoNitido = obtenerVideoNitido;
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 6.0.3 - Cámara nítida sin desenfoque');
+    console.log('📋 Versión: 6.1.0 - H.264 forzado (compatibilidad PC↔celular)');
     console.log('🎵 Audio: Configuración profesional anti-eco');
     console.log('🖼️ Video: Picture-in-Picture flotante y arrastrable');
-    console.log('📷 Cámara: Vista nativa nítida (zoom óptico solo si existe)');
+    console.log('📷 Cámara: H.264, 1280x720, vista nativa nítida');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');

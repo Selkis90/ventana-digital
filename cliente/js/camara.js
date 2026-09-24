@@ -74,6 +74,41 @@ function mostrarLoading() {
 }
 
 // ============================================================
+// ✅ HELPER: Obtener publicación de micrófono (compatible con cualquier versión de LiveKit)
+// ============================================================
+
+function obtenerPublicacionMicrofono() {
+    if (!room || !room.localParticipant) return null;
+
+    var pub = null;
+
+    // Intento 1: getTrackPublication (versiones modernas)
+    try {
+        if (typeof room.localParticipant.getTrackPublication === 'function') {
+            pub = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+        }
+    } catch (e) {}
+
+    // Intento 2: getPublication (versiones antiguas)
+    if (!pub && typeof room.localParticipant.getPublication === 'function') {
+        try {
+            pub = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
+        } catch (e) {}
+    }
+
+    // Intento 3: recorrer trackPublications manualmente
+    if (!pub && room.localParticipant.trackPublications) {
+        room.localParticipant.trackPublications.forEach(function(p) {
+            if (!pub && p.source === LivekitClient.Track.Source.Microphone) {
+                pub = p;
+            }
+        });
+    }
+
+    return pub;
+}
+
+// ============================================================
 // ✅ PICTURE-IN-PICTURE - VIDEO LOCAL FLOTANTE (DEL SEGUNDO ARCHIVO)
 // ============================================================
 
@@ -441,7 +476,7 @@ async function obtenerAudioProfesional() {
 }
 
 // ============================================================
-// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN (DEL PRIMER ARCHIVO - CORREGIDO)
+// ✅ FORZAR PUBLICACIÓN DE AUDIO CON VERIFICACIÓN (CORREGIDO - SIN getTrack)
 // ============================================================
 
 async function publicarAudioConVerificacion() {
@@ -453,11 +488,8 @@ async function publicarAudioConVerificacion() {
     }
     
     try {
-        var audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
-        
-        if (!audioPublication) {
-            audioPublication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
-        }
+        // ✅ CORRECCIÓN: usar helper compatible con cualquier versión de LiveKit
+        var audioPublication = obtenerPublicacionMicrofono();
         
         if (audioPublication) {
             console.log('📡 Audio ya publicado, verificando estado...');
@@ -493,10 +525,8 @@ async function publicarAudioConVerificacion() {
         
         console.log('✅ Audio publicado exitosamente');
         
-        audioPublication = room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone);
-        if (!audioPublication) {
-            audioPublication = room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone);
-        }
+        // ✅ CORRECCIÓN: usar helper compatible
+        audioPublication = obtenerPublicacionMicrofono();
         
         if (audioPublication && audioPublication.track) {
             console.log('✅ Verificación de publicación exitosa');
@@ -950,7 +980,7 @@ function recuperarEstadoSala() {
 }
 
 // ============================================================
-// ✅ CONEXIÓN (COMBINADA) - CON ZOOM PANORÁMICO
+// ✅ CONEXIÓN (COMBINADA)
 // ============================================================
 
 async function conectarLiveKit() {
@@ -1019,43 +1049,9 @@ async function conectarLiveKit() {
         // Audio profesional del primer archivo
         await publicarAudioConVerificacion();
 
-        // ✅ Video con PIP del segundo archivo (ZOOM REDUCIDO - VISTA PANORÁMICA)
+        // Video con PIP del segundo archivo
         try { 
-            const videoStream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    frameRate: { ideal: 24, max: 30 },
-                    facingMode: 'user',
-                    zoom: { ideal: 0.3 }   // 👈 0.3 = panorámico
-                },
-                audio: false
-            });
-            
-            const videoTrack = videoStream.getVideoTracks()[0];
-            
-            // Forzar zoom mínimo disponible en la cámara
-            if (videoTrack && videoTrack.getCapabilities) {
-                try {
-                    const caps = videoTrack.getCapabilities();
-                    console.log('📊 Capabilities de cámara:', caps);
-                    if (caps.zoom) {
-                        const zoomMin = (caps.zoom.min !== undefined) ? caps.zoom.min : 1;
-                        const zoomDeseado = Math.max(zoomMin, Math.min(0.3, caps.zoom.max || 4));
-                        await videoTrack.applyConstraints({ zoom: zoomDeseado });
-                        console.log('✅ Zoom aplicado:', zoomDeseado);
-                    }
-                } catch (e) {
-                    console.warn('⚠️ No se pudo aplicar zoom:', e);
-                }
-            }
-            
-            await room.localParticipant.publishTrack(videoTrack, {
-                name: 'camara',
-                source: LivekitClient.Track.Source.Camera,
-                simulcast: false
-            });
-            
+            await room.localParticipant.setCameraEnabled(true);
             if (btnCamara) {
                 btnCamara.classList.remove('inactivo');
                 btnCamara.classList.add('activo');
@@ -1066,7 +1062,7 @@ async function conectarLiveKit() {
                     </svg>
                 `;
             }
-            console.log('✅ Cámara activada con zoom reducido (panorámico)');
+            console.log('✅ Cámara activada');
         } catch (error) { 
             console.warn('⚠️ Cámara no disponible:', error); 
             if (btnCamara) {
@@ -1808,42 +1804,7 @@ async function alternarCamara() {
         const isEnabled = room.localParticipant.isCameraEnabled;
         console.log('📷 Estado actual cámara:', isEnabled);
         
-        if (isEnabled) {
-            // Apagar cámara
-            await room.localParticipant.setCameraEnabled(false);
-        } else {
-            // ✅ Encender con zoom reducido (panorámico)
-            const videoStream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    frameRate: { ideal: 24, max: 30 },
-                    facingMode: 'user',
-                    zoom: { ideal: 0.3 }
-                },
-                audio: false
-            });
-            const videoTrack = videoStream.getVideoTracks()[0];
-            
-            if (videoTrack && videoTrack.getCapabilities) {
-                try {
-                    const caps = videoTrack.getCapabilities();
-                    if (caps.zoom) {
-                        const zoomMin = (caps.zoom.min !== undefined) ? caps.zoom.min : 1;
-                        const zoomDeseado = Math.max(zoomMin, Math.min(0.3, caps.zoom.max || 4));
-                        await videoTrack.applyConstraints({ zoom: zoomDeseado });
-                    }
-                } catch (e) {
-                    console.warn('⚠️ No se pudo aplicar zoom:', e);
-                }
-            }
-            
-            await room.localParticipant.publishTrack(videoTrack, {
-                name: 'camara',
-                source: LivekitClient.Track.Source.Camera,
-                simulcast: false
-            });
-        }
+        await room.localParticipant.setCameraEnabled(!isEnabled);
         
         const newState = room.localParticipant.isCameraEnabled;
         console.log('📷 Nuevo estado cámara:', newState);
@@ -2036,8 +1997,6 @@ function diagnostico() {
         
         info += '📷 CÁMARA:\n';
         info += '   Estado: ' + (room.localParticipant.isCameraEnabled ? '✅ ACTIVADA' : '❌ DESACTIVADA') + '\n';
-        info += '   Zoom: 0.3 (panorámico)\n';
-        info += '   Resolución: 1280x720\n';
         
         info += '\n🎤 MICRÓFONO:\n';
         info += '   Estado: ' + (room.localParticipant.isMicrophoneEnabled ? '✅ ACTIVADO' : '❌ DESACTIVADO') + '\n\n';
@@ -2079,10 +2038,9 @@ function diagnostico() {
             });
         }
         
-        var pub = room.localParticipant ? room.localParticipant.getTrack(LivekitClient.Track.Source.Microphone) : null;
-        if (!pub) {
-            pub = room.localParticipant ? room.localParticipant.getPublication(LivekitClient.Track.Source.Microphone) : null;
-        }
+        // ✅ CORRECCIÓN: usar helper compatible
+        var pub = obtenerPublicacionMicrofono();
+        
         info += '\n📤 AUDIO LOCAL:\n';
         info += '   Publicado: ' + (!!pub) + '\n';
         info += '   Habilitado: ' + (pub ? pub.isEnabled : false) + '\n';
@@ -2170,6 +2128,7 @@ window.iniciarMonitoreoTracks = iniciarMonitoreoTracks;
 window.aplicarLayout = aplicarLayout;
 window.toggleSeleccionVideo = toggleSeleccionVideo;
 window.toggleVideoLocal = toggleVideoLocal;
+window.obtenerPublicacionMicrofono = obtenerPublicacionMicrofono;
 
 // ============================================================
 // INICIALIZACIÓN
@@ -2177,10 +2136,9 @@ window.toggleVideoLocal = toggleVideoLocal;
 
 async function iniciarCamara() {
     console.log('🚀 Iniciando Ventana Digital Pro...');
-    console.log('📋 Versión: 6.0.1 - Zoom panorámico');
+    console.log('📋 Versión: 6.0.2 - Fix getTrack para compatibilidad LiveKit');
     console.log('🎵 Audio: Configuración profesional anti-eco');
     console.log('🖼️ Video: Picture-in-Picture flotante y arrastrable');
-    console.log('📷 Cámara: zoom=0.3 (panorámico), 1280x720');
     console.log('🔊 Volumen por defecto: 100% (amplificado 150%)');
     console.log('💡 Haz clic en la página para activar el audio si es necesario');
     console.log('🌐 Monitor de internet activado');
@@ -2232,7 +2190,7 @@ async function iniciarCamara() {
     setTimeout(function() {
         console.log('✅ Sistema listo - Presiona "Diagnóstico" para ver detalles');
         console.log('🔍 Variables globales disponibles: room, audioMap, videoMap, volumenActual');
-        console.log('🔧 Funciones: reparacionCompletaAudio(), forzarSuscripcionAudio()');
+        console.log('🔧 Funciones: reparacionCompletaAudio(), forzarSuscripcionAudio(), obtenerPublicacionMicrofono()');
         console.log('🎯 Click en cualquier video remoto para agrandarlo');
         console.log('🖼️ Video local: arrastra la ventana para moverla');
         (function() {

@@ -98,7 +98,7 @@ html, body {
 }
 
 /* ============================================================
-   GRID DE VIDEOS - DISEÑO INMERSIVO MEJORADO
+   GRID DE VIDEOS
    ============================================================ */
 
 #grid-videos {
@@ -107,15 +107,17 @@ html, body {
     width: 100vw;
     height: 100vh;
     display: grid;
-    background: var(--bg-primary);
+    background: #000;
     z-index: 1;
     overflow: hidden;
     gap: 3px;
     padding: 3px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    /* ✅ Centra el contenido del grid respetando proporciones */
     place-content: center;
     place-items: center;
+    grid-auto-rows: minmax(0, 1fr);
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: row;
 }
 
 /* CONTENEDOR PARA CADA VIDEO REMOTO */
@@ -125,11 +127,10 @@ html, body {
     height: 100%;
     border-radius: var(--radius);
     overflow: hidden;
-    background: #000000;
+    background: #000;
     display: flex;
     align-items: center;
     justify-content: center;
-    /* ✅ Fuerza proporción horizontal 16:9 */
     aspect-ratio: 16 / 9;
 }
 
@@ -137,19 +138,19 @@ html, body {
 #grid-videos video {
     width: 100%;
     height: 100%;
-    /* ✅ "contain" mantiene la proporción horizontal sin recortar ni estirar */
     object-fit: contain;
     object-position: center center;
-    background: #000000;
+    background: #000;
     display: block;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     cursor: pointer;
     position: relative;
     border-radius: var(--radius-sm);
-    /* ✅ Fuerza el aspect ratio horizontal */
     aspect-ratio: 16 / 9;
     max-height: 100%;
     max-width: 100%;
+    align-self: center;
+    justify-self: center;
 }
 
 /* Para videos verticales (retrato) - ajuste automático */
@@ -179,7 +180,7 @@ html, body {
 }
 
 /* ============================================================
-   NOMBRE DEL VIDEO REMOTO - MEJORADO
+   NOMBRE DEL VIDEO REMOTO
    ============================================================ */
 
 .video-remote-name {
@@ -207,7 +208,7 @@ html, body {
 }
 
 /* ============================================================
-   BADGE DE "HABLANDO" - MEJORADO
+   BADGE DE "HABLANDO"
    ============================================================ */
 
 .video-remote-speaking {
@@ -244,7 +245,6 @@ html, body {
    GRID - LAYOUT POR CANTIDAD DE PARTICIPANTES
    ============================================================ */
 
-/* 1 participante - ocupa toda la pantalla */
 #grid-videos.layout-1 {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr;
@@ -254,9 +254,11 @@ html, body {
 
 #grid-videos.layout-1 video {
     border-radius: 0;
+    aspect-ratio: 16 / 9;
+    max-height: 100vh;
+    max-width: 100vw;
 }
 
-/* 2 participantes - lado a lado horizontal ✅ ACTUALIZADO */
 #grid-videos.layout-2 {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr;
@@ -264,7 +266,6 @@ html, body {
     padding: 3px;
 }
 
-/* 3 participantes - 3 columnas iguales */
 #grid-videos.layout-3 {
     grid-template-columns: 1fr 1fr 1fr;
     grid-template-rows: 1fr;
@@ -272,7 +273,6 @@ html, body {
     padding: 3px;
 }
 
-/* 4 participantes - 2x2 */
 #grid-videos.layout-4 {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
@@ -280,7 +280,6 @@ html, body {
     padding: 3px;
 }
 
-/* 5-6 participantes - 3x2 */
 #grid-videos.layout-5,
 #grid-videos.layout-6 {
     grid-template-columns: repeat(3, 1fr);
@@ -289,7 +288,6 @@ html, body {
     padding: 3px;
 }
 
-/* 7-8 participantes - 4x2 */
 #grid-videos.layout-7,
 #grid-videos.layout-8 {
     grid-template-columns: repeat(4, 1fr);
@@ -298,7 +296,6 @@ html, body {
     padding: 3px;
 }
 
-/* 9 participantes - 3x3 */
 #grid-videos.layout-9 {
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(3, 1fr);
@@ -306,7 +303,6 @@ html, body {
     padding: 3px;
 }
 
-/* 10-12 participantes - 4x3 */
 #grid-videos.layout-10,
 #grid-videos.layout-11,
 #grid-videos.layout-12 {
@@ -316,7 +312,6 @@ html, body {
     padding: 3px;
 }
 
-/* Más de 12 - auto ajuste */
 #grid-videos.layout-many {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     grid-template-rows: repeat(auto-fit, minmax(135px, 1fr));
@@ -325,7 +320,7 @@ html, body {
 }
 
 /* ============================================================
-   VIDEO LOCAL - PICTURE IN PICTURE (FLOTANTE) - MEJORADO
+   VIDEO LOCAL - PICTURE IN PICTURE (FLOTANTE)
    ============================================================ */
 
 .video-local-wrapper {
@@ -364,7 +359,6 @@ html, body {
     display: block;
 }
 
-/* Nombre del usuario local - MEJORADO */
 .video-local-label {
     position: absolute;
     bottom: 12px;
@@ -396,7 +390,6 @@ html, body {
     color: var(--red);
 }
 
-/* Indicador de estado del micrófono en el video local */
 .video-local-status {
     position: absolute;
     top: 10px;
@@ -415,7 +408,6 @@ html, body {
     box-shadow: 0 0 16px rgba(255, 59, 48, 0.4);
 }
 
-/* Botón de cerrar/minimizar del video local */
 .video-local-close {
     position: absolute;
     top: 10px;
@@ -448,7 +440,7 @@ html, body {
 }
 
 /* ============================================================
-   ESTADO DE CONEXIÓN - MEJORADO
+   ESTADO DE CONEXIÓN
    ============================================================ */
 
 #estado {
@@ -505,7 +497,7 @@ html, body {
 }
 
 /* ============================================================
-   PANEL DE CONTROLES - MEJORADO (GLASSMORPHISM)
+   PANEL DE CONTROLES
    ============================================================ */
 
 #panel-controles {
@@ -531,10 +523,6 @@ html, body {
     gap: 8px;
     padding: 14px 20px;
 }
-
-/* ============================================================
-   FILAS DE CONTROLES
-   ============================================================ */
 
 .controles-fila {
     display: flex;
@@ -562,7 +550,7 @@ html, body {
 }
 
 /* ============================================================
-   BOTONES DE CONTROL - MEJORADOS
+   BOTONES DE CONTROL
    ============================================================ */
 
 .btn-control {
@@ -603,7 +591,6 @@ html, body {
     outline-offset: 2px;
 }
 
-/* Tooltip en hover - MEJORADO */
 .btn-control::after {
     content: attr(title);
     position: absolute;
@@ -627,10 +614,6 @@ html, body {
     opacity: 1;
     transform: translateX(-50%) scale(1);
 }
-
-/* ============================================================
-   BOTÓN MICRÓFONO - ESTADOS
-   ============================================================ */
 
 #btn-microfono {
     background: rgba(79, 140, 247, 0.15);
@@ -659,10 +642,6 @@ html, body {
     background: rgba(255, 59, 48, 0.25);
 }
 
-/* ============================================================
-   BOTÓN CÁMARA - ESTADOS
-   ============================================================ */
-
 #btn-camara {
     background: rgba(52, 199, 89, 0.12);
     color: var(--green);
@@ -690,10 +669,6 @@ html, body {
     background: rgba(255, 59, 48, 0.25);
 }
 
-/* ============================================================
-   BOTÓN SILENCIAR
-   ============================================================ */
-
 #btn-silenciar {
     background: rgba(255, 149, 0, 0.12);
     color: var(--orange);
@@ -714,10 +689,6 @@ html, body {
     to { opacity: 0.6; transform: scale(0.95); }
 }
 
-/* ============================================================
-   BOTÓN COMPARTIR PANTALLA
-   ============================================================ */
-
 #btn-compartir {
     background: rgba(175, 82, 222, 0.12);
     color: var(--purple);
@@ -726,10 +697,6 @@ html, body {
 #btn-compartir:hover {
     background: rgba(175, 82, 222, 0.22);
 }
-
-/* ============================================================
-   BOTÓN PANTALLA COMPLETA
-   ============================================================ */
 
 #btn-fullscreen {
     background: rgba(255, 255, 255, 0.03);
@@ -740,10 +707,6 @@ html, body {
     background: rgba(255, 255, 255, 0.08);
 }
 
-/* ============================================================
-   BOTÓN RECONECTAR
-   ============================================================ */
-
 #btn-reconectar {
     background: rgba(255, 149, 0, 0.1);
     color: var(--orange);
@@ -752,10 +715,6 @@ html, body {
 #btn-reconectar:hover {
     background: rgba(255, 149, 0, 0.2);
 }
-
-/* ============================================================
-   BOTÓN DIAGNÓSTICO
-   ============================================================ */
 
 .btn-diagnostico {
     width: 32px;
@@ -779,7 +738,7 @@ html, body {
 }
 
 /* ============================================================
-   CONTROL DE VOLUMEN - MEJORADO
+   CONTROL DE VOLUMEN
    ============================================================ */
 
 .control-volumen {
@@ -853,7 +812,7 @@ html, body {
 }
 
 /* ============================================================
-   INFO DE CONEXIÓN - MEJORADA
+   INFO DE CONEXIÓN
    ============================================================ */
 
 .info-conexion {
@@ -1593,7 +1552,7 @@ html, body {
 }
 
 /* ============================================================
-   MODO CLARO (prefers-color-scheme: light) - COMPLETO
+   MODO CLARO
    ============================================================ */
 
 @media (prefers-color-scheme: light) {
@@ -1802,7 +1761,7 @@ html, body {
 }
 
 /* ============================================================
-   ACCESIBILIDAD - REDUCIR MOVIMIENTO
+   ACCESIBILIDAD
    ============================================================ */
 
 @media (prefers-reduced-motion: reduce) {
@@ -1896,7 +1855,7 @@ html, body {
 }
 
 /* ============================================================
-   PANTALLAS GRANDES (4K, UltraWide)
+   PANTALLAS GRANDES (4K)
    ============================================================ */
 
 @media (min-width: 1920px) {
@@ -2027,10 +1986,6 @@ html, body {
     }
 }
 
-/* ============================================================
-   PANTALLAS GRANDES (1440px - 1919px)
-   ============================================================ */
-
 @media (min-width: 1440px) and (max-width: 1919px) {
     .video-local-wrapper {
         width: 240px;
@@ -2124,4 +2079,36 @@ html, body {
         padding: 5px;
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     }
+}
+
+/* ============================================================
+   ✅ FIX DEFINITIVO: VIDEOS REMOTOS HORIZONTALES 16:9
+   ============================================================ */
+
+#grid-videos > video.video-remoto {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    aspect-ratio: 16 / 9 !important;
+    object-fit: contain !important;
+    object-position: center center !important;
+    background: #000 !important;
+    align-self: center !important;
+    justify-self: center !important;
+    border-radius: 8px;
+    display: block;
+}
+
+#grid-videos.layout-1 > video.video-remoto {
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    border-radius: 0;
+}
+
+#grid-videos.layout-2 > video.video-remoto {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 100% !important;
+    aspect-ratio: 16 / 9 !important;
 }

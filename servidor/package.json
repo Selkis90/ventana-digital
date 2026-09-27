@@ -1,23 +1,23 @@
-	
-name	"ventana-digital"
-version	"2.0.0"
-private	true
-description	"Videollamadas en tiempo real con LiveKit"
-main	"app.js"
-scripts	
-start	"node app.js"
-dev	"node --watch app.js"
-check	"node --check app.js"
-engines	
-node	">=20"
-keywords	
-0	"webrtc"
-1	"livekit"
-2	"video"
-3	"videollamada"
-license	"MIT"
-dependencies	
-cors	"^2.8.5"
-dotenv	"^16.4.7"
-express	"^4.21.2"
-livekit-server-sdk	"^2.15.0"
+{
+  "name": "ventana-digital",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Videollamadas en tiempo real con LiveKit",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node --watch app.js",
+    "check": "node --check app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": ["webrtc", "livekit", "video", "videollamada"],
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "livekit-server-sdk": "^2.15.0"
+  }
+}

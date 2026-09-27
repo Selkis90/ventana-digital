@@ -1,127 +1,319 @@
 'use strict';
 
-const express = require('express');
-const http = require('http');
+/**
+ * Ventana Digital — servidor
+ * --------------------------------------------------------------
+ * 1. Sirve el cliente web (carpeta /cliente).
+ * 2. Emite tokens de LiveKit de forma segura (POST /api/token).
+ * 3. Expone configuración pública y un health check.
+ *
+ * LiveKit Cloud se encarga de audio, video, TURN/STUN y reconexión,
+ * por eso este servidor NO necesita Twilio ni Socket.IO.
+ */
+
 const path = require('path');
-const { Server } = require('socket.io');
+const http = require('http');
+const crypto = require('crypto');
+
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
+const express = require('express');
 const cors = require('cors');
 const { AccessToken } = require('livekit-server-sdk');
 
-require('dotenv').config();
+// ============================================================
+// CONFIGURACIÓN
+// ============================================================
+
+const CONFIG = Object.freeze({
+    port: Number(process.env.PORT) || 3000,
+    produccion: process.env.NODE_ENV === 'production',
+    livekitUrl: (process.env.LIVEKIT_URL || '').trim(),
+    livekitApiKey: (process.env.LIVEKIT_API_KEY || '').trim(),
+    livekitApiSecret: (process.env.LIVEKIT_API_SECRET || '').trim(),
+    salaPorDefecto: (process.env.DEFAULT_ROOM || 'sala-principal').trim(),
+    tokenTtl: (process.env.TOKEN_TTL || '4h').trim(),
+    origenesPermitidos: (process.env.ALLOWED_ORIGINS || '')
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+    version: require('./package.json').version
+});
+
+const livekitConfigurado = Boolean(
+    CONFIG.livekitUrl && CONFIG.livekitApiKey && CONFIG.livekitApiSecret
+);
+
+if (!livekitConfigurado) {
+    console.warn(
+        '[config] Faltan variables LIVEKIT_URL, LIVEKIT_API_KEY o LIVEKIT_API_SECRET. ' +
+        'El endpoint /api/token responderá 503 hasta que se configuren.'
+    );
+}
+
+const clientePath = path.join(__dirname, '..', 'cliente');
+
+// ============================================================
+// APP
+// ============================================================
 
 const app = express();
 const server = http.createServer(app);
-const PORT = process.env.PORT || 3000;
 
-const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
+// Render pone un proxy delante: necesario para la IP real y detectar HTTPS
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
 
-const io = new Server(server, {
-    cors: { origin: '*', methods: ['GET', 'POST'] },
-    transports: ['websocket', 'polling'],
-    pingTimeout: 60000,
-    pingInterval: 25000,
-    connectTimeout: 45000,
-    allowEIO3: true
+// Cabeceras de seguridad
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader(
+        'Permissions-Policy',
+        'camera=(self), microphone=(self), display-capture=(self), fullscreen=(self), screen-wake-lock=(self)'
+    );
+    res.setHeader(
+        'Content-Security-Policy',
+        [
+            "default-src 'self'",
+            "script-src 'self' https://cdn.jsdelivr.net https://unpkg.com",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: blob:",
+            "media-src 'self' blob: mediastream:",
+            "connect-src 'self' https: wss:",
+            "worker-src 'self' blob:",
+            "frame-ancestors 'self'",
+            "base-uri 'self'",
+            "form-action 'self'"
+        ].join('; ')
+    );
+    if (CONFIG.produccion) {
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
 });
 
-app.use(cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'], credentials: true }));
-app.use(express.json());
+// Redirigir a HTTPS en producción (cámara y micrófono lo exigen)
+if (CONFIG.produccion) {
+    app.use((req, res, next) => {
+        if (req.secure || req.path === '/health') return next();
+        return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
+    });
+}
 
-app.post('/get-token', async (req, res) => {
+// CORS: solo mismo origen, salvo los dominios en ALLOWED_ORIGINS
+app.use(
+    '/api',
+    cors({
+        origin(origin, callback) {
+            if (!origin) return callback(null, true);
+            if (CONFIG.origenesPermitidos.includes(origin)) return callback(null, true);
+            return callback(null, false);
+        },
+        methods: ['GET', 'POST', 'OPTIONS']
+    })
+);
+
+app.use(express.json({ limit: '10kb' }));
+
+// ============================================================
+// RATE LIMIT SENCILLO EN MEMORIA
+// ============================================================
+
+function crearRateLimit({ ventanaMs, maximo }) {
+    const registros = new Map();
+
+    const limpieza = setInterval(() => {
+        const ahora = Date.now();
+        for (const [clave, datos] of registros) {
+            if (datos.reinicio <= ahora) registros.delete(clave);
+        }
+    }, ventanaMs);
+    limpieza.unref();
+
+    return (req, res, next) => {
+        const clave = req.ip || 'desconocido';
+        const ahora = Date.now();
+        let datos = registros.get(clave);
+
+        if (!datos || datos.reinicio <= ahora) {
+            datos = { cuenta: 0, reinicio: ahora + ventanaMs };
+            registros.set(clave, datos);
+        }
+
+        datos.cuenta += 1;
+
+        if (datos.cuenta > maximo) {
+            res.setHeader('Retry-After', Math.ceil((datos.reinicio - ahora) / 1000));
+            return res.status(429).json({ error: 'Demasiadas solicitudes. Intenta de nuevo en un momento.' });
+        }
+        return next();
+    };
+}
+
+const limiteToken = crearRateLimit({ ventanaMs: 60000, maximo: 20 });
+
+// ============================================================
+// VALIDACIÓN
+// ============================================================
+
+const REGEX_SALA = /^[a-zA-Z0-9_-]{1,64}$/;
+
+function limpiarNombre(valor) {
+    if (typeof valor !== 'string') return '';
+    return valor
+        .normalize('NFC')
+        .replace(/[\u0000-\u001F\u007F<>]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 40);
+}
+
+function crearIdentidad(nombre) {
+    const base = nombre
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 24) || 'invitado';
+    return `${base}-${crypto.randomBytes(4).toString('hex')}`;
+}
+
+// ============================================================
+// RUTAS API
+// ============================================================
+
+app.get('/api/config', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+        livekitUrl: CONFIG.livekitUrl,
+        salaPorDefecto: CONFIG.salaPorDefecto,
+        disponible: livekitConfigurado
+    });
+});
+
+async function generarToken(req, res) {
+    res.setHeader('Cache-Control', 'no-store');
+
+    if (!livekitConfigurado) {
+        return res.status(503).json({ error: 'El servidor de video no está configurado.' });
+    }
+
+    const body = req.body || {};
+    const sala = String(body.sala ?? body.roomName ?? CONFIG.salaPorDefecto).trim();
+    const nombre = limpiarNombre(body.nombre ?? body.participantName);
+
+    if (!REGEX_SALA.test(sala)) {
+        return res.status(400).json({ error: 'Nombre de sala inválido. Usa letras, números, guiones o guion bajo (máx. 64).' });
+    }
+    if (!nombre) {
+        return res.status(400).json({ error: 'Escribe tu nombre para entrar.' });
+    }
+
     try {
-        const { roomName, participantName } = req.body;
+        const identidad = crearIdentidad(nombre);
 
-        if (!roomName || typeof roomName !== 'string') {
-            return res.status(400).json({ error: 'roomName es obligatorio' });
-        }
+        const at = new AccessToken(CONFIG.livekitApiKey, CONFIG.livekitApiSecret, {
+            identity: identidad,
+            name: nombre,
+            ttl: CONFIG.tokenTtl
+        });
 
-        if (!participantName || typeof participantName !== 'string') {
-            return res.status(400).json({ error: 'participantName es obligatorio' });
-        }
-
-        if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
-            return res.status(500).json({ error: 'Servidor LiveKit no configurado' });
-        }
-
-        const identity = participantName.trim().substring(0, 100);
-
-        const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity });
-        at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true, canPublishData: true });
+        at.addGrant({
+            roomJoin: true,
+            room: sala,
+            canPublish: true,
+            canSubscribe: true,
+            canPublishData: true
+        });
 
         const token = await at.toJwt();
 
-        console.log(`🎫 Token LiveKit generado para: ${identity}`);
-        return res.json({ token, roomName, participantName: identity });
-    } catch (error) {
-        console.error('❌ Error generando token LiveKit:', error);
-        return res.status(500).json({ error: 'No se pudo generar el token LiveKit' });
-    }
-});
+        console.log(`[token] sala=${sala} identidad=${identidad}`);
 
-// TURN Twilio (Mantenido por compatibilidad)
-try {
-    const turnRoutes = require('./turn-twilio');
-    app.use('/', turnRoutes);
-    console.log('✅ Rutas TURN Twilio cargadas');
-} catch (error) {
-    console.warn('⚠️ No se pudo cargar turn-twilio.js:', error.message);
+        return res.json({ token, url: CONFIG.livekitUrl, sala, identidad, nombre });
+    } catch (error) {
+        console.error('[token] Error generando token:', error);
+        return res.status(500).json({ error: 'No se pudo generar el acceso a la sala.' });
+    }
 }
 
-// Archivos estáticos
-app.use('/socket.io', express.static(path.join(__dirname, 'node_modules/socket.io/client-dist')));
-const clientePath = path.join(__dirname, '../cliente');
-app.use(express.static(clientePath));
+app.post('/api/token', limiteToken, generarToken);
+app.post('/get-token', limiteToken, generarToken); // compatibilidad
 
-app.get('/', (req, res) => {
+app.get('/health', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+        status: 'ok',
+        version: CONFIG.version,
+        livekit: livekitConfigurado,
+        uptime: Math.round(process.uptime())
+    });
+});
+
+app.use('/api', (req, res) => {
+    res.status(404).json({ error: 'Ruta no encontrada' });
+});
+
+// ============================================================
+// ARCHIVOS ESTÁTICOS DEL CLIENTE
+// ============================================================
+
+app.use(
+    express.static(clientePath, {
+        index: false,
+        maxAge: CONFIG.produccion ? '1h' : 0,
+        setHeaders(res, filePath) {
+            if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+        }
+    })
+);
+
+app.get('*', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(path.join(clientePath, 'index.html'));
 });
 
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime(), clients: io.sockets.sockets.size, livekit: Boolean(LIVEKIT_API_KEY && LIVEKIT_API_SECRET) });
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+    if (err.type === 'entity.parse.failed') {
+        return res.status(400).json({ error: 'JSON inválido' });
+    }
+    console.error('[error]', err);
+    return res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-app.get('/status', (req, res) => {
-    res.json({ status: 'online', version: '1.0.0', timestamp: new Date().toISOString(), connectedClients: io.sockets.sockets.size, uptime: process.uptime(), memory: process.memoryUsage(), services: { livekit: true, socketio: true, turn: true } });
+// ============================================================
+// ARRANQUE Y APAGADO ORDENADO
+// ============================================================
+
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
+
+server.listen(CONFIG.port, '0.0.0.0', () => {
+    console.log('=========================================');
+    console.log(` Ventana Digital v${CONFIG.version}`);
+    console.log(` Puerto:  ${CONFIG.port}`);
+    console.log(` Entorno: ${CONFIG.produccion ? 'producción' : 'desarrollo'}`);
+    console.log(` LiveKit: ${livekitConfigurado ? CONFIG.livekitUrl : 'NO CONFIGURADO'}`);
+    console.log('=========================================');
 });
 
-app.get('/clientes', (req, res) => {
-    const sockets = io.sockets.sockets;
-    const clientesInfo = [];
-    sockets.forEach((socket, id) => {
-        clientesInfo.push({ id, ip: socket.handshake.address, connected: socket.connected, rooms: Array.from(socket.rooms) });
+function apagar(senal) {
+    console.log(`[${senal}] Cerrando servidor...`);
+    server.close(() => {
+        console.log('Servidor cerrado correctamente.');
+        process.exit(0);
     });
-    res.json({ total: clientesInfo.length, clientes: clientesInfo, timestamp: new Date().toISOString() });
-});
-
-app.post('/refresh-clients', (req, res) => {
-    const lista = Array.from(io.sockets.sockets.keys());
-    io.emit('clientes-conectados', lista);
-    res.json({ status: 'ok', message: `Lista de ${lista.length} clientes actualizada`, clientes: lista });
-});
-
-app.post('/cleanup-clients', (req, res) => {
-    const lista = Array.from(io.sockets.sockets.keys());
-    io.emit('clientes-conectados', lista);
-    res.json({ status: 'ok', message: 'Limpieza forzada', clientesActivos: lista.length, clientes: lista });
-});
-
-const socketManager = require('./socket/socket');
-if (socketManager && typeof socketManager.inicializarSocket === 'function') {
-    socketManager.inicializarSocket(io);
-    console.log('✅ Socket.IO inicializado correctamente');
-} else {
-    console.error('❌ socket/socket.js no contiene inicializarSocket()');
+    setTimeout(() => process.exit(1), 10000).unref();
 }
 
-server.listen(PORT, '0.0.0.0', () => {
-    console.log('=========================================');
-    console.log('🚀 SERVIDOR INICIADO');
-    console.log('=========================================');
-    console.log(`🌐 Puerto: ${PORT}`);
-    console.log(`🎥 LiveKit: ${LIVEKIT_API_KEY && LIVEKIT_API_SECRET ? 'CONFIGURADO' : 'NO CONFIGURADO'}`);
-    console.log('🔌 Socket.IO: ACTIVO');
-    console.log('=========================================');
+process.on('SIGTERM', () => apagar('SIGTERM'));
+process.on('SIGINT', () => apagar('SIGINT'));
+process.on('unhandledRejection', (razon) => {
+    console.error('[unhandledRejection]', razon);
 });
 
-module.exports = { app, server, io };
+module.exports = { app, server };

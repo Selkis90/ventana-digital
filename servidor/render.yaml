@@ -1,13 +1,26 @@
+# Render Blueprint — este archivo va en la RAÍZ del repositorio
 services:
   - type: web
     name: ventana-digital
     runtime: node
-    repo: https://github.com/tu-usuario/ventana-digital
     plan: free
-    buildCommand: npm install
-    startCommand: node app.js
+    buildCommand: npm install --prefix servidor --omit=dev
+    startCommand: node servidor/app.js
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3000
+      - key: NODE_VERSION
+        value: "20"
+      - key: DEFAULT_ROOM
+        value: sala-principal
+      - key: TOKEN_TTL
+        value: 4h
+      # Estos se llenan en el panel de Render (no se guardan en el repo)
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false

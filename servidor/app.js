@@ -4,11 +4,14 @@
  * Ventana Digital — servidor
  * --------------------------------------------------------------
  * 1. Sirve el cliente web (carpeta /cliente).
- * 2. Emite tokens de LiveKit de forma segura (POST /api/token).
+ * 2. Controla el ingreso a la sala con un código enviado por SMS
+ *    al anfitrión (ver ingreso.js). Solo con ese código se emite
+ *    el token de LiveKit.
  * 3. Expone configuración pública y un health check.
  *
  * LiveKit Cloud se encarga de audio, video, TURN/STUN y reconexión,
- * por eso este servidor NO necesita Twilio ni Socket.IO.
+ * por eso este servidor NO necesita Socket.IO. Twilio solo se usa
+ * para enviar el SMS con el código.
  */
 
 const path = require('path');
@@ -20,10 +23,19 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const { AccessToken } = require('livekit-server-sdk');
+const { crearRutasIngreso } = require('./ingreso');
 
 // ============================================================
 // CONFIGURACIÓN
 // ============================================================
+
+// Convierte "4h", "90m", "3600" (segundos) a segundos
+function ttlEnSegundos(valor) {
+    const m = String(valor || '').trim().match(/^(\d+)\s*([smhd]?)$/i);
+    if (!m) return 4 * 3600;
+    const factor = { '': 1, s: 1, m: 60, h: 3600, d: 86400 }[m[2].toLowerCase()];
+    return Math.max(60, Number(m[1]) * factor);
+}
 
 const CONFIG = Object.freeze({
     port: Number(process.env.PORT) || 3000,
@@ -32,7 +44,7 @@ const CONFIG = Object.freeze({
     livekitApiKey: (process.env.LIVEKIT_API_KEY || '').trim(),
     livekitApiSecret: (process.env.LIVEKIT_API_SECRET || '').trim(),
     salaPorDefecto: (process.env.DEFAULT_ROOM || 'sala-principal').trim(),
-    tokenTtl: (process.env.TOKEN_TTL || '4h').trim(),
+    tokenTtlSeg: ttlEnSegundos(process.env.TOKEN_TTL || '4h'),
     origenesPermitidos: (process.env.ALLOWED_ORIGINS || '')
         .split(',')
         .map((o) => o.trim())
@@ -47,7 +59,7 @@ const livekitConfigurado = Boolean(
 if (!livekitConfigurado) {
     console.warn(
         '[config] Faltan variables LIVEKIT_URL, LIVEKIT_API_KEY o LIVEKIT_API_SECRET. ' +
-        'El endpoint /api/token responderá 503 hasta que se configuren.'
+        'Nadie podrá entrar a la sala hasta que se configuren.'
     );
 }
 
@@ -152,13 +164,11 @@ function crearRateLimit({ ventanaMs, maximo }) {
     };
 }
 
-const limiteToken = crearRateLimit({ ventanaMs: 60000, maximo: 20 });
+const limiteIngreso = crearRateLimit({ ventanaMs: 60000, maximo: 20 });
 
 // ============================================================
 // VALIDACIÓN
 // ============================================================
-
-const REGEX_SALA = /^[a-zA-Z0-9_-]{1,64}$/;
 
 function limpiarNombre(valor) {
     if (typeof valor !== 'string') return '';
@@ -185,63 +195,48 @@ function crearIdentidad(nombre) {
 // RUTAS API
 // ============================================================
 
+// Crea el token de LiveKit. Solo se llama después de verificar el código SMS.
+async function crearAcceso(nombre) {
+    const identidad = crearIdentidad(nombre);
+
+    const at = new AccessToken(CONFIG.livekitApiKey, CONFIG.livekitApiSecret, {
+        identity: identidad,
+        name: nombre,
+        ttl: CONFIG.tokenTtlSeg
+    });
+
+    at.addGrant({
+        roomJoin: true,
+        room: CONFIG.salaPorDefecto, // siempre la misma sala
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: true
+    });
+
+    return {
+        token: await at.toJwt(),
+        url: CONFIG.livekitUrl,
+        sala: CONFIG.salaPorDefecto,
+        identidad,
+        nombre,
+        // el cliente reutiliza el token para reconectar hasta esta hora
+        expira: Date.now() + CONFIG.tokenTtlSeg * 1000
+    };
+}
+
+const rutasIngreso = crearRutasIngreso({ limpiarNombre, crearAcceso, livekitConfigurado });
+
 app.get('/api/config', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({
         livekitUrl: CONFIG.livekitUrl,
         salaPorDefecto: CONFIG.salaPorDefecto,
-        disponible: livekitConfigurado
+        disponible: livekitConfigurado && rutasIngreso.smsConfigurado
     });
 });
 
-async function generarToken(req, res) {
-    res.setHeader('Cache-Control', 'no-store');
-
-    if (!livekitConfigurado) {
-        return res.status(503).json({ error: 'El servidor de video no está configurado.' });
-    }
-
-    const body = req.body || {};
-    const sala = String(body.sala ?? body.roomName ?? CONFIG.salaPorDefecto).trim();
-    const nombre = limpiarNombre(body.nombre ?? body.participantName);
-
-    if (!REGEX_SALA.test(sala)) {
-        return res.status(400).json({ error: 'Nombre de sala inválido. Usa letras, números, guiones o guion bajo (máx. 64).' });
-    }
-    if (!nombre) {
-        return res.status(400).json({ error: 'Escribe tu nombre para entrar.' });
-    }
-
-    try {
-        const identidad = crearIdentidad(nombre);
-
-        const at = new AccessToken(CONFIG.livekitApiKey, CONFIG.livekitApiSecret, {
-            identity: identidad,
-            name: nombre,
-            ttl: CONFIG.tokenTtl
-        });
-
-        at.addGrant({
-            roomJoin: true,
-            room: sala,
-            canPublish: true,
-            canSubscribe: true,
-            canPublishData: true
-        });
-
-        const token = await at.toJwt();
-
-        console.log(`[token] sala=${sala} identidad=${identidad}`);
-
-        return res.json({ token, url: CONFIG.livekitUrl, sala, identidad, nombre });
-    } catch (error) {
-        console.error('[token] Error generando token:', error);
-        return res.status(500).json({ error: 'No se pudo generar el acceso a la sala.' });
-    }
-}
-
-app.post('/api/token', limiteToken, generarToken);
-app.post('/get-token', limiteToken, generarToken); // compatibilidad
+// El token ya NO se entrega libremente: solo a través del código SMS.
+app.use('/api/ingreso', limiteIngreso, rutasIngreso);
 
 app.get('/health', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -249,6 +244,7 @@ app.get('/health', (req, res) => {
         status: 'ok',
         version: CONFIG.version,
         livekit: livekitConfigurado,
+        sms: rutasIngreso.smsConfigurado,
         uptime: Math.round(process.uptime())
     });
 });

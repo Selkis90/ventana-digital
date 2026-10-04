@@ -20,7 +20,6 @@
     const APP_VERSION = '2.0.0';
     const CDN_RESPALDO = 'https://unpkg.com/livekit-client@2.22.3/dist/livekit-client.umd.js';
     const MAX_REINTENTOS = 8;
-    const REGEX_SALA = /^[a-zA-Z0-9_-]{1,64}$/;
 
     const esTactil = window.matchMedia('(pointer: coarse)').matches;
     const esMovil =
@@ -39,11 +38,16 @@
         lobby: $('lobby'),
         form: $('form-entrar'),
         inputNombre: $('input-nombre'),
-        inputSala: $('input-sala'),
         prefMic: $('pref-mic'),
         prefCam: $('pref-cam'),
         lobbyError: $('lobby-error'),
         btnEntrar: $('btn-entrar'),
+
+        formCodigo: $('form-codigo'),
+        inputCodigo: $('input-codigo'),
+        codigoError: $('codigo-error'),
+        btnVerificar: $('btn-verificar'),
+        btnCancelarCodigo: $('btn-cancelar-codigo'),
 
         sala: $('sala'),
         escenario: $('escenario'),
@@ -108,6 +112,8 @@
         quiereMic: true,
         quiereCam: true,
         conectando: false,
+        solicitudId: null,  // solicitud de código pendiente
+        acceso: null,       // { token, url, sala, identidad, nombre, expira } tras verificar el código
         salidaVoluntaria: false,
         intentos: 0,
         timerReintento: null,
@@ -245,7 +251,18 @@
         ui.sala.hidden = true;
         ui.salida.hidden = true;
         ui.avisoAudio.hidden = true;
+        ui.formCodigo.hidden = true;
+        ui.form.hidden = false;
         ui.lobby.hidden = false;
+        st.solicitudId = null;
+    }
+
+    function mostrarPasoCodigo() {
+        ui.form.hidden = true;
+        ui.inputCodigo.value = '';
+        mostrarErrorCodigo('');
+        ui.formCodigo.hidden = false;
+        ui.inputCodigo.focus();
     }
 
     function mostrarSala() {
@@ -273,9 +290,14 @@
         ui.lobbyError.hidden = !mensaje;
     }
 
-    function setBotonEntrarCargando(cargando) {
-        ui.btnEntrar.disabled = cargando;
-        ui.btnEntrar.classList.toggle('cargando', cargando);
+    function mostrarErrorCodigo(mensaje) {
+        ui.codigoError.textContent = mensaje;
+        ui.codigoError.hidden = !mensaje;
+    }
+
+    function setBotonCargando(boton, cargando) {
+        boton.disabled = cargando;
+        boton.classList.toggle('cargando', cargando);
     }
 
     // ============================================================
@@ -312,40 +334,30 @@
     // CONEXIÓN
     // ============================================================
 
-    async function pedirToken() {
-        const cuerpo = JSON.stringify({ nombre: st.nombre, sala: st.sala });
-        let ultimoError = null;
-
-        for (let intento = 0; intento < 4; intento++) {
-            if (intento === 1) {
-                mostrarCargando('Despertando el servidor… la primera conexión puede tardar hasta un minuto.');
-            } else if (intento > 1) {
-                mostrarCargando(`Reintentando (${intento}/3)…`);
-            }
-            if (intento > 0) await esperar(1500 * intento);
-
-            try {
-                const resp = await fetchConTimeout(
-                    '/api/token',
-                    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: cuerpo },
-                    25000
-                );
-                const datos = await resp.json().catch(() => ({}));
-
-                if (!resp.ok) {
-                    const err = new Error(datos.error || `Error del servidor (${resp.status})`);
-                    err.status = resp.status;
-                    throw err;
-                }
-                if (!datos.token || !datos.url) throw new Error('Respuesta del servidor incompleta');
-                return datos;
-            } catch (error) {
-                // Errores del usuario (400, 403…) no se reintentan
-                if (error.status && error.status < 500 && error.status !== 429) throw error;
-                ultimoError = error;
-            }
+    async function postJson(url, cuerpo, timeoutMs) {
+        const resp = await fetchConTimeout(
+            url,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) },
+            timeoutMs
+        );
+        const datos = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            const err = new Error(datos.error || `Error del servidor (${resp.status})`);
+            err.status = resp.status;
+            throw err;
         }
-        throw ultimoError;
+        return datos;
+    }
+
+    // El token se obtiene UNA vez con el código SMS y se reutiliza
+    // para las reconexiones mientras no haya vencido.
+    function obtenerAcceso() {
+        const a = st.acceso;
+        if (a && a.token && a.url && a.expira - Date.now() > 60000) return a;
+        st.acceso = null;
+        const err = new Error('Tu acceso venció. Solicita un nuevo código para entrar.');
+        err.status = 401;
+        throw err;
     }
 
     function crearRoom() {
@@ -385,7 +397,7 @@
 
         try {
             mostrarCargando(primeraVez ? 'Preparando la sala…' : 'Reconectando…');
-            const datos = await pedirToken();
+            const datos = obtenerAcceso();
 
             await destruirRoom();
 
@@ -1290,7 +1302,7 @@
     }
 
     function urlInvitacion() {
-        return `${location.origin}${location.pathname}?sala=${encodeURIComponent(st.sala)}`;
+        return `${location.origin}${location.pathname}`;
     }
 
     async function invitar() {
@@ -1300,7 +1312,7 @@
             try {
                 await navigator.share({
                     title: 'Ventana Digital',
-                    text: `Únete a mi videollamada (sala "${st.sala}")`,
+                    text: 'Únete a mi videollamada en Ventana Digital',
                     url
                 });
                 return;
@@ -1426,34 +1438,23 @@
             const resp = await fetchConTimeout('/api/config', {}, 8000);
             if (!resp.ok) return;
             const cfg = await resp.json();
-            if (cfg.salaPorDefecto) {
-                st.salaDefecto = cfg.salaPorDefecto;
-                ui.inputSala.placeholder = cfg.salaPorDefecto;
-            }
+            if (cfg.salaPorDefecto) st.salaDefecto = cfg.salaPorDefecto;
         } catch (e) {
             // El servidor puede estar "dormido" (Render free); no es crítico aquí
         }
     }
 
+    // Paso 1: pedir el código (se envía por SMS al anfitrión)
     async function onEntrar(evento) {
         evento.preventDefault();
         mostrarErrorLobby('');
 
         const nombre = ui.inputNombre.value.replace(/\s+/g, ' ').trim();
-        const sala = ui.inputSala.value.trim() || st.salaDefecto;
 
         ui.inputNombre.setAttribute('aria-invalid', String(!nombre));
         if (!nombre) {
             mostrarErrorLobby('Escribe tu nombre para entrar.');
             ui.inputNombre.focus();
-            return;
-        }
-
-        const salaValida = REGEX_SALA.test(sala);
-        ui.inputSala.setAttribute('aria-invalid', String(!salaValida));
-        if (!salaValida) {
-            mostrarErrorLobby('El nombre de la sala solo puede tener letras, números, guiones y guion bajo.');
-            ui.inputSala.focus();
             return;
         }
 
@@ -1465,35 +1466,70 @@
         desbloquearAudioEnGesto();
 
         st.nombre = nombre;
-        st.sala = sala;
+        st.sala = st.salaDefecto;
         st.quiereMic = ui.prefMic.checked;
         st.quiereCam = ui.prefCam.checked;
-        st.intentos = 0;
-        st.facingMode = 'user';
 
         almacen.guardar('vd_nombre', nombre);
-        almacen.guardar('vd_sala', sala);
         almacen.guardar('vd_mic', st.quiereMic ? '1' : '0');
         almacen.guardar('vd_cam', st.quiereCam ? '1' : '0');
 
+        setBotonCargando(ui.btnEntrar, true);
+        mostrarCargando('Enviando solicitud al anfitrión… si el servidor estaba dormido puede tardar hasta un minuto.');
         try {
-            history.replaceState(null, '', `${location.pathname}?sala=${encodeURIComponent(sala)}`);
-        } catch (e) { /* noop */ }
-
-        setBotonEntrarCargando(true);
-        try {
-            await conectar({ primeraVez: true });
+            // Sin reintentos automáticos: cada intento envía un SMS
+            const datos = await postJson('/api/ingreso/solicitar', { nombre }, 60000);
+            st.solicitudId = datos.solicitudId;
+            mostrarPasoCodigo();
+        } catch (error) {
+            console.error('[ingreso]', error);
+            mostrarErrorLobby(mensajeConexion(error));
         } finally {
-            setBotonEntrarCargando(false);
+            ocultarCargando();
+            setBotonCargando(ui.btnEntrar, false);
+        }
+    }
+
+    // Paso 2: verificar el código y entrar
+    async function onVerificar(evento) {
+        evento.preventDefault();
+        mostrarErrorCodigo('');
+
+        const codigo = ui.inputCodigo.value.replace(/\D/g, '');
+        if (codigo.length !== 6) {
+            mostrarErrorCodigo('Escribe los 6 dígitos del código.');
+            ui.inputCodigo.focus();
+            return;
+        }
+        if (!st.solicitudId || ui.btnVerificar.disabled) return;
+
+        desbloquearAudioEnGesto();
+        setBotonCargando(ui.btnVerificar, true);
+        try {
+            const datos = await postJson('/api/ingreso/verificar', { solicitudId: st.solicitudId, codigo }, 25000);
+            st.acceso = datos;
+            st.sala = datos.sala || st.salaDefecto;
+            st.solicitudId = null;
+            st.intentos = 0;
+            st.facingMode = 'user';
+            await conectar({ primeraVez: true });
+        } catch (error) {
+            console.error('[ingreso]', error);
+            if (error.status === 410 || error.status === 403) {
+                // Venció o se agotaron los intentos: volver al paso 1
+                mostrarLobby();
+                mostrarErrorLobby(error.message);
+            } else {
+                mostrarErrorCodigo(mensajeConexion(error));
+                ui.inputCodigo.select();
+            }
+        } finally {
+            setBotonCargando(ui.btnVerificar, false);
         }
     }
 
     function restaurarPreferencias() {
-        const params = new URLSearchParams(location.search);
-        const salaUrl = (params.get('sala') || '').trim();
-
         ui.inputNombre.value = almacen.leer('vd_nombre') || '';
-        ui.inputSala.value = REGEX_SALA.test(salaUrl) ? salaUrl : (almacen.leer('vd_sala') || '');
         ui.prefMic.checked = almacen.leer('vd_mic') !== '0';
         ui.prefCam.checked = almacen.leer('vd_cam') !== '0';
 
@@ -1527,7 +1563,21 @@
             ui.inputNombre.removeAttribute('aria-invalid');
             mostrarErrorLobby('');
         });
-        ui.inputSala.addEventListener('input', () => ui.inputSala.removeAttribute('aria-invalid'));
+
+        ui.formCodigo.addEventListener('submit', onVerificar);
+        ui.inputCodigo.addEventListener('input', () => {
+            const limpio = ui.inputCodigo.value.replace(/\D/g, '').slice(0, 6);
+            if (ui.inputCodigo.value !== limpio) ui.inputCodigo.value = limpio;
+            mostrarErrorCodigo('');
+            // Entra automáticamente al completar los 6 dígitos
+            if (limpio.length === 6 && typeof ui.formCodigo.requestSubmit === 'function') {
+                ui.formCodigo.requestSubmit();
+            }
+        });
+        ui.btnCancelarCodigo.addEventListener('click', () => {
+            mostrarLobby();
+            ui.inputNombre.focus();
+        });
 
         ui.btnMic.addEventListener('click', alternarMicrofono);
         ui.btnCam.addEventListener('click', alternarCamara);

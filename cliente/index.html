@@ -13,6 +13,15 @@
 
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="stylesheet" href="css/estilos.css">
+    <style>
+        [hidden] { display: none !important; }
+        .input-codigo {
+            text-align: center;
+            font-size: 1.6rem;
+            letter-spacing: 0.5em;
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
 
     <!-- LiveKit con versión fija: evita que una actualización rompa la app.
          Si el CDN falla, camara.js carga automáticamente un respaldo. -->
@@ -40,13 +49,6 @@
                        autocomplete="name" enterkeyhint="go" placeholder="INGRESE SU NOMBRE" required>
             </label>
 
-            <label class="campo">
-                <span>Sala</span>
-                <input id="input-sala" name="sala" type="text" maxlength="64"
-                       autocomplete="off" autocapitalize="off" spellcheck="false"
-                       pattern="[a-zA-Z0-9_\-]{1,64}" placeholder="sala-principal">
-            </label>
-
             <div class="lobby-opciones" role="group" aria-label="Dispositivos al entrar">
                 <label class="interruptor">
                     <input id="pref-mic" type="checkbox" checked>
@@ -63,11 +65,39 @@
             <p id="lobby-error" class="lobby-error" role="alert" hidden></p>
 
             <button id="btn-entrar" class="btn-primario" type="submit">
-                <span class="btn-texto">Entrar a la sala</span>
+                <span class="btn-texto">Solicitar acceso</span>
                 <span class="mini-spinner" aria-hidden="true"></span>
             </button>
 
-            <p class="lobby-nota">Al entrar, el navegador te pedirá permiso para usar la cámara y el micrófono.</p>
+            <p class="lobby-nota">El anfitrión recibirá un código por SMS para autorizar tu ingreso.</p>
+        </form>
+
+        <!-- Paso 2: código de acceso -->
+        <form id="form-codigo" class="lobby-card" novalidate hidden>
+            <div class="marca">
+                <span class="marca-logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </span>
+                <h2>Código de acceso</h2>
+            </div>
+            <p class="lobby-sub">Enviamos un código al anfitrión. Pídeselo y escríbelo aquí para entrar.</p>
+
+            <label class="campo">
+                <span>Código de 6 dígitos</span>
+                <input id="input-codigo" class="input-codigo" name="codigo" type="text"
+                       inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+                       pattern="[0-9]{6}" placeholder="000000" required>
+            </label>
+
+            <p id="codigo-error" class="lobby-error" role="alert" hidden></p>
+
+            <button id="btn-verificar" class="btn-primario" type="submit">
+                <span class="btn-texto">Entrar a la sala</span>
+                <span class="mini-spinner" aria-hidden="true"></span>
+            </button>
+            <button id="btn-cancelar-codigo" class="btn-secundario" type="button">Volver</button>
+
+            <p class="lobby-nota">El código vence en 5 minutos y sirve una sola vez. Al entrar, el navegador te pedirá permiso para usar la cámara y el micrófono.</p>
         </form>
     </section>
 
@@ -84,7 +114,7 @@
                     <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 </div>
                 <p class="vacio-titulo">Esperando a que alguien se una</p>
-                <p class="vacio-texto">Comparte el enlace de la sala para invitar</p>
+                <p class="vacio-texto">Comparte el enlace para invitar. El anfitrión deberá autorizar con el código.</p>
                 <button id="btn-invitar-vacio" class="btn-secundario" type="button">Copiar enlace de invitación</button>
             </div>
 

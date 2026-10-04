@@ -1,17 +1,17 @@
 'use strict';
 
 /**
- * Ventana Digital — acceso con código por SMS
+ * Ventana Digital — acceso con código
  * --------------------------------------------------------------
  * 1. Quien quiere entrar escribe su nombre -> POST /api/ingreso/solicitar
- * 2. El servidor genera un código de 6 dígitos y lo envía por SMS
- *    al celular del anfitrión (OWNER_PHONE).
+ * 2. El servidor genera un código de 6 dígitos y se lo envía al anfitrión:
+ *    - por Telegram (gratis) si están TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID
+ *    - si no, por SMS con Twilio (TWILIO_* y OWNER_PHONE)
  * 3. Si el anfitrión aprueba, le da el código a esa persona.
  * 4. La persona escribe el código -> POST /api/ingreso/verificar
  * 5. Si es correcto, recibe el token de LiveKit y entra a la sala.
  *
- * El SMS se envía con la API REST de Twilio usando fetch (Node 20+),
- * así que no hace falta instalar ningún paquete adicional.
+ * Ambos canales usan fetch (Node 20+): no hace falta instalar paquetes.
  */
 
 const crypto = require('crypto');
@@ -28,12 +28,20 @@ function crearRutasIngreso({ limpiarNombre, crearAcceso, livekitConfigurado }) {
     const twilioToken = (process.env.TWILIO_AUTH_TOKEN || '').trim();
     const twilioDesde = (process.env.TWILIO_PHONE || '').trim();
     const telefonoAnfitrion = (process.env.OWNER_PHONE || '').trim();
+    const telegramToken = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const telegramChat = (process.env.TELEGRAM_CHAT_ID || '').trim();
 
-    const smsConfigurado = Boolean(twilioSid && twilioToken && twilioDesde && telefonoAnfitrion);
+    const canal = telegramToken && telegramChat
+        ? 'telegram'
+        : (twilioSid && twilioToken && twilioDesde && telefonoAnfitrion ? 'sms' : null);
+    const smsConfigurado = Boolean(canal);
 
-    if (!smsConfigurado) {
+    if (canal) {
+        console.log(`[ingreso] Los códigos se enviarán por ${canal === 'telegram' ? 'Telegram' : 'SMS'}`);
+    } else {
         console.warn(
-            '[ingreso] Faltan TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE u OWNER_PHONE. ' +
+            '[ingreso] No hay canal para enviar el código. Configura TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID ' +
+            '(o TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE y OWNER_PHONE). ' +
             'Nadie podrá entrar a la sala hasta que se configuren.'
         );
     }
@@ -74,6 +82,38 @@ function crearRutasIngreso({ limpiarNombre, crearAcceso, livekitConfigurado }) {
         if (smsRecientes.length >= SMS_POR_HORA) return true;
         smsRecientes.push(ahora);
         return false;
+    }
+
+    const escaparHtml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    async function enviarTelegram(nombre, codigo) {
+        const resp = await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: telegramChat,
+                parse_mode: 'HTML',
+                // <code> permite copiar el código con un toque en Telegram
+                text:
+                    `🔐 <b>Ventana Digital</b>\n` +
+                    `<b>${escaparHtml(nombre)}</b> quiere entrar a la videollamada.\n\n` +
+                    `Código: <code>${codigo}</code>\n` +
+                    `Vence en 5 min. Si no conoces a esta persona, no lo compartas.`
+            }),
+            signal: AbortSignal.timeout(15000)
+        });
+        if (!resp.ok) {
+            const datos = await resp.json().catch(() => ({}));
+            throw new Error(`Telegram ${resp.status}: ${datos.description || 'error desconocido'}`);
+        }
+    }
+
+    async function enviarCodigo(nombre, codigo) {
+        if (canal === 'telegram') return enviarTelegram(nombre, codigo);
+        return enviarSms(
+            `Ventana Digital: ${nombre} quiere entrar a la videollamada. ` +
+            `Codigo: ${codigo}. Vence en 5 min. Si no lo conoces, no lo compartas.`
+        );
     }
 
     async function enviarSms(texto) {
@@ -121,12 +161,9 @@ function crearRutasIngreso({ limpiarNombre, crearAcceso, livekitConfigurado }) {
         const solicitudId = crypto.randomUUID();
 
         try {
-            await enviarSms(
-                `Ventana Digital: ${nombre} quiere entrar a la videollamada. ` +
-                `Codigo: ${codigo}. Vence en 5 min. Si no lo conoces, no lo compartas.`
-            );
+            await enviarCodigo(nombre, codigo);
         } catch (error) {
-            console.error('[ingreso] No se pudo enviar el SMS:', error.message);
+            console.error('[ingreso] No se pudo enviar el código:', error.message);
             return res.status(502).json({ error: 'No se pudo enviar el código al anfitrión. Inténtalo de nuevo.' });
         }
 

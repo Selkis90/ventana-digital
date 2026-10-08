@@ -277,9 +277,11 @@ app.use('/api', (req, res) => {
 app.use(
     express.static(clientePath, {
         index: false,
-        maxAge: CONFIG.produccion ? '1h' : 0,
-        setHeaders(res, filePath) {
-            if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+        // no-cache: el navegador siempre revisa si hay versión nueva (con ETag, así que
+        // si no cambió responde 304 sin volver a descargar). Evita mezclar un index.html
+        // nuevo con un camara.js viejo después de actualizar.
+        setHeaders(res) {
+            res.setHeader('Cache-Control', 'no-cache');
         }
     })
 );

@@ -4,14 +4,12 @@
  * Ventana Digital — servidor
  * --------------------------------------------------------------
  * 1. Sirve el cliente web (carpeta /cliente).
- * 2. Controla el ingreso a la sala con un código enviado por SMS
- *    al anfitrión (ver ingreso.js). Solo con ese código se emite
- *    el token de LiveKit.
+ * 2. Entrega el token de LiveKit con solo escribir el nombre
+ *    (POST /api/token). Sin códigos, sin SMS, sin Telegram.
  * 3. Expone configuración pública y un health check.
  *
  * LiveKit Cloud se encarga de audio, video, TURN/STUN y reconexión,
- * por eso este servidor NO necesita Socket.IO. Twilio solo se usa
- * para enviar el SMS con el código.
+ * por eso este servidor NO necesita Socket.IO ni servicios de pago.
  */
 
 const path = require('path');
@@ -23,7 +21,6 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const { AccessToken } = require('livekit-server-sdk');
-const { crearRutasIngreso } = require('./ingreso');
 
 // ============================================================
 // CONFIGURACIÓN
@@ -44,9 +41,9 @@ const CONFIG = Object.freeze({
     livekitApiKey: (process.env.LIVEKIT_API_KEY || '').trim(),
     livekitApiSecret: (process.env.LIVEKIT_API_SECRET || '').trim(),
     salaPorDefecto: (process.env.DEFAULT_ROOM || 'sala-principal').trim(),
-    // Duración del acceso tras verificar el código. Una llamada en curso NO se corta al vencer
-    // (LiveKit renueva la sesión); solo limita las reconexiones automáticas.
-    tokenTtlSeg: ttlEnSegundos(process.env.TOKEN_TTL || '30d'),
+    // Vigencia del token. Una llamada en curso NO se corta al vencer (LiveKit renueva
+    // la sesión) y el cliente pide uno nuevo solo si lo necesita para reconectar.
+    tokenTtlSeg: ttlEnSegundos(process.env.TOKEN_TTL || '6h'),
     origenesPermitidos: (process.env.ALLOWED_ORIGINS || '')
         .split(',')
         .map((o) => o.trim())
@@ -166,7 +163,8 @@ function crearRateLimit({ ventanaMs, maximo }) {
     };
 }
 
-const limiteIngreso = crearRateLimit({ ventanaMs: 60000, maximo: 20 });
+// Frena abusos: máximo 20 tokens por minuto por IP
+const limiteToken = crearRateLimit({ ventanaMs: 60000, maximo: 20 });
 
 // ============================================================
 // VALIDACIÓN
@@ -197,7 +195,7 @@ function crearIdentidad(nombre) {
 // RUTAS API
 // ============================================================
 
-// Crea el token de LiveKit. Solo se llama después de verificar el código SMS.
+// Crea el token de LiveKit para entrar a la sala
 async function crearAcceso(nombre) {
     const identidad = crearIdentidad(nombre);
 
@@ -226,19 +224,37 @@ async function crearAcceso(nombre) {
     };
 }
 
-const rutasIngreso = crearRutasIngreso({ limpiarNombre, crearAcceso, livekitConfigurado });
-
 app.get('/api/config', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({
         livekitUrl: CONFIG.livekitUrl,
         salaPorDefecto: CONFIG.salaPorDefecto,
-        disponible: livekitConfigurado && rutasIngreso.smsConfigurado
+        disponible: livekitConfigurado
     });
 });
 
-// El token ya NO se entrega libremente: solo a través del código SMS.
-app.use('/api/ingreso', limiteIngreso, rutasIngreso);
+// Entrada directa: con el nombre basta para recibir el token
+app.post('/api/token', limiteToken, async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+
+    if (!livekitConfigurado) {
+        return res.status(503).json({ error: 'La sala no está configurada todavía.' });
+    }
+
+    const nombre = limpiarNombre((req.body || {}).nombre);
+    if (!nombre) {
+        return res.status(400).json({ error: 'Escribe tu nombre para entrar.' });
+    }
+
+    try {
+        const acceso = await crearAcceso(nombre);
+        console.log(`[ingreso] Entró: ${acceso.identidad}`);
+        return res.json(acceso);
+    } catch (error) {
+        console.error('[ingreso] Error generando token:', error);
+        return res.status(500).json({ error: 'No se pudo generar el acceso a la sala.' });
+    }
+});
 
 app.get('/health', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -246,7 +262,6 @@ app.get('/health', (req, res) => {
         status: 'ok',
         version: CONFIG.version,
         livekit: livekitConfigurado,
-        sms: rutasIngreso.smsConfigurado,
         uptime: Math.round(process.uptime())
     });
 });

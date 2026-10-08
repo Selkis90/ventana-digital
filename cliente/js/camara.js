@@ -17,7 +17,7 @@
     // CONSTANTES
     // ============================================================
 
-    const APP_VERSION = '2.0.0';
+    const APP_VERSION = '2.1.0';
     const CDN_RESPALDO = 'https://unpkg.com/livekit-client@2.22.3/dist/livekit-client.umd.js';
     const MAX_REINTENTOS = 8;
 
@@ -42,12 +42,6 @@
         prefCam: $('pref-cam'),
         lobbyError: $('lobby-error'),
         btnEntrar: $('btn-entrar'),
-
-        formCodigo: $('form-codigo'),
-        inputCodigo: $('input-codigo'),
-        codigoError: $('codigo-error'),
-        btnVerificar: $('btn-verificar'),
-        btnCancelarCodigo: $('btn-cancelar-codigo'),
 
         sala: $('sala'),
         escenario: $('escenario'),
@@ -112,8 +106,7 @@
         quiereMic: true,
         quiereCam: true,
         conectando: false,
-        solicitudId: null,  // solicitud de código pendiente
-        acceso: null,       // { token, url, sala, identidad, nombre, expira } tras verificar el código
+        acceso: null,       // { token, url, sala, identidad, nombre, expira }
         salidaVoluntaria: false,
         intentos: 0,
         timerReintento: null,
@@ -251,18 +244,8 @@
         ui.sala.hidden = true;
         ui.salida.hidden = true;
         ui.avisoAudio.hidden = true;
-        ui.formCodigo.hidden = true;
         ui.form.hidden = false;
         ui.lobby.hidden = false;
-        st.solicitudId = null;
-    }
-
-    function mostrarPasoCodigo() {
-        ui.form.hidden = true;
-        ui.inputCodigo.value = '';
-        mostrarErrorCodigo('');
-        ui.formCodigo.hidden = false;
-        ui.inputCodigo.focus();
     }
 
     function mostrarSala() {
@@ -276,7 +259,7 @@
     }
 
     function mostrarSalida(titulo, texto) {
-        // Al salir de la sala el acceso se pierde: para volver hay que pedir un código nuevo
+        // Al salir se descarta el token; al volver se pide uno nuevo
         st.acceso = null;
         clearTimeout(st.timerReintento);
         ui.sala.hidden = true;
@@ -291,11 +274,6 @@
     function mostrarErrorLobby(mensaje) {
         ui.lobbyError.textContent = mensaje;
         ui.lobbyError.hidden = !mensaje;
-    }
-
-    function mostrarErrorCodigo(mensaje) {
-        ui.codigoError.textContent = mensaje;
-        ui.codigoError.hidden = !mensaje;
     }
 
     function setBotonCargando(boton, cargando) {
@@ -352,15 +330,17 @@
         return datos;
     }
 
-    // El token se obtiene UNA vez con el código SMS y se reutiliza
-    // para las reconexiones mientras no haya vencido.
-    function obtenerAcceso() {
+    // Reutiliza el token mientras esté vigente (así las reconexiones conservan
+    // la misma identidad); si venció, pide uno nuevo al servidor.
+    async function obtenerAcceso() {
         const a = st.acceso;
         if (a && a.token && a.url && a.expira - Date.now() > 60000) return a;
         st.acceso = null;
-        const err = new Error('Tu acceso venció. Solicita un nuevo código para entrar.');
-        err.status = 401;
-        throw err;
+        // Hasta 60 s: en Render gratis el servidor puede estar "dormido"
+        const datos = await postJson('/api/token', { nombre: st.nombre }, 60000);
+        st.acceso = datos;
+        st.sala = datos.sala || st.salaDefecto;
+        return datos;
     }
 
     function crearRoom() {
@@ -399,8 +379,10 @@
         clearTimeout(st.timerReintento);
 
         try {
-            mostrarCargando(primeraVez ? 'Preparando la sala…' : 'Reconectando…');
-            const datos = obtenerAcceso();
+            mostrarCargando(primeraVez
+                ? 'Preparando la sala… si el servidor estaba dormido puede tardar hasta un minuto.'
+                : 'Reconectando…');
+            const datos = await obtenerAcceso();
 
             await destruirRoom();
 
@@ -514,7 +496,7 @@
         console.warn('[sala] Desconectado. Motivo:', reason);
 
         if (st.salidaVoluntaria || reason === R.CLIENT_INITIATED) {
-            mostrarSalida('Saliste de la llamada', 'Para volver a entrar necesitas un código nuevo del anfitrión.');
+            mostrarSalida('Saliste de la llamada', 'Puedes volver a entrar cuando quieras.');
             return;
         }
         if (reason === R.DUPLICATE_IDENTITY) {
@@ -1356,7 +1338,7 @@
         st.salidaVoluntaria = true;
         clearTimeout(st.timerReintento);
         await destruirRoom();
-        mostrarSalida('Saliste de la llamada', 'Para volver a entrar necesitas un código nuevo del anfitrión.');
+        mostrarSalida('Saliste de la llamada', 'Puedes volver a entrar cuando quieras.');
     }
 
     // ============================================================
@@ -1447,10 +1429,11 @@
         }
     }
 
-    // Paso 1: pedir el código (se envía por SMS al anfitrión)
+    // Entrar: con el nombre basta, sin código de verificación
     async function onEntrar(evento) {
         evento.preventDefault();
         mostrarErrorLobby('');
+        if (st.conectando) return;
 
         const nombre = ui.inputNombre.value.replace(/\s+/g, ' ').trim();
 
@@ -1472,62 +1455,36 @@
         st.sala = st.salaDefecto;
         st.quiereMic = ui.prefMic.checked;
         st.quiereCam = ui.prefCam.checked;
+        st.acceso = null;
+        st.intentos = 0;
+        st.facingMode = 'user';
 
         almacen.guardar('vd_nombre', nombre);
         almacen.guardar('vd_mic', st.quiereMic ? '1' : '0');
         almacen.guardar('vd_cam', st.quiereCam ? '1' : '0');
 
         setBotonCargando(ui.btnEntrar, true);
-        mostrarCargando('Enviando solicitud al anfitrión… si el servidor estaba dormido puede tardar hasta un minuto.');
         try {
-            // Sin reintentos automáticos: cada intento envía un SMS
-            const datos = await postJson('/api/ingreso/solicitar', { nombre }, 60000);
-            st.solicitudId = datos.solicitudId;
-            mostrarPasoCodigo();
-        } catch (error) {
-            console.error('[ingreso]', error);
-            mostrarErrorLobby(mensajeConexion(error));
+            await conectar({ primeraVez: true });
         } finally {
-            ocultarCargando();
             setBotonCargando(ui.btnEntrar, false);
         }
     }
 
-    // Paso 2: verificar el código y entrar
-    async function onVerificar(evento) {
-        evento.preventDefault();
-        mostrarErrorCodigo('');
-
-        const codigo = ui.inputCodigo.value.replace(/\D/g, '');
-        if (codigo.length !== 6) {
-            mostrarErrorCodigo('Escribe los 6 dígitos del código.');
-            ui.inputCodigo.focus();
+    // Volver a entrar desde la pantalla de salida, con el mismo nombre
+    async function volverAEntrar() {
+        if (!st.nombre || !LK) {
+            mostrarLobby();
             return;
         }
-        if (!st.solicitudId || ui.btnVerificar.disabled) return;
-
         desbloquearAudioEnGesto();
-        setBotonCargando(ui.btnVerificar, true);
+        st.acceso = null;
+        st.intentos = 0;
+        setBotonCargando(ui.btnVolver, true);
         try {
-            const datos = await postJson('/api/ingreso/verificar', { solicitudId: st.solicitudId, codigo }, 25000);
-            st.acceso = datos;
-            st.sala = datos.sala || st.salaDefecto;
-            st.solicitudId = null;
-            st.intentos = 0;
-            st.facingMode = 'user';
             await conectar({ primeraVez: true });
-        } catch (error) {
-            console.error('[ingreso]', error);
-            if (error.status === 410 || error.status === 403) {
-                // Venció o se agotaron los intentos: volver al paso 1
-                mostrarLobby();
-                mostrarErrorLobby(error.message);
-            } else {
-                mostrarErrorCodigo(mensajeConexion(error));
-                ui.inputCodigo.select();
-            }
         } finally {
-            setBotonCargando(ui.btnVerificar, false);
+            setBotonCargando(ui.btnVolver, false);
         }
     }
 
@@ -1567,21 +1524,6 @@
             mostrarErrorLobby('');
         });
 
-        ui.formCodigo.addEventListener('submit', onVerificar);
-        ui.inputCodigo.addEventListener('input', () => {
-            const limpio = ui.inputCodigo.value.replace(/\D/g, '').slice(0, 6);
-            if (ui.inputCodigo.value !== limpio) ui.inputCodigo.value = limpio;
-            mostrarErrorCodigo('');
-            // Entra automáticamente al completar los 6 dígitos
-            if (limpio.length === 6 && typeof ui.formCodigo.requestSubmit === 'function') {
-                ui.formCodigo.requestSubmit();
-            }
-        });
-        ui.btnCancelarCodigo.addEventListener('click', () => {
-            mostrarLobby();
-            ui.inputNombre.focus();
-        });
-
         ui.btnMic.addEventListener('click', alternarMicrofono);
         ui.btnCam.addEventListener('click', alternarCamara);
         ui.btnVoltear.addEventListener('click', voltearCamara);
@@ -1595,11 +1537,8 @@
 
         ui.btnActivarAudio.addEventListener('click', activarAudio);
 
-        // Volver a entrar = pedir un código nuevo
-        ui.btnVolver.addEventListener('click', () => {
-            mostrarLobby();
-            if (!esTactil) ui.btnEntrar.focus();
-        });
+        // Volver a entrar directamente, sin pasar por el lobby
+        ui.btnVolver.addEventListener('click', volverAEntrar);
         ui.btnInicio.addEventListener('click', mostrarLobby);
 
         ui.btnDiagCerrar.addEventListener('click', cerrarDiagnostico);

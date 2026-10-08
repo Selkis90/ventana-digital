@@ -16,7 +16,7 @@ services:
       - key: DEFAULT_ROOM
         value: sala-principal
       - key: TOKEN_TTL
-        value: 4h
+        value: 6h
       # Estos se llenan en el panel de Render (no se guardan en el repo)
       - key: LIVEKIT_URL
         sync: false

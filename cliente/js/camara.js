@@ -22,7 +22,7 @@
     // CONSTANTES
     // ============================================================
 
-    const APP_VERSION = '2.2.0';
+    const APP_VERSION = '2.2.1';
     const CDN_RESPALDO = 'https://unpkg.com/livekit-client@2.22.3/dist/livekit-client.umd.js';
     const ESPERA_MAX_MS = 30000; // los reintentos nunca esperan más de 30 s
 
@@ -1520,20 +1520,26 @@
     // ============================================================
 
     function registrarListenersUI() {
-        ui.form.addEventListener('submit', onEntrar);
+        // Si algún elemento no existe (HTML de otra versión), se omite en vez de romper la app
+        const escuchar = (el, evento, fn) => {
+            if (el) el.addEventListener(evento, fn);
+            else console.warn('[ui] Falta un elemento para el evento', evento);
+        };
 
-        ui.btnMic.addEventListener('click', alternarMicrofono);
-        ui.btnCam.addEventListener('click', alternarCamara);
-        ui.btnVoltear.addEventListener('click', voltearCamara);
-        ui.btnCompartir.addEventListener('click', alternarPantalla);
-        ui.btnInvitar.addEventListener('click', invitar);
-        ui.btnInvitarVacio.addEventListener('click', invitar);
-        ui.btnSalir.addEventListener('click', salir);
-        ui.btnFullscreen.addEventListener('click', alternarPantallaCompleta);
-        ui.btnDiag.addEventListener('click', mostrarDiagnostico);
-        ui.volumen.addEventListener('input', cambiarVolumen);
+        escuchar(ui.form, 'submit', onEntrar);
 
-        ui.btnActivarAudio.addEventListener('click', activarAudio);
+        escuchar(ui.btnMic, 'click', alternarMicrofono);
+        escuchar(ui.btnCam, 'click', alternarCamara);
+        escuchar(ui.btnVoltear, 'click', voltearCamara);
+        escuchar(ui.btnCompartir, 'click', alternarPantalla);
+        escuchar(ui.btnInvitar, 'click', invitar);
+        escuchar(ui.btnInvitarVacio, 'click', invitar);
+        escuchar(ui.btnSalir, 'click', salir);
+        escuchar(ui.btnFullscreen, 'click', alternarPantallaCompleta);
+        escuchar(ui.btnDiag, 'click', mostrarDiagnostico);
+        escuchar(ui.volumen, 'input', cambiarVolumen);
+
+        escuchar(ui.btnActivarAudio, 'click', activarAudio);
         ['pointerdown', 'keydown'].forEach((ev) =>
             document.addEventListener(ev, () => {
                 if (st.room && !st.room.canPlaybackAudio) activarAudio();
@@ -1541,10 +1547,10 @@
         );
 
         // Volver a entrar directamente, sin pasar por el lobby
-        ui.btnVolver.addEventListener('click', volverAEntrar);
+        escuchar(ui.btnVolver, 'click', volverAEntrar);
 
-        ui.btnDiagCerrar.addEventListener('click', cerrarDiagnostico);
-        ui.btnDiagCopiar.addEventListener('click', async () => {
+        escuchar(ui.btnDiagCerrar, 'click', cerrarDiagnostico);
+        escuchar(ui.btnDiagCopiar, 'click', async () => {
             try {
                 await navigator.clipboard.writeText(ui.diagContenido.textContent);
                 toast('Diagnóstico copiado', 'exito');

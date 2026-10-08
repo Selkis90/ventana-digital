@@ -8,6 +8,11 @@
    - Reconexión: LiveKit resuelve los cortes cortos por sí mismo;
      si la sala se cae del todo, reintentamos con backoff exponencial.
    - Sin polling, sin setInterval: todo se mueve por eventos.
+   - MODO KIOSCO: al abrir la URL entra solo a la sala, sin pedir
+     nada. Si no hay internet o el servidor está dormido, reintenta
+     para siempre. Parámetros opcionales en la URL:
+        ?nombre=Recepcion   nombre que verán los demás
+        &mic=0  &cam=0      entrar con micrófono / cámara apagados
    ============================================================ */
 
 (function () {
@@ -17,9 +22,9 @@
     // CONSTANTES
     // ============================================================
 
-    const APP_VERSION = '2.1.0';
+    const APP_VERSION = '2.2.0';
     const CDN_RESPALDO = 'https://unpkg.com/livekit-client@2.22.3/dist/livekit-client.umd.js';
-    const MAX_REINTENTOS = 8;
+    const ESPERA_MAX_MS = 30000; // los reintentos nunca esperan más de 30 s
 
     const esTactil = window.matchMedia('(pointer: coarse)').matches;
     const esMovil =
@@ -37,9 +42,6 @@
     const ui = {
         lobby: $('lobby'),
         form: $('form-entrar'),
-        inputNombre: $('input-nombre'),
-        prefMic: $('pref-mic'),
-        prefCam: $('pref-cam'),
         lobbyError: $('lobby-error'),
         btnEntrar: $('btn-entrar'),
 
@@ -72,8 +74,7 @@
         salidaTitulo: $('salida-titulo'),
         salidaTexto: $('salida-texto'),
         btnVolver: $('btn-volver'),
-        btnInicio: $('btn-inicio'),
-
+        
         avisoAudio: $('aviso-audio'),
         btnActivarAudio: $('btn-activar-audio'),
 
@@ -110,6 +111,7 @@
         salidaVoluntaria: false,
         intentos: 0,
         timerReintento: null,
+        timerVolver: null,  // regreso automático tras tocar "Salir"
 
         tiles: new Map(),   // clave -> { clave, identidad, tipo, el, video, nombre, avatar, calidad, track }
         audios: new Map(),  // trackSid -> { el, track }
@@ -150,6 +152,23 @@
             try { localStorage.setItem(clave, valor); } catch (e) { /* modo privado */ }
         }
     };
+
+    // Nombre automático: ?nombre= en la URL, o uno fijo guardado en este equipo
+    function nombreAutomatico() {
+        const desdeUrl = new URLSearchParams(location.search).get('nombre');
+        if (desdeUrl && desdeUrl.trim()) return desdeUrl.replace(/\s+/g, ' ').trim().slice(0, 40);
+        let guardado = almacen.leer('vd_nombre_equipo');
+        if (!guardado) {
+            guardado = 'Equipo ' + String(Math.floor(1000 + Math.random() * 9000));
+            almacen.guardar('vd_nombre_equipo', guardado);
+        }
+        return guardado;
+    }
+
+    function parametroActivo(clave) {
+        const v = new URLSearchParams(location.search).get(clave);
+        return v === null ? true : !/^(0|no|false|off)$/i.test(v.trim());
+    }
 
     function nombreDe(participante) {
         return (participante && (participante.name || participante.identity)) || 'Invitado';
@@ -269,6 +288,17 @@
         ui.salidaTexto.textContent = texto;
         ui.salida.hidden = false;
         ocultarCargando();
+
+        // Modo kiosco: si alguien salió por error, el equipo vuelve solo en 1 minuto
+        clearTimeout(st.timerVolver);
+        st.timerVolver = setTimeout(volverAEntrar, 60000);
+    }
+
+    // Error que no se arregla reintentando (navegador, HTTPS, librería)
+    function mostrarErrorFatal(mensaje) {
+        ocultarCargando();
+        mostrarLobby();
+        mostrarErrorLobby(mensaje);
     }
 
     function mostrarErrorLobby(mensaje) {
@@ -380,7 +410,7 @@
 
         try {
             mostrarCargando(primeraVez
-                ? 'Preparando la sala… si el servidor estaba dormido puede tardar hasta un minuto.'
+                ? 'Entrando a la sala… si el servidor estaba dormido puede tardar hasta un minuto.'
                 : 'Reconectando…');
             const datos = await obtenerAcceso();
 
@@ -409,13 +439,10 @@
             console.error('[conexión]', error);
             ocultarCargando();
 
-            if (primeraVez || (error && error.status && error.status < 500)) {
-                await destruirRoom();
-                mostrarLobby();
-                mostrarErrorLobby(mensajeConexion(error));
-            } else {
-                programarReintento();
-            }
+            await destruirRoom();
+            // Si el token fue rechazado, pedir uno nuevo en el siguiente intento
+            if (error && error.status && error.status < 500) st.acceso = null;
+            programarReintento(mensajeConexion(error));
         } finally {
             st.conectando = false;
         }
@@ -462,23 +489,26 @@
         }
     }
 
-    function programarReintento() {
+    // Muestra el aviso donde se vea: en la sala (barra de estado) o en la pantalla de carga
+    function avisoReintento(texto) {
+        if (ui.sala.hidden) mostrarCargando(texto);
+        else actualizarEstado(texto, 'error');
+    }
+
+    function programarReintento(motivo) {
         if (st.salidaVoluntaria) return;
         clearTimeout(st.timerReintento);
 
         if (!navigator.onLine) {
-            actualizarEstado('Sin internet. Esperando conexión…', 'error');
+            avisoReintento('Sin internet. Se conectará solo cuando vuelva la conexión…');
             return; // el evento "online" retoma la conexión
         }
 
-        if (st.intentos >= MAX_REINTENTOS) {
-            mostrarSalida('No pudimos reconectar', 'Revisa tu conexión a internet e inténtalo de nuevo.');
-            return;
-        }
-
-        const espera = Math.min(30000, 1000 * Math.pow(2, st.intentos)) + Math.random() * 500;
+        // Modo kiosco: nunca se rinde; espera 1, 2, 4… hasta 30 s entre intentos
+        const espera = Math.min(ESPERA_MAX_MS, 1000 * Math.pow(2, Math.min(st.intentos, 5))) + Math.random() * 500;
         st.intentos += 1;
-        actualizarEstado(`Conexión perdida. Reintentando en ${Math.round(espera / 1000)} s…`, 'error');
+        const seg = Math.round(espera / 1000);
+        avisoReintento((motivo ? motivo + ' ' : 'Conexión perdida. ') + `Reintentando en ${seg} s…`);
         st.timerReintento = setTimeout(() => conectar(), espera);
     }
 
@@ -496,22 +526,14 @@
         console.warn('[sala] Desconectado. Motivo:', reason);
 
         if (st.salidaVoluntaria || reason === R.CLIENT_INITIATED) {
-            mostrarSalida('Saliste de la llamada', 'Puedes volver a entrar cuando quieras.');
+            mostrarSalida('Saliste de la llamada', 'Volverás a entrar automáticamente en 1 minuto.');
             return;
         }
-        if (reason === R.DUPLICATE_IDENTITY) {
-            mostrarSalida('Sesión abierta en otro lugar', 'Entraste a esta sala desde otra pestaña o dispositivo.');
-            return;
+        // Modo kiosco: cualquier otra desconexión vuelve a entrar sola.
+        // Si nos sacaron o hubo identidad duplicada, se pide un token nuevo.
+        if (reason === R.DUPLICATE_IDENTITY || reason === R.PARTICIPANT_REMOVED || reason === R.ROOM_DELETED) {
+            st.acceso = null;
         }
-        if (reason === R.PARTICIPANT_REMOVED) {
-            mostrarSalida('Fuiste retirado de la sala', 'Un administrador te sacó de la llamada.');
-            return;
-        }
-        if (reason === R.ROOM_DELETED) {
-            mostrarSalida('La sala fue cerrada', 'La llamada terminó.');
-            return;
-        }
-
         programarReintento();
     }
 
@@ -1338,7 +1360,7 @@
         st.salidaVoluntaria = true;
         clearTimeout(st.timerReintento);
         await destruirRoom();
-        mostrarSalida('Saliste de la llamada', 'Puedes volver a entrar cuando quieras.');
+        mostrarSalida('Saliste de la llamada', 'Volverás a entrar automáticamente en 1 minuto.');
     }
 
     // ============================================================
@@ -1429,54 +1451,38 @@
         }
     }
 
-    // Entrar: con el nombre basta, sin código de verificación
-    async function onEntrar(evento) {
-        evento.preventDefault();
-        mostrarErrorLobby('');
-        if (st.conectando) return;
+    // Entrada automática: no pide nada, entra apenas carga la página
+    async function entrarAutomatico() {
+        if (st.conectando || st.room) return;
+        clearTimeout(st.timerReintento);
 
-        const nombre = ui.inputNombre.value.replace(/\s+/g, ' ').trim();
-
-        ui.inputNombre.setAttribute('aria-invalid', String(!nombre));
-        if (!nombre) {
-            mostrarErrorLobby('Escribe tu nombre para entrar.');
-            ui.inputNombre.focus();
-            return;
-        }
-
-        if (!LK) {
-            mostrarErrorLobby('La librería de video aún no ha cargado. Recarga la página.');
-            return;
-        }
-
-        desbloquearAudioEnGesto();
-
-        st.nombre = nombre;
+        st.nombre = nombreAutomatico();
         st.sala = st.salaDefecto;
-        st.quiereMic = ui.prefMic.checked;
-        st.quiereCam = ui.prefCam.checked;
+        st.quiereMic = parametroActivo('mic');
+        st.quiereCam = parametroActivo('cam');
         st.acceso = null;
         st.intentos = 0;
         st.facingMode = 'user';
 
-        almacen.guardar('vd_nombre', nombre);
-        almacen.guardar('vd_mic', st.quiereMic ? '1' : '0');
-        almacen.guardar('vd_cam', st.quiereCam ? '1' : '0');
+        ui.lobby.hidden = true;
+        await conectar({ primeraVez: true });
+    }
 
-        setBotonCargando(ui.btnEntrar, true);
-        try {
-            await conectar({ primeraVez: true });
-        } finally {
-            setBotonCargando(ui.btnEntrar, false);
-        }
+    // Botón "Reintentar" del aviso de error
+    function onEntrar(evento) {
+        evento.preventDefault();
+        location.reload();
     }
 
     // Volver a entrar desde la pantalla de salida, con el mismo nombre
     async function volverAEntrar() {
-        if (!st.nombre || !LK) {
-            mostrarLobby();
+        clearTimeout(st.timerVolver);
+        if (st.conectando || st.room) return;
+        if (!LK) {
+            location.reload();
             return;
         }
+        if (!st.nombre) st.nombre = nombreAutomatico();
         desbloquearAudioEnGesto();
         st.acceso = null;
         st.intentos = 0;
@@ -1489,10 +1495,6 @@
     }
 
     function restaurarPreferencias() {
-        ui.inputNombre.value = almacen.leer('vd_nombre') || '';
-        ui.prefMic.checked = almacen.leer('vd_mic') !== '0';
-        ui.prefCam.checked = almacen.leer('vd_cam') !== '0';
-
         const vol = Number(almacen.leer('vd_volumen'));
         if (!Number.isNaN(vol) && almacen.leer('vd_volumen') !== null) {
             ui.volumen.value = String(clamp(vol, 0, 1));
@@ -1519,10 +1521,6 @@
 
     function registrarListenersUI() {
         ui.form.addEventListener('submit', onEntrar);
-        ui.inputNombre.addEventListener('input', () => {
-            ui.inputNombre.removeAttribute('aria-invalid');
-            mostrarErrorLobby('');
-        });
 
         ui.btnMic.addEventListener('click', alternarMicrofono);
         ui.btnCam.addEventListener('click', alternarCamara);
@@ -1536,10 +1534,14 @@
         ui.volumen.addEventListener('input', cambiarVolumen);
 
         ui.btnActivarAudio.addEventListener('click', activarAudio);
+        ['pointerdown', 'keydown'].forEach((ev) =>
+            document.addEventListener(ev, () => {
+                if (st.room && !st.room.canPlaybackAudio) activarAudio();
+            })
+        );
 
         // Volver a entrar directamente, sin pasar por el lobby
         ui.btnVolver.addEventListener('click', volverAEntrar);
-        ui.btnInicio.addEventListener('click', mostrarLobby);
 
         ui.btnDiagCerrar.addEventListener('click', cerrarDiagnostico);
         ui.btnDiagCopiar.addEventListener('click', async () => {
@@ -1564,7 +1566,7 @@
         // Red
         window.addEventListener('online', () => {
             toast('Conexión a internet recuperada', 'exito');
-            if (!st.room && !ui.sala.hidden && !st.salidaVoluntaria && !st.conectando) {
+            if (!st.room && st.nombre && !st.salidaVoluntaria && !st.conectando) {
                 st.intentos = 0;
                 conectar();
             }
@@ -1601,30 +1603,25 @@
 
         ui.btnCompartir.hidden = esMovil || !(navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices);
         ui.btnFullscreen.hidden = !soportaFullscreen();
-        mostrarLobby();
+        mostrarCargando('Entrando a la sala…');
 
-        cargarConfig(); // en paralelo; también "despierta" el servidor
+        await cargarConfig(); // también "despierta" el servidor si estaba dormido
 
         try {
             LK = await asegurarLiveKit();
         } catch (e) {
-            mostrarErrorLobby(e.message);
-            ui.btnEntrar.disabled = true;
+            mostrarErrorFatal(e.message);
             return;
         }
 
         const problema = verificarCompatibilidad();
         if (problema) {
-            mostrarErrorLobby(problema);
-            ui.btnEntrar.disabled = true;
+            mostrarErrorFatal(problema);
             return;
         }
 
-        if (!esTactil) {
-            (ui.inputNombre.value ? ui.btnEntrar : ui.inputNombre).focus();
-        }
-
         console.info(`Ventana Digital ${APP_VERSION} lista · LiveKit ${LK.version || ''}`);
+        entrarAutomatico();
     }
 
     if (document.readyState === 'loading') {

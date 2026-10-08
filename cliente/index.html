@@ -27,7 +27,9 @@
     <!-- ======================================================
          LOBBY: pantalla de entrada
          ====================================================== -->
-    <section id="lobby" class="lobby" aria-labelledby="lobby-titulo">
+    <section id="lobby" class="lobby" aria-labelledby="lobby-titulo" hidden>
+        <!-- Solo se muestra si hay un error que impide entrar (navegador no compatible, sin HTTPS…).
+             En condiciones normales la página entra sola a la sala. -->
         <form id="form-entrar" class="lobby-card" novalidate>
             <div class="marca">
                 <span class="marca-logo" aria-hidden="true">
@@ -35,37 +37,14 @@
                 </span>
                 <h1 id="lobby-titulo">Ventana Digital</h1>
             </div>
-            <p class="lobby-sub">Videollamadas estables desde cualquier dispositivo</p>
-
-            <label class="campo">
-                <span>Tu nombre</span>
-                <input id="input-nombre" name="nombre" type="text" maxlength="40"
-                       autocomplete="name" enterkeyhint="go" placeholder="INGRESE SU NOMBRE" required>
-            </label>
-
-            <div class="lobby-opciones" role="group" aria-label="Dispositivos al entrar">
-                <label class="interruptor">
-                    <input id="pref-mic" type="checkbox" checked>
-                    <span class="interruptor-ui" aria-hidden="true"></span>
-                    <span>Micrófono</span>
-                </label>
-                <label class="interruptor">
-                    <input id="pref-cam" type="checkbox" checked>
-                    <span class="interruptor-ui" aria-hidden="true"></span>
-                    <span>Cámara</span>
-                </label>
-            </div>
 
             <p id="lobby-error" class="lobby-error" role="alert" hidden></p>
 
             <button id="btn-entrar" class="btn-primario" type="submit">
-                <span class="btn-texto">Entrar a la sala</span>
+                <span class="btn-texto">Reintentar</span>
                 <span class="mini-spinner" aria-hidden="true"></span>
             </button>
-
-            <p class="lobby-nota">Al entrar, el navegador te pedirá permiso para usar la cámara y el micrófono.</p>
         </form>
-
     </section>
 
     <!-- ======================================================
@@ -172,9 +151,8 @@
     <section id="salida" class="lobby" hidden>
         <div class="lobby-card lobby-card-centro">
             <h2 id="salida-titulo">Saliste de la llamada</h2>
-            <p id="salida-texto" class="lobby-sub">Puedes volver a entrar cuando quieras.</p>
-            <button id="btn-volver" class="btn-primario" type="button"><span class="btn-texto">Volver a entrar</span></button>
-            <button id="btn-inicio" class="btn-secundario" type="button">Ir al inicio</button>
+            <p id="salida-texto" class="lobby-sub">Volverás a entrar automáticamente en 1 minuto.</p>
+            <button id="btn-volver" class="btn-primario" type="button"><span class="btn-texto">Volver a entrar ahora</span></button>
         </div>
     </section>
 
@@ -186,7 +164,7 @@
     </div>
 
     <!-- Cargando -->
-    <div id="loading-overlay" class="cargando" hidden>
+    <div id="loading-overlay" class="cargando">
         <div class="spinner" aria-hidden="true"></div>
         <p id="loading-texto" class="cargando-texto">Conectando…</p>
     </div>

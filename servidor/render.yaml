@@ -1,4 +1,5 @@
 # Render Blueprint — este archivo va en la RAÍZ del repositorio
+# (Si tu servicio ya existe en Render, basta con poner las variables en el panel.)
 services:
   - type: web
     name: ventana-digital
@@ -15,12 +16,20 @@ services:
         value: "20"
       - key: DEFAULT_ROOM
         value: sala-principal
-      - key: TOKEN_TTL
-        value: 6h
+      - key: CALIDAD
+        value: normal
+      - key: MAX_PARTICIPANTES
+        value: "6"
+      - key: ZONA_HORARIA
+        value: America/Bogota
       # Estos se llenan en el panel de Render (no se guardan en el repo)
-      - key: LIVEKIT_URL
+      - key: CF_APP_ID
         sync: false
-      - key: LIVEKIT_API_KEY
+      - key: CF_APP_TOKEN
         sync: false
-      - key: LIVEKIT_API_SECRET
+      - key: CF_TURN_KEY_ID
+        sync: false
+      - key: CF_TURN_KEY_TOKEN
+        sync: false
+      - key: HORARIO
         sync: false

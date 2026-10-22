@@ -1,23 +1,23 @@
 {
   "name": "ventana-digital",
-  "version": "2.2.1",
+  "version": "3.0.0",
   "private": true,
-  "description": "Videollamadas en tiempo real con LiveKit",
+  "description": "Videollamadas en tiempo real con Cloudflare Realtime (plan gratuito)",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
     "dev": "node --watch app.js",
-    "check": "node --check app.js"
+    "check": "node --check app.js && node --check sala.js && node --check cloudflare.js && node --check horario.js"
   },
   "engines": {
     "node": ">=20"
   },
-  "keywords": ["webrtc", "livekit", "video", "videollamada"],
+  "keywords": ["webrtc", "cloudflare", "realtime", "sfu", "video", "videollamada"],
   "license": "MIT",
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "livekit-server-sdk": "^2.15.0"
+    "ws": "^8.18.0"
   }
 }

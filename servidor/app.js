@@ -4,46 +4,45 @@
  * Ventana Digital — servidor
  * --------------------------------------------------------------
  * 1. Sirve el cliente web (carpeta /cliente).
- * 2. Entrega el token de LiveKit con solo escribir el nombre
- *    (POST /api/token). Sin códigos, sin SMS, sin Telegram.
- * 3. Expone configuración pública y un health check.
+ * 2. Lleva la sala por WebSocket (/ws): quién está, qué publica cada uno.
+ * 3. Habla con Cloudflare Realtime (SFU) en nombre del navegador.
+ *    El audio y el video NO pasan por Render: van directo a Cloudflare.
  *
- * LiveKit Cloud se encarga de audio, video, TURN/STUN y reconexión,
- * por eso este servidor NO necesita Socket.IO ni servicios de pago.
+ * Costo: Cloudflare Realtime da 1.000 GB/mes gratis (sin límite de minutos)
+ * y Render free alcanza para el servidor (solo mueve mensajes pequeños).
  */
 
 const path = require('path');
 const http = require('http');
-const crypto = require('crypto');
 
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
-const { AccessToken } = require('livekit-server-sdk');
+const { crearClienteCloudflare } = require('./cloudflare');
+const { crearSala } = require('./sala');
+const { crearHorario } = require('./horario');
 
 // ============================================================
 // CONFIGURACIÓN
 // ============================================================
 
-// Convierte "4h", "90m", "3600" (segundos) a segundos
-function ttlEnSegundos(valor) {
-    const m = String(valor || '').trim().match(/^(\d+)\s*([smhd]?)$/i);
-    if (!m) return 4 * 3600;
-    const factor = { '': 1, s: 1, m: 60, h: 3600, d: 86400 }[m[2].toLowerCase()];
-    return Math.max(60, Number(m[1]) * factor);
-}
+const CALIDADES = ['alta', 'normal', 'baja'];
+const calidadEnv = String(process.env.CALIDAD || 'normal').trim().toLowerCase();
 
 const CONFIG = Object.freeze({
     port: Number(process.env.PORT) || 3000,
     produccion: process.env.NODE_ENV === 'production',
-    livekitUrl: (process.env.LIVEKIT_URL || '').trim(),
-    livekitApiKey: (process.env.LIVEKIT_API_KEY || '').trim(),
-    livekitApiSecret: (process.env.LIVEKIT_API_SECRET || '').trim(),
+    cfAppId: (process.env.CF_APP_ID || '').trim(),
+    cfAppToken: (process.env.CF_APP_TOKEN || '').trim(),
+    cfTurnKeyId: (process.env.CF_TURN_KEY_ID || '').trim(),
+    cfTurnKeyToken: (process.env.CF_TURN_KEY_TOKEN || '').trim(),
+    cfApiUrl: (process.env.CF_API_URL || '').trim(), // solo para pruebas con simulador
     salaPorDefecto: (process.env.DEFAULT_ROOM || 'sala-principal').trim(),
-    // Vigencia del token. Una llamada en curso NO se corta al vencer (LiveKit renueva
-    // la sesión) y el cliente pide uno nuevo solo si lo necesita para reconectar.
-    tokenTtlSeg: ttlEnSegundos(process.env.TOKEN_TTL || '6h'),
+    calidad: CALIDADES.includes(calidadEnv) ? calidadEnv : 'normal',
+    maxParticipantes: Math.max(2, Number(process.env.MAX_PARTICIPANTES) || 6),
+    horario: (process.env.HORARIO || '').trim(),
+    zonaHoraria: (process.env.ZONA_HORARIA || 'America/Bogota').trim(),
     origenesPermitidos: (process.env.ALLOWED_ORIGINS || '')
         .split(',')
         .map((o) => o.trim())
@@ -51,16 +50,53 @@ const CONFIG = Object.freeze({
     version: require('./package.json').version
 });
 
-const livekitConfigurado = Boolean(
-    CONFIG.livekitUrl && CONFIG.livekitApiKey && CONFIG.livekitApiSecret
-);
+const cf = crearClienteCloudflare({
+    appId: CONFIG.cfAppId,
+    appToken: CONFIG.cfAppToken,
+    turnKeyId: CONFIG.cfTurnKeyId,
+    turnKeyToken: CONFIG.cfTurnKeyToken,
+    baseUrl: CONFIG.cfApiUrl
+});
 
-if (!livekitConfigurado) {
+if (!cf.configurado) {
     console.warn(
-        '[config] Faltan variables LIVEKIT_URL, LIVEKIT_API_KEY o LIVEKIT_API_SECRET. ' +
+        '[config] Faltan CF_APP_ID o CF_APP_TOKEN (Cloudflare Realtime). ' +
         'Nadie podrá entrar a la sala hasta que se configuren.'
     );
 }
+
+const horario = crearHorario(CONFIG.horario, CONFIG.zonaHoraria);
+
+// ------------------------------------------------------------
+// Consumo estimado del mes (lo que Cloudflare cobra = datos que
+// reciben los navegadores). Se reinicia si Render reinicia el
+// servidor; el dato exacto está en el panel de Cloudflare.
+// ------------------------------------------------------------
+const consumo = (() => {
+    const mesActual = () => new Intl.DateTimeFormat('en-CA', { timeZone: CONFIG.zonaHoraria, year: 'numeric', month: '2-digit' }).format(new Date());
+    let mes = mesActual();
+    let bytes = 0;
+    const desde = new Date().toISOString();
+    return {
+        sumar(n) {
+            const m = mesActual();
+            if (m !== mes) { mes = m; bytes = 0; }
+            bytes += n;
+        },
+        resumen() {
+            const m = mesActual();
+            if (m !== mes) { mes = m; bytes = 0; }
+            const gb = bytes / 1e9;
+            return {
+                mes,
+                gbEstimados: Math.round(gb * 100) / 100,
+                cupoGratisGb: 1000,
+                porcentaje: Math.round((gb / 1000) * 1000) / 10,
+                contandoDesde: desde
+            };
+        }
+    };
+})();
 
 const clientePath = path.join(__dirname, '..', 'cliente');
 
@@ -88,7 +124,7 @@ app.use((req, res, next) => {
         'Content-Security-Policy',
         [
             "default-src 'self'",
-            "script-src 'self' https://cdn.jsdelivr.net https://unpkg.com",
+            "script-src 'self'",
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data: blob:",
             "media-src 'self' blob: mediastream:",
@@ -108,7 +144,7 @@ app.use((req, res, next) => {
 // Redirigir a HTTPS en producción (cámara y micrófono lo exigen)
 if (CONFIG.produccion) {
     app.use((req, res, next) => {
-        if (req.secure || req.path === '/health') return next();
+        if (req.secure || req.path === '/health' || req.path === '/ws') return next();
         return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
     });
 }
@@ -122,49 +158,11 @@ app.use(
             if (CONFIG.origenesPermitidos.includes(origin)) return callback(null, true);
             return callback(null, false);
         },
-        methods: ['GET', 'POST', 'OPTIONS']
+        methods: ['GET', 'OPTIONS']
     })
 );
 
 app.use(express.json({ limit: '10kb' }));
-
-// ============================================================
-// RATE LIMIT SENCILLO EN MEMORIA
-// ============================================================
-
-function crearRateLimit({ ventanaMs, maximo }) {
-    const registros = new Map();
-
-    const limpieza = setInterval(() => {
-        const ahora = Date.now();
-        for (const [clave, datos] of registros) {
-            if (datos.reinicio <= ahora) registros.delete(clave);
-        }
-    }, ventanaMs);
-    limpieza.unref();
-
-    return (req, res, next) => {
-        const clave = req.ip || 'desconocido';
-        const ahora = Date.now();
-        let datos = registros.get(clave);
-
-        if (!datos || datos.reinicio <= ahora) {
-            datos = { cuenta: 0, reinicio: ahora + ventanaMs };
-            registros.set(clave, datos);
-        }
-
-        datos.cuenta += 1;
-
-        if (datos.cuenta > maximo) {
-            res.setHeader('Retry-After', Math.ceil((datos.reinicio - ahora) / 1000));
-            return res.status(429).json({ error: 'Demasiadas solicitudes. Intenta de nuevo en un momento.' });
-        }
-        return next();
-    };
-}
-
-// Frena abusos: máximo 20 tokens por minuto por IP
-const limiteToken = crearRateLimit({ ventanaMs: 60000, maximo: 20 });
 
 // ============================================================
 // VALIDACIÓN
@@ -180,80 +178,18 @@ function limpiarNombre(valor) {
         .slice(0, 40);
 }
 
-function crearIdentidad(nombre) {
-    const base = nombre
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 24) || 'invitado';
-    return `${base}-${crypto.randomBytes(4).toString('hex')}`;
-}
-
 // ============================================================
 // RUTAS API
 // ============================================================
 
-// Crea el token de LiveKit para entrar a la sala
-async function crearAcceso(nombre) {
-    const identidad = crearIdentidad(nombre);
-
-    const at = new AccessToken(CONFIG.livekitApiKey, CONFIG.livekitApiSecret, {
-        identity: identidad,
-        name: nombre,
-        ttl: CONFIG.tokenTtlSeg
-    });
-
-    at.addGrant({
-        roomJoin: true,
-        room: CONFIG.salaPorDefecto, // siempre la misma sala
-        canPublish: true,
-        canSubscribe: true,
-        canPublishData: true
-    });
-
-    return {
-        token: await at.toJwt(),
-        url: CONFIG.livekitUrl,
-        sala: CONFIG.salaPorDefecto,
-        identidad,
-        nombre,
-        // el cliente reutiliza el token para reconectar hasta esta hora
-        expira: Date.now() + CONFIG.tokenTtlSeg * 1000
-    };
-}
-
 app.get('/api/config', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({
-        livekitUrl: CONFIG.livekitUrl,
         salaPorDefecto: CONFIG.salaPorDefecto,
-        disponible: livekitConfigurado
+        disponible: cf.configurado,
+        calidad: CONFIG.calidad,
+        horario: Object.assign({ texto: horario.texto, zona: horario.zona }, horario.estado())
     });
-});
-
-// Entrada directa: con el nombre basta para recibir el token
-app.post('/api/token', limiteToken, async (req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-
-    if (!livekitConfigurado) {
-        return res.status(503).json({ error: 'La sala no está configurada todavía.' });
-    }
-
-    const nombre = limpiarNombre((req.body || {}).nombre);
-    if (!nombre) {
-        return res.status(400).json({ error: 'Escribe tu nombre para entrar.' });
-    }
-
-    try {
-        const acceso = await crearAcceso(nombre);
-        console.log(`[ingreso] Entró: ${acceso.identidad}`);
-        return res.json(acceso);
-    } catch (error) {
-        console.error('[ingreso] Error generando token:', error);
-        return res.status(500).json({ error: 'No se pudo generar el acceso a la sala.' });
-    }
 });
 
 app.get('/health', (req, res) => {
@@ -261,7 +197,12 @@ app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
         version: CONFIG.version,
-        livekit: livekitConfigurado,
+        video: cf.configurado ? 'cloudflare' : 'sin configurar',
+        turn: cf.turnConfigurado,
+        participantes: sala.cantidad(),
+        calidad: CONFIG.calidad,
+        horario: horario.configurado ? Object.assign({ texto: horario.texto }, horario.estado()) : 'siempre',
+        consumo: consumo.resumen(),
         uptime: Math.round(process.uptime())
     });
 });
@@ -304,6 +245,8 @@ app.use((err, req, res, next) => {
 // ARRANQUE Y APAGADO ORDENADO
 // ============================================================
 
+const sala = crearSala({ server, cf, config: CONFIG, horario, consumo, limpiarNombre });
+
 server.keepAliveTimeout = 65000;
 server.headersTimeout = 66000;
 
@@ -312,12 +255,15 @@ server.listen(CONFIG.port, '0.0.0.0', () => {
     console.log(` Ventana Digital v${CONFIG.version}`);
     console.log(` Puerto:  ${CONFIG.port}`);
     console.log(` Entorno: ${CONFIG.produccion ? 'producción' : 'desarrollo'}`);
-    console.log(` LiveKit: ${livekitConfigurado ? CONFIG.livekitUrl : 'NO CONFIGURADO'}`);
+    console.log(` Video:   ${cf.configurado ? 'Cloudflare Realtime' + (cf.turnConfigurado ? ' + TURN' : '') : 'NO CONFIGURADO'}`);
+    console.log(` Calidad: ${CONFIG.calidad} · Máx. ${CONFIG.maxParticipantes} personas`);
+    console.log(` Horario: ${horario.configurado ? horario.texto + ' (' + horario.zona + ')' : 'siempre abierto'}`);
     console.log('=========================================');
 });
 
 function apagar(senal) {
     console.log(`[${senal}] Cerrando servidor...`);
+    sala.cerrarTodo();
     server.close(() => {
         console.log('Servidor cerrado correctamente.');
         process.exit(0);

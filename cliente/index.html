@@ -11,16 +11,14 @@
     <meta name="description" content="Videollamadas rápidas y estables desde cualquier dispositivo.">
     <title>Ventana Digital</title>
 
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="stylesheet" href="css/estilos.css?v=2.2.1">
+    <link rel="stylesheet" href="css/estilos.css?v=3.0.0">
     <style>
         [hidden] { display: none !important; }
     </style>
 
-    <!-- LiveKit con versión fija: evita que una actualización rompa la app.
-         Si el CDN falla, camara.js carga automáticamente un respaldo. -->
-    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.js" defer></script>
-    <script src="js/camara.js?v=2.2.1" defer></script>
+    <!-- Motor de video propio (Cloudflare Realtime): sin librerías externas ni CDN -->
+    <script src="js/motor.js?v=3.0.0" defer></script>
+    <script src="js/camara.js?v=3.0.0" defer></script>
 </head>
 <body>
 

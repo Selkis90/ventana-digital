@@ -2,17 +2,19 @@
    VENTANA DIGITAL — CLIENTE
    ------------------------------------------------------------
    Arquitectura:
+   - El video viaja por Cloudflare Realtime (motor.js), gratis
+     hasta 1.000 GB al mes y sin límite de minutos.
    - Un solo estado (st) y una función sincronizar() idempotente
-     que reconstruye la vista a partir del estado real de LiveKit.
+     que reconstruye la vista a partir del estado real del motor.
      Así no hay "videos fantasma" ni audios duplicados.
-   - Reconexión: LiveKit resuelve los cortes cortos por sí mismo;
-     si la sala se cae del todo, reintentamos con backoff exponencial.
-   - Sin polling, sin setInterval: todo se mueve por eventos.
+   - Reconexión: si la conexión se cae, se vuelve a entrar sola
+     con backoff exponencial (1, 2, 4… hasta 30 s).
    - MODO KIOSCO: al abrir la URL entra solo a la sala, sin pedir
      nada. Si no hay internet o el servidor está dormido, reintenta
      para siempre. Parámetros opcionales en la URL:
         ?nombre=Recepcion   nombre que verán los demás
         &mic=0  &cam=0      entrar con micrófono / cámara apagados
+        &calidad=baja       ahorrar datos (alta | normal | baja)
    ============================================================ */
 
 (function () {
@@ -22,8 +24,7 @@
     // CONSTANTES
     // ============================================================
 
-    const APP_VERSION = '2.2.1';
-    const CDN_RESPALDO = 'https://unpkg.com/livekit-client@2.22.3/dist/livekit-client.umd.js';
+    const APP_VERSION = '3.0.0';
     const ESPERA_MAX_MS = 30000; // los reintentos nunca esperan más de 30 s
 
     const esTactil = window.matchMedia('(pointer: coarse)').matches;
@@ -31,7 +32,6 @@
         /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
 
-    let LK = null; // window.LivekitClient cuando esté cargado
 
     // ============================================================
     // ELEMENTOS DEL DOM
@@ -100,21 +100,23 @@
     // ============================================================
 
     const st = {
-        room: null,
+        motor: null,        // VDMotor conectado
         nombre: '',
         sala: '',
         salaDefecto: 'sala-principal',
         quiereMic: true,
         quiereCam: true,
         conectando: false,
-        acceso: null,       // { token, url, sala, identidad, nombre, expira }
+        calidad: '',        // alta | normal | baja (vacío = la del servidor)
+        timerApertura: null,
+        audioBloqueado: false,
         salidaVoluntaria: false,
         intentos: 0,
         timerReintento: null,
         timerVolver: null,  // regreso automático tras tocar "Salir"
 
         tiles: new Map(),   // clave -> { clave, identidad, tipo, el, video, nombre, avatar, calidad, track }
-        audios: new Map(),  // trackSid -> { el, track }
+        audios: new Map(),  // track.id -> { el, track }
         foco: null,         // tile fijado por el usuario
         focoAuto: null,     // pantalla compartida fijada automáticamente
         focoDescartado: new Set(),
@@ -122,7 +124,6 @@
         hablando: new Set(),
         calidades: new Map(),
         volumen: 1,
-        facingMode: 'user',
         wakeLock: null,
 
         pipTrack: null,
@@ -171,7 +172,7 @@
     }
 
     function nombreDe(participante) {
-        return (participante && (participante.name || participante.identity)) || 'Invitado';
+        return (participante && participante.nombre) || 'Invitado';
     }
 
     function iniciales(nombre) {
@@ -190,27 +191,6 @@
         } finally {
             clearTimeout(timer);
         }
-    }
-
-    function cargarScript(src) {
-        return new Promise((resolve, reject) => {
-            const s = document.createElement('script');
-            s.src = src;
-            s.async = true;
-            s.onload = resolve;
-            s.onerror = () => reject(new Error('No se pudo cargar ' + src));
-            document.head.appendChild(s);
-        });
-    }
-
-    async function asegurarLiveKit() {
-        if (window.LivekitClient) return window.LivekitClient;
-        console.warn('[livekit] CDN principal falló, usando respaldo…');
-        try { await cargarScript(CDN_RESPALDO); } catch (e) { /* se maneja abajo */ }
-        if (!window.LivekitClient) {
-            throw new Error('No se pudo cargar la librería de video. Revisa tu conexión y recarga la página.');
-        }
-        return window.LivekitClient;
     }
 
     // ============================================================
@@ -245,7 +225,7 @@
         ui.estado.className = 'estado estado-' + (tipo || 'conectando');
         ui.estadoTexto.textContent = texto;
 
-        const compartiendo = st.room && st.room.localParticipant.isScreenShareEnabled;
+        const compartiendo = st.motor && st.motor.pantallaActiva;
         if (tipo === 'conectado') {
             if (compartiendo) {
                 ui.estadoTexto.textContent = 'Conectado · compartiendo tu pantalla';
@@ -277,9 +257,7 @@
         });
     }
 
-    function mostrarSalida(titulo, texto) {
-        // Al salir se descarta el token; al volver se pide uno nuevo
-        st.acceso = null;
+    function mostrarSalida(titulo, texto, sinRegreso) {
         clearTimeout(st.timerReintento);
         ui.sala.hidden = true;
         ui.lobby.hidden = true;
@@ -291,7 +269,7 @@
 
         // Modo kiosco: si alguien salió por error, el equipo vuelve solo en 1 minuto
         clearTimeout(st.timerVolver);
-        st.timerVolver = setTimeout(volverAEntrar, 60000);
+        if (!sinRegreso) st.timerVolver = setTimeout(volverAEntrar, 60000);
     }
 
     // Error que no se arregla reintentando (navegador, HTTPS, librería)
@@ -337,68 +315,14 @@
     function mensajeConexion(error) {
         if (!navigator.onLine) return 'No tienes conexión a internet.';
         if (error && error.status) return error.message;
-        if (error && error.name === 'AbortError') return 'El servidor tardó demasiado en responder. Inténtalo de nuevo.';
-        return 'No se pudo conectar a la sala. Si estás en una red de empresa o colegio, puede estar bloqueando las videollamadas.';
+        if (error && error.name === 'AbortError') return 'El servidor tardó demasiado en responder.';
+        if (error && error.name === 'IceError') return error.message;
+        return 'No se pudo conectar a la sala.';
     }
 
     // ============================================================
     // CONEXIÓN
     // ============================================================
-
-    async function postJson(url, cuerpo, timeoutMs) {
-        const resp = await fetchConTimeout(
-            url,
-            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) },
-            timeoutMs
-        );
-        const datos = await resp.json().catch(() => ({}));
-        if (!resp.ok) {
-            const err = new Error(datos.error || `Error del servidor (${resp.status})`);
-            err.status = resp.status;
-            throw err;
-        }
-        return datos;
-    }
-
-    // Reutiliza el token mientras esté vigente (así las reconexiones conservan
-    // la misma identidad); si venció, pide uno nuevo al servidor.
-    async function obtenerAcceso() {
-        const a = st.acceso;
-        if (a && a.token && a.url && a.expira - Date.now() > 60000) return a;
-        st.acceso = null;
-        // Hasta 60 s: en Render gratis el servidor puede estar "dormido"
-        const datos = await postJson('/api/token', { nombre: st.nombre }, 60000);
-        st.acceso = datos;
-        st.sala = datos.sala || st.salaDefecto;
-        return datos;
-    }
-
-    function crearRoom() {
-        const VP = LK.VideoPresets;
-        const SP = LK.ScreenSharePresets;
-
-        return new LK.Room({
-            adaptiveStream: true,          // baja la calidad de videos pequeños/ocultos
-            dynacast: true,                // no envía capas que nadie está viendo
-            disconnectOnPageLeave: true,
-            videoCaptureDefaults: {
-                resolution: esMovil ? VP.h540.resolution : VP.h720.resolution,
-                facingMode: 'user'
-            },
-            audioCaptureDefaults: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            },
-            publishDefaults: {
-                simulcast: true,
-                videoSimulcastLayers: [VP.h180, VP.h360],
-                dtx: true,                 // ahorra datos en silencios
-                red: true,                 // audio más resistente a pérdida de paquetes
-                screenShareEncoding: SP && SP.h1080fps15 ? SP.h1080fps15.encoding : undefined
-            }
-        });
-    }
 
     async function conectar(opciones) {
         const primeraVez = Boolean(opciones && opciones.primeraVez);
@@ -408,20 +332,35 @@
         st.salidaVoluntaria = false;
         clearTimeout(st.timerReintento);
 
+        let motor = null;
         try {
             mostrarCargando(primeraVez
                 ? 'Entrando a la sala… si el servidor estaba dormido puede tardar hasta un minuto.'
                 : 'Reconectando…');
-            const datos = await obtenerAcceso();
 
-            await destruirRoom();
+            // Despierta el servidor (Render free) y revisa el horario antes de abrir la cámara
+            const cfg = await cargarConfig(60000);
+            if (cfg && cfg.horario && cfg.horario.activo === false) {
+                st.conectando = false;
+                mostrarFueraDeHorario(cfg.horario.msCambio);
+                return;
+            }
 
-            const room = crearRoom();
-            st.room = room;
-            registrarEventos(room);
+            await destruirMotor();
+
+            motor = new window.VDMotor({
+                nombre: st.nombre,
+                mic: st.quiereMic,
+                cam: st.quiereCam,
+                calidad: st.calidad,
+                esMovil
+            });
+            st.motor = motor;
+            registrarEventos(motor);
 
             mostrarCargando('Conectando con el servidor de video…');
-            await room.connect(datos.url, datos.token);
+            await motor.conectar();
+            if (st.motor !== motor) return;
 
             st.conectando = false; // desde aquí los eventos de desconexión se manejan normal
             st.intentos = 0;
@@ -429,67 +368,35 @@
             ocultarCargando();
             actualizarEstado('Conectado', 'conectado');
 
-            await activarDispositivos(room);
-
-            if (!room.canPlaybackAudio) ui.avisoAudio.hidden = false;
             solicitarWakeLock();
             actualizarBotonVoltear();
             programarSync();
         } catch (error) {
             console.error('[conexión]', error);
             ocultarCargando();
-
-            await destruirRoom();
-            // Si el token fue rechazado, pedir uno nuevo en el siguiente intento
-            if (error && error.status && error.status < 500) st.acceso = null;
-            programarReintento(mensajeConexion(error));
+            const fatal = motor && motor._errorServidor;
+            await destruirMotor();
+            if (fatal) {
+                // Sala llena o sin configurar: se reintenta, pero más despacio
+                st.intentos = Math.max(st.intentos, 5);
+                programarReintento(fatal.message);
+            } else {
+                programarReintento(mensajeConexion(error));
+            }
         } finally {
             st.conectando = false;
         }
     }
 
-    async function activarDispositivos(room) {
-        const lp = room.localParticipant;
-
-        // Pedir cámara y micrófono juntos = un solo aviso de permisos
-        if (st.quiereMic && st.quiereCam) {
-            try {
-                await lp.enableCameraAndMicrophone();
-                return;
-            } catch (e) {
-                console.warn('[dispositivos] Falló activación conjunta, probando por separado', e);
-            }
-        }
-
-        if (st.quiereMic && !lp.isMicrophoneEnabled) {
-            try {
-                await lp.setMicrophoneEnabled(true);
-            } catch (e) {
-                toast(mensajeDispositivo(e, 'micrófono'), 'error', 6000);
-            }
-        }
-
-        if (st.quiereCam && !lp.isCameraEnabled) {
-            try {
-                await lp.setCameraEnabled(true, { facingMode: st.facingMode });
-            } catch (e) {
-                toast(mensajeDispositivo(e, 'cámara'), 'error', 6000);
-            }
-        }
-    }
-
-    async function destruirRoom() {
-        const room = st.room;
-        st.room = null; // los eventos de esta sala se ignoran a partir de aquí
+    async function destruirMotor() {
+        const motor = st.motor;
+        st.motor = null; // los eventos de este motor se ignoran a partir de aquí
         limpiarMedia();
-
-        if (room) {
-            try { room.removeAllListeners(); } catch (e) { /* noop */ }
-            try { await room.disconnect(true); } catch (e) { /* noop */ }
+        if (motor) {
+            try { motor.desconectar(); } catch (e) { /* noop */ }
         }
     }
 
-    // Muestra el aviso donde se vea: en la sala (barra de estado) o en la pantalla de carga
     function avisoReintento(texto) {
         if (ui.sala.hidden) mostrarCargando(texto);
         else actualizarEstado(texto, 'error');
@@ -512,131 +419,81 @@
         st.timerReintento = setTimeout(() => conectar(), espera);
     }
 
-    function onDesconectado(reason) {
+    function onDesconectado(info) {
         // Si falla durante conectar(), esa función ya maneja el error
         if (st.conectando) return;
-        const R = LK.DisconnectReason || {};
-        const room = st.room;
-        st.room = null;
+        st.motor = null;
         limpiarMedia();
-        if (room) {
-            try { room.removeAllListeners(); } catch (e) { /* noop */ }
-        }
 
-        console.warn('[sala] Desconectado. Motivo:', reason);
+        console.warn('[sala] Desconectado. Motivo:', info && info.motivo);
 
-        if (st.salidaVoluntaria || reason === R.CLIENT_INITIATED) {
+        if (st.salidaVoluntaria || (info && info.voluntario)) {
             mostrarSalida('Saliste de la llamada', 'Volverás a entrar automáticamente en 1 minuto.');
             return;
         }
-        // Modo kiosco: cualquier otra desconexión vuelve a entrar sola.
-        // Si nos sacaron o hubo identidad duplicada, se pide un token nuevo.
-        if (reason === R.DUPLICATE_IDENTITY || reason === R.PARTICIPANT_REMOVED || reason === R.ROOM_DELETED) {
-            st.acceso = null;
-        }
-        programarReintento();
+        // Modo kiosco: cualquier otra desconexión vuelve a entrar sola
+        if (info && info.error) st.intentos = Math.max(st.intentos, 5);
+        programarReintento(info && info.error ? info.error.message : '');
+    }
+
+    // Fuera del horario configurado: se apaga la cámara y vuelve sola a la hora de apertura
+    function mostrarFueraDeHorario(msCambio) {
+        clearTimeout(st.timerReintento);
+        clearTimeout(st.timerApertura);
+        const ms = Number(msCambio) > 0 ? Number(msCambio) : 30 * 60000;
+        const apertura = new Date(Date.now() + ms);
+        const hora = apertura.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' });
+        const dia = apertura.toDateString() === new Date().toDateString()
+            ? 'hoy'
+            : apertura.toLocaleDateString('es-CO', { weekday: 'long' });
+        const frase = `La llamada se activará sola ${dia} a las ${hora}`;
+        mostrarSalida('Fuera de horario', /\.$/.test(frase) ? frase : frase + '.', true);
+        // Se revisa de nuevo a la hora de apertura (o cada 6 h si falta mucho)
+        st.timerApertura = setTimeout(volverAEntrar, Math.min(ms + 5000, 6 * 3600000));
     }
 
     // ============================================================
-    // EVENTOS DE LIVEKIT
+    // EVENTOS DEL MOTOR DE VIDEO
     // ============================================================
 
-    function registrarEventos(room) {
-        const E = LK.RoomEvent;
-
-        // Ignora eventos de una sala que ya fue reemplazada
+    function registrarEventos(motor) {
+        // Ignora eventos de un motor que ya fue reemplazado
         const on = (evento, fn) => {
-            if (!evento) return;
-            room.on(evento, function () {
-                if (st.room !== room) return;
-                try {
-                    fn.apply(null, arguments);
-                } catch (e) {
-                    console.error('[evento ' + evento + ']', e);
-                }
+            motor.on(evento, function () {
+                if (st.motor !== motor) return;
+                fn.apply(null, arguments);
             });
         };
 
-        on(E.ParticipantConnected, (p) => {
-            toast(`${nombreDe(p)} se unió`);
-            programarSync();
-        });
-
-        on(E.ParticipantDisconnected, (p) => {
-            toast(`${nombreDe(p)} salió`);
-            st.calidades.delete(p.identity);
-            programarSync();
-        });
-
-        on(E.TrackSubscribed, (track) => {
-            if (track.kind === 'audio') adjuntarAudio(track);
-            programarSync();
-        });
-
-        on(E.TrackUnsubscribed, (track) => {
-            if (track.kind === 'audio') quitarAudio(track);
-            programarSync();
-        });
-
-        [
-            E.TrackPublished,
-            E.TrackUnpublished,
-            E.TrackMuted,
-            E.TrackUnmuted,
-            E.TrackStreamStateChanged,
-            E.ParticipantNameChanged
-        ].forEach((ev) => on(ev, programarSync));
-
-        on(E.LocalTrackPublished, () => {
-            actualizarControles();
-            actualizarPip();
-        });
-
-        on(E.LocalTrackUnpublished, () => {
+        on('entro', (p) => toast(`${nombreDe(p)} se unió`));
+        on('salio', (p) => toast(`${nombreDe(p)} salió`));
+        on('cambio', programarSync);
+        on('cambioLocal', () => {
             actualizarControles();
             actualizarPip();
             actualizarEstado('Conectado', 'conectado');
         });
-
-        on(E.ActiveSpeakersChanged, (hablantes) => {
-            st.hablando = new Set(hablantes.map((p) => p.identity));
+        on('hablando', (set) => {
+            st.hablando = new Set(set);
             aplicarHablando();
         });
-
-        on(E.ConnectionQualityChanged, (calidad, participante) => {
-            st.calidades.set(participante.identity, calidad);
-            if (participante.isLocal) actualizarCalidadLocal(calidad);
-            else aplicarCalidades();
-        });
-
-        on(E.AudioPlaybackStatusChanged, () => {
-            ui.avisoAudio.hidden = room.canPlaybackAudio;
-        });
-
-        on(E.MediaDevicesError, (error) => {
-            toast(mensajeDispositivo(error, 'dispositivo'), 'error', 6000);
-        });
-
-        on(E.MediaDevicesChanged, actualizarBotonVoltear);
-
-        on(E.TrackSubscriptionFailed, (sid, p) => {
-            console.warn('[sala] No se pudo recibir una pista de', nombreDe(p), sid);
-        });
-
-        on(E.SignalReconnecting, () => actualizarEstado('Conexión inestable, reconectando…', 'conectando'));
-        on(E.Reconnecting, () => actualizarEstado('Conexión inestable, reconectando…', 'conectando'));
-
-        on(E.Reconnected, () => {
+        on('calidad', actualizarCalidadLocal);
+        on('errorDispositivo', (error, dispositivo) => toast(mensajeDispositivo(error, dispositivo), 'error', 6000));
+        on('inestable', () => actualizarEstado('Conexión inestable, reconectando…', 'conectando'));
+        on('reconectado', () => {
             actualizarEstado('Conectado', 'conectado');
             toast('Conexión restablecida', 'exito');
-            programarSync();
         });
-
-        on(E.Disconnected, onDesconectado);
+        on('cierre', (ms) => {
+            st.motor = null;
+            limpiarMedia();
+            mostrarFueraDeHorario(ms);
+        });
+        on('desconectado', onDesconectado);
     }
 
     // ============================================================
-    // SINCRONIZACIÓN VISTA ⇄ ESTADO DE LIVEKIT
+    // SINCRONIZACIÓN VISTA ⇄ ESTADO DEL MOTOR
     // ============================================================
 
     function programarSync() {
@@ -650,54 +507,52 @@
     }
 
     function sincronizar() {
-        const room = st.room;
-        if (!room) return;
+        const motor = st.motor;
+        if (!motor) return;
 
-        const S = LK.Track.Source;
         const clavesVivas = new Set();
         const audiosVivos = new Set();
 
-        room.remoteParticipants.forEach((p) => {
+        motor.remotos.forEach((p) => {
+            if (p.salio) return;
             // --- Cámara (siempre hay un tile por participante) ---
-            const claveCam = p.identity + '|camara';
+            const claveCam = p.id + '|camara';
             clavesVivas.add(claveCam);
             const tileCam = obtenerTile(claveCam, p, 'camara');
 
-            const pubCam = p.getTrackPublication(S.Camera);
-            const trackCam = pubCam && pubCam.isSubscribed && pubCam.track && !pubCam.isMuted ? pubCam.track : null;
-            ponerVideo(tileCam, trackCam);
+            const pullCam = p.pulls.get('camara');
+            ponerVideo(tileCam, p.cam && pullCam ? pullCam.track : null);
 
-            const pubMic = p.getTrackPublication(S.Microphone);
-            tileCam.el.classList.toggle('mic-off', !pubMic || pubMic.isMuted);
+            tileCam.el.classList.toggle('mic-off', !p.mic);
             tileCam.nombre.textContent = nombreDe(p);
             tileCam.avatar.textContent = iniciales(nombreDe(p));
 
             // --- Pantalla compartida ---
-            const pubPantalla = p.getTrackPublication(S.ScreenShare);
-            if (pubPantalla && pubPantalla.isSubscribed && pubPantalla.track) {
-                const claveP = p.identity + '|pantalla';
+            const pullPantalla = p.pulls.get('pantalla');
+            if (pullPantalla) {
+                const claveP = p.id + '|pantalla';
                 clavesVivas.add(claveP);
                 const tileP = obtenerTile(claveP, p, 'pantalla');
                 tileP.nombre.textContent = 'Pantalla de ' + nombreDe(p);
                 tileP.avatar.textContent = iniciales(nombreDe(p));
-                ponerVideo(tileP, pubPantalla.isMuted ? null : pubPantalla.track);
+                ponerVideo(tileP, pullPantalla.track);
             }
 
-            // --- Audios (micrófono y audio de pantalla) ---
-            p.audioTrackPublications.forEach((pub) => {
-                if (pub.isSubscribed && pub.track) {
-                    adjuntarAudio(pub.track);
-                    audiosVivos.add(pub.track.sid);
-                }
-            });
+            // --- Audio ---
+            const pullMic = p.pulls.get('microfono');
+            if (pullMic && pullMic.track) {
+                adjuntarAudio(pullMic.track);
+                audiosVivos.add(pullMic.track.id);
+            }
+            st.calidades.set(p.id, p.calidad);
         });
 
         // Quitar lo que ya no existe
         Array.from(st.tiles.keys()).forEach((clave) => {
             if (!clavesVivas.has(clave)) quitarTile(clave);
         });
-        Array.from(st.audios.keys()).forEach((sid) => {
-            if (!audiosVivos.has(sid)) quitarAudio(st.audios.get(sid).track);
+        Array.from(st.audios.keys()).forEach((id) => {
+            if (!audiosVivos.has(id)) quitarAudio(st.audios.get(id).track);
         });
 
         // Foco: el del usuario manda; si no, la primera pantalla compartida
@@ -715,8 +570,9 @@
             if (!st.tiles.has(clave)) st.focoDescartado.delete(clave);
         });
 
+        const remotos = Array.from(motor.remotos.values()).filter((p) => !p.salio).length;
         ui.vacio.hidden = st.tiles.size > 0;
-        ui.contador.textContent = String(room.remoteParticipants.size + 1);
+        ui.contador.textContent = String(remotos + 1);
 
         aplicarHablando();
         aplicarCalidades();
@@ -799,7 +655,7 @@
 
         const tile = {
             clave,
-            identidad: participante.identity,
+            identidad: participante.id,
             tipo,
             el,
             video,
@@ -814,31 +670,20 @@
 
     function ponerVideo(tile, track) {
         if (tile.track !== track) {
-            if (tile.track) {
-                try { tile.track.detach(tile.video); } catch (e) { /* noop */ }
-            }
             tile.track = track || null;
-            if (track) {
-                try {
-                    track.attach(tile.video);
-                } catch (e) {
-                    console.warn('[video] No se pudo adjuntar', e);
-                    tile.track = null;
-                }
-            }
+            tile.video.srcObject = track ? new MediaStream([track]) : null;
+            if (track) tile.video.play().catch(() => { /* se reintenta al tocar la pantalla */ });
         }
 
-        const pausado = Boolean(tile.track && tile.track.streamState === 'paused' && !tile.el.classList.contains('fuera-tira'));
-        tile.el.classList.toggle('sin-video', !tile.track);
-        tile.el.classList.toggle('pausado', pausado);
+        // Chrome marca la pista "muted" cuando no llegan datos (conexión lenta o recién conectado)
+        const sinDatos = Boolean(tile.track && tile.track.muted);
+        tile.el.classList.toggle('sin-video', !tile.track || sinDatos);
+        tile.el.classList.toggle('pausado', false);
     }
 
     function quitarTile(clave) {
         const tile = st.tiles.get(clave);
         if (!tile) return;
-        if (tile.track) {
-            try { tile.track.detach(tile.video); } catch (e) { /* noop */ }
-        }
         tile.video.srcObject = null;
         tile.el.remove();
         st.tiles.delete(clave);
@@ -861,17 +706,9 @@
         st.tiles.forEach((tile) => {
             tile.el.classList.toggle('hablando', tile.tipo === 'camara' && st.hablando.has(tile.identidad));
         });
-        const yo = st.room && st.room.localParticipant.identity;
+        const yo = st.motor && st.motor.id;
         ui.pip.classList.toggle('hablando', Boolean(yo && st.hablando.has(yo)));
     }
-
-    const CLASE_CALIDAD = {
-        excellent: 'excelente',
-        good: 'buena',
-        poor: 'mala',
-        lost: 'perdida',
-        unknown: 'desconocida'
-    };
 
     const TEXTO_CALIDAD = {
         excelente: 'Excelente',
@@ -883,14 +720,14 @@
 
     function aplicarCalidades() {
         st.tiles.forEach((tile) => {
-            const q = CLASE_CALIDAD[st.calidades.get(tile.identidad)] || 'desconocida';
+            const q = TEXTO_CALIDAD[st.calidades.get(tile.identidad)] ? st.calidades.get(tile.identidad) : 'desconocida';
             tile.calidad.className = 'calidad calidad-' + q;
             tile.calidad.title = 'Conexión: ' + TEXTO_CALIDAD[q];
         });
     }
 
     function actualizarCalidadLocal(calidad) {
-        const q = CLASE_CALIDAD[calidad] || 'desconocida';
+        const q = TEXTO_CALIDAD[calidad] ? calidad : 'desconocida';
         ui.calidad.className = 'calidad calidad-' + q;
         ui.calidad.setAttribute('aria-label', 'Calidad de conexión: ' + TEXTO_CALIDAD[q]);
         ui.calidad.title = 'Tu conexión: ' + TEXTO_CALIDAD[q];
@@ -968,29 +805,24 @@
     // ============================================================
 
     function actualizarPip() {
-        const room = st.room;
-        if (!room) {
+        const motor = st.motor;
+        if (!motor) {
             ui.pip.hidden = true;
             return;
         }
 
-        const lp = room.localParticipant;
-        const pub = lp.getTrackPublication(LK.Track.Source.Camera);
-        const track = pub && pub.track && !pub.isMuted ? pub.track : null;
-
+        const track = motor.pistaCamara;
         if (track !== st.pipTrack) {
-            if (st.pipTrack) {
-                try { st.pipTrack.detach(ui.videoLocal); } catch (e) { /* noop */ }
-            }
             st.pipTrack = track;
-            if (track) track.attach(ui.videoLocal);
+            ui.videoLocal.srcObject = track ? new MediaStream([track]) : null;
+            if (track) ui.videoLocal.play().catch(() => {});
         }
 
         const eraOculto = ui.pip.hidden;
         ui.pip.hidden = false;
         ui.pip.classList.toggle('sin-video', !track);
-        ui.pip.classList.toggle('espejo', Boolean(track) && st.facingMode === 'user');
-        ui.pip.classList.toggle('mic-off', !lp.isMicrophoneEnabled);
+        ui.pip.classList.toggle('espejo', Boolean(track) && motor.facingMode === 'user');
+        ui.pip.classList.toggle('mic-off', !motor.micActivo);
         ui.pipIniciales.textContent = iniciales(st.nombre);
 
         if (eraOculto || !st.pipColocada) {
@@ -1080,31 +912,41 @@
     // ============================================================
 
     function aplicarVolumen(track, el) {
-        if (typeof track.setVolume === 'function') {
-            track.setVolume(st.volumen);
-        } else if (el) {
-            el.volume = st.volumen;
-        }
+        if (el) el.volume = st.volumen;
     }
 
     function adjuntarAudio(track) {
-        const sid = track.sid;
-        if (!sid || st.audios.has(sid)) return;
+        const id = track.id;
+        if (!id || st.audios.has(id)) return;
 
-        const el = track.attach(); // LiveKit crea el <audio> y maneja autoplay
-        el.dataset.sid = sid;
+        const el = document.createElement('audio');
+        el.autoplay = true;
+        el.dataset.track = id;
+        el.srcObject = new MediaStream([track]);
         contAudios.appendChild(el);
         aplicarVolumen(track, el);
-        st.audios.set(sid, { el, track });
+        st.audios.set(id, { el, track });
+        reproducirAudio(el);
+    }
+
+    // Los navegadores bloquean el audio hasta que la persona toca la pantalla
+    function reproducirAudio(el) {
+        const p = el.play();
+        if (p && p.catch) {
+            p.catch(() => {
+                st.audioBloqueado = true;
+                ui.avisoAudio.hidden = false;
+            });
+        }
     }
 
     function quitarAudio(track) {
         if (!track) return;
-        const entrada = st.audios.get(track.sid);
+        const entrada = st.audios.get(track.id);
         if (!entrada) return;
-        try { track.detach(entrada.el); } catch (e) { /* noop */ }
+        entrada.el.srcObject = null;
         entrada.el.remove();
-        st.audios.delete(track.sid);
+        st.audios.delete(track.id);
     }
 
     function cambiarVolumen() {
@@ -1115,19 +957,15 @@
     }
 
     async function activarAudio() {
-        if (!st.room) {
-            ui.avisoAudio.hidden = true;
-            return;
-        }
-        try {
-            await st.room.startAudio();
-        } catch (e) {
-            console.warn('[audio] startAudio falló', e);
-        }
-        ui.avisoAudio.hidden = st.room ? st.room.canPlaybackAudio : true;
+        desbloquearAudioEnGesto();
+        st.audioBloqueado = false;
+        const intentos = Array.from(st.audios.values()).map(({ el }) => el.play().catch(() => { st.audioBloqueado = true; }));
+        intentos.push(ui.videoLocal.play().catch(() => {}));
+        st.tiles.forEach((t) => { if (t.track) intentos.push(t.video.play().catch(() => {})); });
+        await Promise.all(intentos);
+        ui.avisoAudio.hidden = !st.audioBloqueado;
     }
 
-    // Truco para iOS/Safari: crear audio dentro del gesto del usuario
     function desbloquearAudioEnGesto() {
         try {
             const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -1152,10 +990,7 @@
         Array.from(st.audios.values()).forEach(({ track }) => quitarAudio(track));
         contAudios.textContent = '';
 
-        if (st.pipTrack) {
-            try { st.pipTrack.detach(ui.videoLocal); } catch (e) { /* noop */ }
-            st.pipTrack = null;
-        }
+        st.pipTrack = null;
         ui.videoLocal.srcObject = null;
         ui.pip.hidden = true;
 
@@ -1183,10 +1018,10 @@
     }
 
     function actualizarControles() {
-        const lp = st.room && st.room.localParticipant;
-        const mic = Boolean(lp && lp.isMicrophoneEnabled);
-        const cam = Boolean(lp && lp.isCameraEnabled);
-        const pantalla = Boolean(lp && lp.isScreenShareEnabled);
+        const m = st.motor;
+        const mic = Boolean(m && m.micActivo);
+        const cam = Boolean(m && m.camActiva);
+        const pantalla = Boolean(m && m.pantallaActiva);
 
         setBotonToggle(ui.btnMic, mic, mic ? 'Silenciar micrófono (M)' : 'Activar micrófono (M)');
         setBotonToggle(ui.btnCam, cam, cam ? 'Apagar cámara (V)' : 'Encender cámara (V)');
@@ -1199,14 +1034,14 @@
     }
 
     async function alternarMicrofono() {
-        const room = st.room;
-        if (!room || st.ocupado.mic) return;
+        const motor = st.motor;
+        if (!motor || st.ocupado.mic) return;
         st.ocupado.mic = true;
         ui.btnMic.disabled = true;
 
-        const activar = !room.localParticipant.isMicrophoneEnabled;
+        const activar = !motor.micActivo;
         try {
-            await room.localParticipant.setMicrophoneEnabled(activar);
+            await motor.setMicrofono(activar);
             st.quiereMic = activar;
         } catch (e) {
             toast(mensajeDispositivo(e, 'micrófono'), 'error', 6000);
@@ -1219,14 +1054,14 @@
     }
 
     async function alternarCamara() {
-        const room = st.room;
-        if (!room || st.ocupado.cam) return;
+        const motor = st.motor;
+        if (!motor || st.ocupado.cam) return;
         st.ocupado.cam = true;
         ui.btnCam.disabled = true;
 
-        const activar = !room.localParticipant.isCameraEnabled;
+        const activar = !motor.camActiva;
         try {
-            await room.localParticipant.setCameraEnabled(activar, activar ? { facingMode: st.facingMode } : undefined);
+            await motor.setCamara(activar);
             st.quiereCam = activar;
         } catch (e) {
             toast(mensajeDispositivo(e, 'cámara'), 'error', 6000);
@@ -1239,31 +1074,14 @@
     }
 
     async function voltearCamara() {
-        const room = st.room;
-        if (!room || st.ocupado.voltear) return;
-
-        const pub = room.localParticipant.getTrackPublication(LK.Track.Source.Camera);
-        if (!pub || !pub.track || pub.isMuted) return;
+        const motor = st.motor;
+        if (!motor || st.ocupado.voltear || !motor.camActiva) return;
 
         st.ocupado.voltear = true;
         ui.btnVoltear.disabled = true;
         try {
-            if (esMovil) {
-                const nuevo = st.facingMode === 'user' ? 'environment' : 'user';
-                await pub.track.restartTrack({
-                    facingMode: nuevo,
-                    resolution: LK.VideoPresets.h540.resolution
-                });
-                st.facingMode = nuevo;
-            } else {
-                const dispositivos = await LK.Room.getLocalDevices('videoinput', false);
-                if (dispositivos.length < 2) return;
-                const actual = typeof room.getActiveDevice === 'function' ? room.getActiveDevice('videoinput') : null;
-                const idx = dispositivos.findIndex((d) => d.deviceId === actual);
-                const siguiente = dispositivos[(idx + 1) % dispositivos.length];
-                await room.switchActiveDevice('videoinput', siguiente.deviceId);
-                toast('Cámara: ' + (siguiente.label || 'siguiente dispositivo'));
-            }
+            const etiqueta = await motor.voltearCamara();
+            if (etiqueta) toast('Cámara: ' + etiqueta);
         } catch (e) {
             console.warn('[cámara] No se pudo cambiar', e);
             toast('No se pudo cambiar de cámara.', 'error');
@@ -1279,23 +1097,23 @@
         try {
             if (esMovil) {
                 mostrar = true;
-            } else if (LK) {
-                const dispositivos = await LK.Room.getLocalDevices('videoinput', false);
-                mostrar = dispositivos.length > 1;
+            } else {
+                const dispositivos = await navigator.mediaDevices.enumerateDevices();
+                mostrar = dispositivos.filter((d) => d.kind === 'videoinput').length > 1;
             }
         } catch (e) { /* noop */ }
         ui.btnVoltear.hidden = !mostrar;
     }
 
     async function alternarPantalla() {
-        const room = st.room;
-        if (!room || st.ocupado.pantalla) return;
+        const motor = st.motor;
+        if (!motor || st.ocupado.pantalla) return;
         st.ocupado.pantalla = true;
         ui.btnCompartir.disabled = true;
 
-        const activar = !room.localParticipant.isScreenShareEnabled;
+        const activar = !motor.pantallaActiva;
         try {
-            await room.localParticipant.setScreenShareEnabled(activar, { audio: true });
+            await motor.setPantalla(activar);
             if (activar) toast('Estás compartiendo tu pantalla', 'exito');
         } catch (e) {
             const cancelado = e && (e.name === 'NotAllowedError' || e.name === 'AbortError');
@@ -1359,7 +1177,7 @@
     async function salir() {
         st.salidaVoluntaria = true;
         clearTimeout(st.timerReintento);
-        await destruirRoom();
+        await destruirMotor();
         mostrarSalida('Saliste de la llamada', 'Volverás a entrar automáticamente en 1 minuto.');
     }
 
@@ -1387,36 +1205,45 @@
     // ============================================================
 
     async function mostrarDiagnostico() {
-        const room = st.room;
+        const motor = st.motor;
         const l = [];
         const si = (v) => (v ? 'sí' : 'no');
 
-        l.push(`Ventana Digital ${APP_VERSION} · LiveKit ${(LK && LK.version) || '?'}`);
+        l.push(`Ventana Digital ${APP_VERSION} · Video: Cloudflare Realtime`);
         l.push(`Navegador: ${navigator.userAgent}`);
         l.push(`HTTPS: ${si(window.isSecureContext)} · En línea: ${si(navigator.onLine)} · Táctil: ${si(esTactil)}`);
         l.push('');
 
-        if (room) {
-            const lp = room.localParticipant;
-            const q = CLASE_CALIDAD[st.calidades.get(lp.identity)] || 'desconocida';
-            l.push(`Sala: ${st.sala} · Estado: ${room.state}`);
-            l.push(`Tú: ${st.nombre} (${lp.identity})`);
-            l.push(`Participantes: ${room.remoteParticipants.size + 1}`);
+        if (motor) {
+            const r = motor.resumen();
+            const q = TEXTO_CALIDAD[motor.calidadLocal] ? motor.calidadLocal : 'desconocida';
+            l.push(`Sala: ${st.sala} · Conexión: ${r.conexion} (ICE ${r.ice}) · TURN: ${si(r.usaTurn)}`);
+            l.push(`Tú: ${st.nombre} (${r.id}) · Sesión: ${r.sessionId}`);
+            l.push(`Calidad de video: ${r.calidadVideo} · Datos recibidos en esta conexión: ${r.mbRecibidos} MB`);
+            l.push(`Participantes: ${motor.remotos.size + 1}`);
             l.push(`Tu conexión: ${TEXTO_CALIDAD[q]}`);
-            l.push(`Micrófono: ${si(lp.isMicrophoneEnabled)} · Cámara: ${si(lp.isCameraEnabled)} · Pantalla: ${si(lp.isScreenShareEnabled)}`);
-            l.push(`Audio habilitado por el navegador: ${si(room.canPlaybackAudio)}`);
+            l.push(`Micrófono: ${si(motor.micActivo)} · Cámara: ${si(motor.camActiva)} · Pantalla: ${si(motor.pantallaActiva)}`);
+            l.push(`Audio bloqueado por el navegador: ${si(st.audioBloqueado)}`);
             l.push(`Videos remotos: ${st.tiles.size} · Audios remotos: ${st.audios.size}`);
             l.push('');
-            room.remoteParticipants.forEach((p) => {
-                const qp = CLASE_CALIDAD[st.calidades.get(p.identity)] || 'desconocida';
-                const pubs = Array.from(p.trackPublications.values())
-                    .map((pub) => `${pub.source}${pub.isSubscribed ? '' : '(no suscrito)'}${pub.isMuted ? '(silenciado)' : ''}`)
-                    .join(', ');
-                l.push(`• ${nombreDe(p)} — conexión ${TEXTO_CALIDAD[qp]} — ${pubs || 'sin pistas'}`);
+            motor.remotos.forEach((p) => {
+                const qp = TEXTO_CALIDAD[p.calidad] ? p.calidad : 'desconocida';
+                const pistas = Array.from(p.pulls.keys()).join(', ');
+                l.push(`• ${nombreDe(p)} — conexión ${TEXTO_CALIDAD[qp]} — recibiendo: ${pistas || 'nada aún'}${p.mic ? '' : ' (mic apagado)'}${p.cam ? '' : ' (cámara apagada)'}`);
             });
         } else {
             l.push('Sin conexión a una sala.');
         }
+
+        try {
+            const resp = await fetchConTimeout('/health', {}, 5000);
+            const h = await resp.json();
+            if (h && h.consumo) {
+                l.push('');
+                l.push(`Consumo estimado del mes (${h.consumo.mes}): ${h.consumo.gbEstimados} GB de ${h.consumo.cupoGratisGb} GB gratis (${h.consumo.porcentaje}%)`);
+                l.push('El dato exacto está en el panel de Cloudflare → Realtime.');
+            }
+        } catch (e) { /* noop */ }
 
         try {
             const devs = await navigator.mediaDevices.enumerateDevices();
@@ -1440,35 +1267,35 @@
     // LOBBY
     // ============================================================
 
-    async function cargarConfig() {
+    async function cargarConfig(timeoutMs) {
         try {
-            const resp = await fetchConTimeout('/api/config', {}, 8000);
-            if (!resp.ok) return;
+            const resp = await fetchConTimeout('/api/config', { cache: 'no-store' }, timeoutMs || 8000);
+            if (!resp.ok) return null;
             const cfg = await resp.json();
             if (cfg.salaPorDefecto) st.salaDefecto = cfg.salaPorDefecto;
+            return cfg;
         } catch (e) {
             // El servidor puede estar "dormido" (Render free); no es crítico aquí
+            return null;
         }
     }
 
-    // Entrada automática: no pide nada, entra apenas carga la página
     async function entrarAutomatico() {
-        if (st.conectando || st.room) return;
+        if (st.conectando || st.motor) return;
         clearTimeout(st.timerReintento);
 
         st.nombre = nombreAutomatico();
         st.sala = st.salaDefecto;
         st.quiereMic = parametroActivo('mic');
         st.quiereCam = parametroActivo('cam');
-        st.acceso = null;
+        const calidad = (new URLSearchParams(location.search).get('calidad') || '').toLowerCase();
+        st.calidad = window.VDMotor.PRESETS[calidad] ? calidad : '';
         st.intentos = 0;
-        st.facingMode = 'user';
 
         ui.lobby.hidden = true;
         await conectar({ primeraVez: true });
     }
 
-    // Botón "Reintentar" del aviso de error
     function onEntrar(evento) {
         evento.preventDefault();
         location.reload();
@@ -1477,14 +1304,10 @@
     // Volver a entrar desde la pantalla de salida, con el mismo nombre
     async function volverAEntrar() {
         clearTimeout(st.timerVolver);
-        if (st.conectando || st.room) return;
-        if (!LK) {
-            location.reload();
-            return;
-        }
+        clearTimeout(st.timerApertura);
+        if (st.conectando || st.motor) return;
         if (!st.nombre) st.nombre = nombreAutomatico();
         desbloquearAudioEnGesto();
-        st.acceso = null;
         st.intentos = 0;
         setBotonCargando(ui.btnVolver, true);
         try {
@@ -1506,11 +1329,14 @@
         if (!window.isSecureContext) {
             return 'La cámara y el micrófono solo funcionan con HTTPS. Abre la página con https:// (o en localhost).';
         }
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.RTCPeerConnection) {
             return 'Tu navegador no permite videollamadas. Actualízalo o usa Chrome, Safari, Edge o Firefox.';
         }
-        if (typeof LK.isBrowserSupported === 'function' && !LK.isBrowserSupported()) {
+        if (!window.RTCRtpTransceiver || !('WebSocket' in window)) {
             return 'Tu navegador no es compatible. Actualízalo o usa Chrome, Safari, Edge o Firefox recientes.';
+        }
+        if (!window.VDMotor) {
+            return 'No se pudo cargar el motor de video. Recarga la página.';
         }
         return '';
     }
@@ -1542,7 +1368,7 @@
         escuchar(ui.btnActivarAudio, 'click', activarAudio);
         ['pointerdown', 'keydown'].forEach((ev) =>
             document.addEventListener(ev, () => {
-                if (st.room && !st.room.canPlaybackAudio) activarAudio();
+                if (st.audioBloqueado) activarAudio();
             })
         );
 
@@ -1572,7 +1398,7 @@
         // Red
         window.addEventListener('online', () => {
             toast('Conexión a internet recuperada', 'exito');
-            if (!st.room && st.nombre && !st.salidaVoluntaria && !st.conectando) {
+            if (!st.motor && st.nombre && !st.salidaVoluntaria && !st.conectando && ui.salida.hidden) {
                 st.intentos = 0;
                 conectar();
             }
@@ -1583,10 +1409,10 @@
 
         // Volver a la pestaña / app
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState !== 'visible' || !st.room) return;
+            if (document.visibilityState !== 'visible' || !st.motor) return;
             solicitarWakeLock();
             programarSync();
-            if (!st.room.canPlaybackAudio) ui.avisoAudio.hidden = false;
+            if (st.audioBloqueado) ui.avisoAudio.hidden = false;
         });
 
         // Redimensionar / girar el teléfono
@@ -1611,22 +1437,13 @@
         ui.btnFullscreen.hidden = !soportaFullscreen();
         mostrarCargando('Entrando a la sala…');
 
-        await cargarConfig(); // también "despierta" el servidor si estaba dormido
-
-        try {
-            LK = await asegurarLiveKit();
-        } catch (e) {
-            mostrarErrorFatal(e.message);
-            return;
-        }
-
         const problema = verificarCompatibilidad();
         if (problema) {
             mostrarErrorFatal(problema);
             return;
         }
 
-        console.info(`Ventana Digital ${APP_VERSION} lista · LiveKit ${LK.version || ''}`);
+        console.info(`Ventana Digital ${APP_VERSION} lista · Cloudflare Realtime`);
         entrarAutomatico();
     }
 

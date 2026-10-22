@@ -10,7 +10,7 @@ La 3.0 usa **Cloudflare Realtime (Serverless SFU)**:
 |---|---|---|
 | Gratis al mes | 5.000 minutos | **1.000 GB**, sin límite de minutos |
 | Qué se cobra | minutos conectados | solo los datos que Cloudflare envía a los navegadores |
-| Tarjeta | – | no se necesita para empezar |
+| Tarjeta | – | se registra, pero el cobro es $0 hasta 1.000 GB |
 | Si se pasa | – | US$0,05 por GB extra |
 
 **Render se queda igual.** El video no pasa por Render: va directo entre los navegadores y Cloudflare. Render solo mueve mensajes pequeños por WebSocket (quién entró, quién salió).
